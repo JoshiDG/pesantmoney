@@ -1,0 +1,3 @@
+-- Establishes the schema_migrations bookkeeping is handled by the runner itself;
+-- this first real migration intentionally creates no domain tables yet.
+-- Future feature slices add their own numbered migration files here.
