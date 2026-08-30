@@ -3,10 +3,10 @@ use rusqlite::{params, Connection, Result};
 /// Ordered, append-only list of migrations. Each entry is applied at most once,
 /// tracked by version in the `schema_migrations` table. Never edit or reorder
 /// an existing entry once it has shipped — add a new one instead.
-pub const MIGRATIONS: &[(&str, &str)] = &[(
-    "0001_initial",
-    include_str!("../../migrations/0001_initial.sql"),
-)];
+pub const MIGRATIONS: &[(&str, &str)] = &[
+    ("0001_initial", include_str!("../../migrations/0001_initial.sql")),
+    ("0002_accounts", include_str!("../../migrations/0002_accounts.sql")),
+];
 
 pub fn run(conn: &Connection) -> Result<()> {
     conn.execute_batch(

@@ -1,3 +1,4 @@
+mod commands;
 mod db;
 mod services;
 
@@ -36,7 +37,13 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![schema_version])
+        .invoke_handler(tauri::generate_handler![
+            schema_version,
+            commands::create_account,
+            commands::list_accounts,
+            commands::update_account,
+            commands::delete_account,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
