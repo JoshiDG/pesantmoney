@@ -1,0 +1,3 @@
+# Dedup imported transactions by fingerprint, with a review step for near-matches
+
+Repeated CSV/OFX imports from the same Institution will routinely overlap in date range (e.g. a user re-exporting "last 60 days" every month). We considered always showing a full review screen (safe but adds friction to every import) versus silent exact-match-only dedup (low friction but risks silently dropping legitimate same-day/same-amount transactions or duplicating near-matches). We chose fingerprinting on (account, date, amount, normalized description) to auto-skip exact repeats, and surfacing only ambiguous near-matches for manual review — this keeps routine imports frictionless while protecting against silent data loss or duplication on the ambiguous cases.

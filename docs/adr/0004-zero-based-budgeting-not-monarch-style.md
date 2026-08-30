@@ -1,0 +1,3 @@
+# Budgeting is zero-based (YNAB-style), not Monarch's flexible monthly-target model
+
+The project's stated goal is feature parity with Monarch Money plus a better UI, but on budgeting specifically we deliberately deviate: every dollar of income must be assigned to a Category before it can be spent, rather than Monarch's model of setting an independent target per category with no requirement that targets sum to income. We considered supporting both models, but rejected it to avoid doubling the budgeting engine and UI complexity. This is an intentional product decision, not an oversight — someone porting Monarch's budget screens directly should stop and check this ADR first.

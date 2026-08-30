@@ -1,0 +1,3 @@
+# License the project under AGPL-3.0
+
+Considered MIT (maximally permissive, best for adoption/contribution ease) and GPL-3.0 (standard copyleft) against AGPL-3.0. Chose AGPL-3.0: it closes the network/SaaS loophole that plain GPL leaves open, so if someone repackages this as a hosted service they must release their modifications too. This is a deliberate choice to protect the project from being commercialized as a closed hosted product without contributing back, even though the app is currently desktop-only with no server. Effectively irreversible once external contributors submit code under this license — relicensing later would require consent from every contributor or a rewrite of their contributions.

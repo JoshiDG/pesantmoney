@@ -1,0 +1,3 @@
+# Use Tauri (Rust backend + web frontend) instead of Electron
+
+We're shipping a cross-platform desktop app for local, offline financial data. Considered Electron (larger ecosystem, bundled Chromium, consistent rendering) vs Tauri (Rust backend, native OS webview, much smaller/faster binaries). Chose Tauri: bundle size and memory footprint matter for a tool users keep running in the background, Rust is well-suited to parsing/importing financial file formats (CSV/OFX/QFX) safely and fast, and the UI still runs on a standard web frontend (React/Vue/Svelte) so "better UI than Monarch" is unaffected by this choice. Trade-off accepted: smaller plugin ecosystem than Electron, and contributors need some Rust familiarity for backend work.
