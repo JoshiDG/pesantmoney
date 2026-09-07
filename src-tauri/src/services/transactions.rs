@@ -1,6 +1,4 @@
-use rusqlite::Connection;
-#[cfg(test)]
-use rusqlite::OptionalExtension;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -57,7 +55,8 @@ pub fn list_for_account(conn: &Connection, account_id: i64) -> rusqlite::Result<
     rows.collect()
 }
 
-#[cfg(test)]
+/// Also used at runtime (not just in tests) by the transfers service, which
+/// needs to fetch a Transaction's account and amount to validate a link.
 pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Transaction>> {
     conn.query_row(
         "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions WHERE id = ?1",
@@ -65,6 +64,17 @@ pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Transaction>> 
         transaction_from_row,
     )
     .optional()
+}
+
+/// All Transactions on Accounts other than `account_id`, for the transfers
+/// service's cross-account match search.
+pub fn list_excluding_account(conn: &Connection, account_id: i64) -> rusqlite::Result<Vec<Transaction>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions \
+         WHERE account_id != ?1 ORDER BY date, id",
+    )?;
+    let rows = stmt.query_map([account_id], transaction_from_row)?;
+    rows.collect()
 }
 
 pub fn update(
@@ -116,11 +126,46 @@ pub fn balance_cents(conn: &Connection, account_id: i64) -> rusqlite::Result<i64
     )
 }
 
+/// Sums income (positive amounts) and expense (negative amounts, reported as
+/// a positive magnitude) across Transactions, excluding any Transaction that
+/// is one half of a linked Transfer. A Transfer moves money between two of
+/// the user's own Accounts (e.g. a credit card payment) — no money entered
+/// or left the household, so it must not count as income or expense even
+/// though it still affects each Account's own balance (see `balance_cents`,
+/// which intentionally does NOT apply this exclusion).
+///
+/// `account_id`: `Some(id)` scopes the totals to one Account; `None` totals
+/// across every Account.
+pub fn income_expense_totals(
+    conn: &Connection,
+    account_id: Option<i64>,
+) -> rusqlite::Result<(i64, i64)> {
+    let base_sql = "SELECT \
+            COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0), \
+            COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) \
+        FROM transactions t \
+        WHERE t.id NOT IN ( \
+            SELECT from_transaction_id FROM transfers \
+            UNION \
+            SELECT to_transaction_id FROM transfers \
+        )";
+
+    match account_id {
+        Some(id) => conn.query_row(
+            &format!("{base_sql} AND t.account_id = ?1"),
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ),
+        None => conn.query_row(base_sql, [], |row| Ok((row.get(0)?, row.get(1)?))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db;
     use crate::services::accounts::{self, AccountType};
+    use crate::services::transfers;
 
     fn create_test_account(conn: &Connection) -> i64 {
         accounts::create(conn, "Everyday Checking", AccountType::Checking, None)
@@ -312,5 +357,49 @@ mod tests {
 
         let after_delete = get(&conn, created.id).expect("get transaction").expect("transaction still exists");
         assert_eq!(after_delete.category_id, None);
+    }
+
+    #[test]
+    fn income_expense_totals_excludes_a_linked_transfer_pair_but_includes_unlinked_transactions() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let credit_card_id = create_test_account(&conn);
+
+        // A genuine transfer: paying the credit card from checking.
+        let out = create(&conn, checking_id, "2026-08-01", -50_000, "CC payment", None)
+            .expect("create transaction");
+        let in_ = create(&conn, credit_card_id, "2026-08-01", 50_000, "Payment received", None)
+            .expect("create transaction");
+        transfers::link(&conn, out.id, in_.id).expect("link transfer");
+
+        // An unlinked transaction of the same shape (positive/negative pair
+        // that happens to net to zero) must still be counted normally,
+        // since only linked Transfers are excluded.
+        create(&conn, checking_id, "2026-08-02", -2_500, "Groceries", None)
+            .expect("create transaction");
+        create(&conn, checking_id, "2026-08-03", 3_000, "Refund", None)
+            .expect("create transaction");
+
+        let (income, expense) = income_expense_totals(&conn, None).expect("compute totals");
+
+        assert_eq!(income, 3_000);
+        assert_eq!(expense, 2_500);
+    }
+
+    #[test]
+    fn income_expense_totals_can_scope_to_a_single_account() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let savings_id = create_test_account(&conn);
+
+        create(&conn, checking_id, "2026-08-01", -1_000, "Checking expense", None)
+            .expect("create transaction");
+        create(&conn, savings_id, "2026-08-01", 5_000, "Savings income", None)
+            .expect("create transaction");
+
+        let (income, expense) = income_expense_totals(&conn, Some(checking_id)).expect("compute totals");
+
+        assert_eq!(income, 0);
+        assert_eq!(expense, 1_000);
     }
 }

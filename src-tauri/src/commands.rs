@@ -3,6 +3,7 @@ use crate::services::accounts::{self, Account, AccountType};
 use crate::services::categories::{self, Category, CategoryGroup};
 use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::transactions::{self, Transaction};
+use crate::services::transfers::{self, Transfer};
 use crate::AppState;
 
 type CommandResult<T> = Result<T, String>;
@@ -227,4 +228,44 @@ pub fn commit_import(
 ) -> CommandResult<ImportResult> {
     let conn = state.db.lock().map_err(to_command_error)?;
     import::commit_import(&conn, account_id, transactions).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn link_transfer(
+    state: tauri::State<AppState>,
+    from_transaction_id: i64,
+    to_transaction_id: i64,
+) -> CommandResult<Transfer> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transfers::link(&conn, from_transaction_id, to_transaction_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn unlink_transfer(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transfers::unlink(&conn, id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_transfers(state: tauri::State<AppState>) -> CommandResult<Vec<Transfer>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transfers::list(&conn).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn suggest_transfer_matches(
+    state: tauri::State<AppState>,
+    account_id: i64,
+) -> CommandResult<Vec<(Transaction, Transaction)>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transfers::suggest_matches(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn income_expense_totals(
+    state: tauri::State<AppState>,
+    account_id: Option<i64>,
+) -> CommandResult<(i64, i64)> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::income_expense_totals(&conn, account_id).map_err(to_command_error)
 }

@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account, ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { Category } from "../categories/types";
+import { TransferPicker } from "../transfers/TransferPicker";
+import { Transfer } from "../transfers/types";
 import { TransactionForm } from "./TransactionForm";
 import { formatCents, Transaction, TransactionFields } from "./types";
 
@@ -14,22 +16,38 @@ interface TransactionsScreenProps {
 export function TransactionsScreen({ account, onBack, onImport }: TransactionsScreenProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [balanceCents, setBalanceCents] = useState(0);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
 
+  const linkedTransactionIds = new Set(
+    transfers.flatMap((transfer) => [transfer.from_transaction_id, transfer.to_transaction_id]),
+  );
+  const transferByTransactionId = new Map<number, Transfer>();
+  for (const transfer of transfers) {
+    transferByTransactionId.set(transfer.from_transaction_id, transfer);
+    transferByTransactionId.set(transfer.to_transaction_id, transfer);
+  }
+
   async function refresh() {
     try {
-      const [transactionList, balance, categoryList] = await Promise.all([
+      const [transactionList, balance, categoryList, accountList, transferList] = await Promise.all([
         invoke<Transaction[]>("list_transactions", { account_id: account.id }),
         invoke<number>("account_balance_cents", { account_id: account.id }),
         invoke<Category[]>("list_categories"),
+        invoke<Account[]>("list_accounts"),
+        invoke<Transfer[]>("list_transfers"),
       ]);
       setTransactions(transactionList);
       setBalanceCents(balance);
       setCategories(categoryList);
+      setAccounts(accountList);
+      setTransfers(transferList);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -69,6 +87,28 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
     }
     try {
       await invoke("delete_transaction", { id: transaction.id });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function handleLink(fromTransactionId: number, toTransactionId: number) {
+    try {
+      await invoke("link_transfer", {
+        from_transaction_id: fromTransactionId,
+        to_transaction_id: toTransactionId,
+      });
+      setLinkingId(null);
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function handleUnlink(transfer: Transfer) {
+    try {
+      await invoke("unlink_transfer", { id: transfer.id });
       await refresh();
     } catch (err) {
       setError(String(err));
@@ -121,26 +161,64 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
               onCancel={() => setEditingId(null)}
             />
           ) : (
-            <div className="ledger-row" key={transaction.id}>
-              <span>{transaction.date}</span>
-              <span className="cell-description">{transaction.description}</span>
-              <span className="cell-category">
-                {transaction.category_id != null
-                  ? categoryNameById.get(transaction.category_id) ?? "Uncategorized"
-                  : "Uncategorized"}
-              </span>
-              <span className={`amount ${transaction.amount_cents < 0 ? "debit" : "credit"}`}>
-                {formatCents(transaction.amount_cents)}
-              </span>
-              <span className="row-actions">
-                <button type="button" onClick={() => setEditingId(transaction.id)}>
-                  Edit
-                </button>
-                <button type="button" onClick={() => handleDelete(transaction)}>
-                  Delete
-                </button>
-              </span>
-            </div>
+            <Fragment key={transaction.id}>
+              <div className={`ledger-row${linkedTransactionIds.has(transaction.id) ? " is-transfer" : ""}`}>
+                <span>{transaction.date}</span>
+                <span className="cell-description">
+                  {linkedTransactionIds.has(transaction.id) && (
+                    <span className="transfer-badge" title="Part of a transfer">
+                      ⇄
+                    </span>
+                  )}
+                  {transaction.description}
+                </span>
+                <span className="cell-category">
+                  {transaction.category_id != null
+                    ? categoryNameById.get(transaction.category_id) ?? "Uncategorized"
+                    : "Uncategorized"}
+                </span>
+                <span className={`amount ${transaction.amount_cents < 0 ? "debit" : "credit"}`}>
+                  {formatCents(transaction.amount_cents)}
+                </span>
+                <span className="row-actions">
+                  <button type="button" onClick={() => setEditingId(transaction.id)}>
+                    Edit
+                  </button>
+                  {linkedTransactionIds.has(transaction.id) ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const transfer = transferByTransactionId.get(transaction.id);
+                        if (transfer) {
+                          handleUnlink(transfer);
+                        }
+                      }}
+                    >
+                      Unlink
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setLinkingId(transaction.id)}>
+                      Link transfer
+                    </button>
+                  )}
+                  <button type="button" onClick={() => handleDelete(transaction)}>
+                    Delete
+                  </button>
+                </span>
+              </div>
+
+              {linkingId === transaction.id && (
+                <div className="transfer-picker-row">
+                  <TransferPicker
+                    transaction={transaction}
+                    accounts={accounts}
+                    linkedTransactionIds={linkedTransactionIds}
+                    onLink={(toTransactionId) => handleLink(transaction.id, toTransactionId)}
+                    onCancel={() => setLinkingId(null)}
+                  />
+                </div>
+              )}
+            </Fragment>
           ),
         )}
 
