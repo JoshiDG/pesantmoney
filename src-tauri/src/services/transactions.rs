@@ -10,6 +10,7 @@ pub struct Transaction {
     pub date: String,
     pub amount_cents: i64,
     pub description: String,
+    pub category_id: Option<i64>,
 }
 
 fn transaction_from_row(row: &rusqlite::Row) -> rusqlite::Result<Transaction> {
@@ -19,6 +20,7 @@ fn transaction_from_row(row: &rusqlite::Row) -> rusqlite::Result<Transaction> {
         date: row.get(2)?,
         amount_cents: row.get(3)?,
         description: row.get(4)?,
+        category_id: row.get(5)?,
     })
 }
 
@@ -28,10 +30,11 @@ pub fn create(
     date: &str,
     amount_cents: i64,
     description: &str,
+    category_id: Option<i64>,
 ) -> rusqlite::Result<Transaction> {
     conn.execute(
-        "INSERT INTO transactions (account_id, date, amount_cents, description) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![account_id, date, amount_cents, description],
+        "INSERT INTO transactions (account_id, date, amount_cents, description, category_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![account_id, date, amount_cents, description, category_id],
     )?;
     let id = conn.last_insert_rowid();
 
@@ -41,12 +44,13 @@ pub fn create(
         date: date.to_string(),
         amount_cents,
         description: description.to_string(),
+        category_id,
     })
 }
 
 pub fn list_for_account(conn: &Connection, account_id: i64) -> rusqlite::Result<Vec<Transaction>> {
     let mut stmt = conn.prepare(
-        "SELECT id, account_id, date, amount_cents, description FROM transactions \
+        "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions \
          WHERE account_id = ?1 ORDER BY date, id",
     )?;
     let rows = stmt.query_map([account_id], transaction_from_row)?;
@@ -56,7 +60,7 @@ pub fn list_for_account(conn: &Connection, account_id: i64) -> rusqlite::Result<
 #[cfg(test)]
 pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Transaction>> {
     conn.query_row(
-        "SELECT id, account_id, date, amount_cents, description FROM transactions WHERE id = ?1",
+        "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions WHERE id = ?1",
         [id],
         transaction_from_row,
     )
@@ -69,10 +73,11 @@ pub fn update(
     date: &str,
     amount_cents: i64,
     description: &str,
+    category_id: Option<i64>,
 ) -> rusqlite::Result<Transaction> {
     let rows_affected = conn.execute(
-        "UPDATE transactions SET date = ?1, amount_cents = ?2, description = ?3, updated_at = datetime('now') WHERE id = ?4",
-        rusqlite::params![date, amount_cents, description, id],
+        "UPDATE transactions SET date = ?1, amount_cents = ?2, description = ?3, category_id = ?4, updated_at = datetime('now') WHERE id = ?5",
+        rusqlite::params![date, amount_cents, description, category_id, id],
     )?;
     if rows_affected == 0 {
         return Err(rusqlite::Error::QueryReturnedNoRows);
@@ -90,6 +95,7 @@ pub fn update(
         date: date.to_string(),
         amount_cents,
         description: description.to_string(),
+        category_id,
     })
 }
 
@@ -127,7 +133,7 @@ mod tests {
         let conn = db::open_in_memory().expect("open in-memory test database");
         let account_id = create_test_account(&conn);
 
-        let transaction = create(&conn, account_id, "2026-08-01", -1250, "Coffee shop")
+        let transaction = create(&conn, account_id, "2026-08-01", -1250, "Coffee shop", None)
             .expect("create transaction");
 
         assert_eq!(transaction.account_id, account_id);
@@ -143,9 +149,9 @@ mod tests {
         let account_id = create_test_account(&conn);
         let other_account_id = create_test_account(&conn);
 
-        create(&conn, account_id, "2026-08-05", -500, "Later").expect("create transaction");
-        create(&conn, account_id, "2026-08-01", -100, "Earlier").expect("create transaction");
-        create(&conn, other_account_id, "2026-08-01", 100, "Other account")
+        create(&conn, account_id, "2026-08-05", -500, "Later", None).expect("create transaction");
+        create(&conn, account_id, "2026-08-01", -100, "Earlier", None).expect("create transaction");
+        create(&conn, other_account_id, "2026-08-01", 100, "Other account", None)
             .expect("create transaction");
 
         let transactions = list_for_account(&conn, account_id).expect("list transactions");
@@ -168,10 +174,10 @@ mod tests {
     fn update_changes_the_stored_fields_and_returns_the_updated_transaction() {
         let conn = db::open_in_memory().expect("open in-memory test database");
         let account_id = create_test_account(&conn);
-        let created = create(&conn, account_id, "2026-08-01", -100, "Old description")
+        let created = create(&conn, account_id, "2026-08-01", -100, "Old description", None)
             .expect("create transaction");
 
-        let updated = update(&conn, created.id, "2026-08-02", -200, "New description")
+        let updated = update(&conn, created.id, "2026-08-02", -200, "New description", None)
             .expect("update transaction");
 
         assert_eq!(updated.date, "2026-08-02");
@@ -184,7 +190,7 @@ mod tests {
     fn update_fails_when_the_transaction_does_not_exist() {
         let conn = db::open_in_memory().expect("open in-memory test database");
 
-        let result = update(&conn, 999, "2026-08-01", -100, "Nope");
+        let result = update(&conn, 999, "2026-08-01", -100, "Nope", None);
 
         assert!(result.is_err());
     }
@@ -194,7 +200,7 @@ mod tests {
         let conn = db::open_in_memory().expect("open in-memory test database");
         let account_id = create_test_account(&conn);
         let created =
-            create(&conn, account_id, "2026-08-01", -100, "Gone soon").expect("create transaction");
+            create(&conn, account_id, "2026-08-01", -100, "Gone soon", None).expect("create transaction");
 
         delete(&conn, created.id).expect("delete transaction");
 
@@ -214,7 +220,7 @@ mod tests {
     fn delete_account_cascades_to_its_transactions() {
         let conn = db::open_in_memory().expect("open in-memory test database");
         let account_id = create_test_account(&conn);
-        let created = create(&conn, account_id, "2026-08-01", -100, "Cascades away")
+        let created = create(&conn, account_id, "2026-08-01", -100, "Cascades away", None)
             .expect("create transaction");
 
         accounts::delete(&conn, account_id).expect("delete account");
@@ -226,8 +232,8 @@ mod tests {
     fn balance_cents_sums_the_accounts_transactions() {
         let conn = db::open_in_memory().expect("open in-memory test database");
         let account_id = create_test_account(&conn);
-        create(&conn, account_id, "2026-08-01", 100_000, "Paycheck").expect("create transaction");
-        create(&conn, account_id, "2026-08-02", -2_500, "Groceries").expect("create transaction");
+        create(&conn, account_id, "2026-08-01", 100_000, "Paycheck", None).expect("create transaction");
+        create(&conn, account_id, "2026-08-02", -2_500, "Groceries", None).expect("create transaction");
 
         let balance = balance_cents(&conn, account_id).expect("compute balance");
 
@@ -242,5 +248,69 @@ mod tests {
         let balance = balance_cents(&conn, account_id).expect("compute balance");
 
         assert_eq!(balance, 0);
+    }
+
+    #[test]
+    fn create_and_update_persist_the_category_id() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let group_id = crate::services::categories::create_group(&conn, "Food")
+            .expect("create category group")
+            .id;
+        let category_id = crate::services::categories::create(&conn, group_id, "Groceries")
+            .expect("create category")
+            .id;
+
+        let created = create(
+            &conn,
+            account_id,
+            "2026-08-01",
+            -100,
+            "Groceries run",
+            Some(category_id),
+        )
+        .expect("create transaction");
+        assert_eq!(created.category_id, Some(category_id));
+
+        let other_category_id = crate::services::categories::create(&conn, group_id, "Restaurants")
+            .expect("create category")
+            .id;
+        let updated = update(
+            &conn,
+            created.id,
+            "2026-08-01",
+            -100,
+            "Groceries run",
+            Some(other_category_id),
+        )
+        .expect("update transaction");
+
+        assert_eq!(updated.category_id, Some(other_category_id));
+    }
+
+    #[test]
+    fn deleting_a_category_clears_it_from_transactions_instead_of_failing() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let group_id = crate::services::categories::create_group(&conn, "Food")
+            .expect("create category group")
+            .id;
+        let category_id = crate::services::categories::create(&conn, group_id, "Groceries")
+            .expect("create category")
+            .id;
+        let created = create(
+            &conn,
+            account_id,
+            "2026-08-01",
+            -100,
+            "Groceries run",
+            Some(category_id),
+        )
+        .expect("create transaction");
+
+        crate::services::categories::delete(&conn, category_id).expect("delete category");
+
+        let after_delete = get(&conn, created.id).expect("get transaction").expect("transaction still exists");
+        assert_eq!(after_delete.category_id, None);
     }
 }

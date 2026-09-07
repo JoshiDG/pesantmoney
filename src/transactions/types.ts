@@ -2,6 +2,7 @@ export interface TransactionFields {
   date: string;
   amount_cents: number;
   description: string;
+  category_id: number | null;
 }
 
 export interface Transaction extends TransactionFields {
