@@ -3,6 +3,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 use crate::import::{self, ColumnMapping, ImportFormat, ImportResult, ParsedTransaction, PreviewRow, SignConvention};
 use crate::services::accounts::{self, Account, AccountType};
+use crate::services::backup::{self, BackupStatus};
 use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
 use crate::services::categories::{self, Category, CategoryGroup};
 use crate::services::categorization_rules::{self, CategorizationRule, MatchType, RuleField};
@@ -637,4 +638,31 @@ pub async fn check_for_update(
             latest_version: None,
         },
     })
+}
+
+/// The outcome of the automatic rolling backup taken once at app launch, for
+/// display in Settings. A failure here (disk full, permission denied, etc.)
+/// never blocks startup, but it must still be visible to the user rather
+/// than silently disappearing into a log no one reads.
+#[tauri::command]
+pub fn get_backup_status(state: tauri::State<AppState>) -> CommandResult<BackupStatus> {
+    let status = state.last_backup.lock().map_err(to_command_error)?;
+    Ok(status.clone())
+}
+
+/// Copies the SQLite database file to a user-chosen `destination`, for the
+/// manual "Export data" action in Settings. `destination` is a full file
+/// path, normally chosen via a native save dialog on the frontend. A plain
+/// file copy is sufficient given ADR-0006 (no app-level encryption) and
+/// ADR-0005 (single device, no sync) — there's no structured format to
+/// preserve beyond the database itself.
+///
+/// Holds the database lock for the duration of the copy so no write from
+/// elsewhere in the app lands mid-copy, and surfaces any I/O failure (disk
+/// full, permission denied, invalid path) as a normal `CommandResult` error
+/// rather than failing silently.
+#[tauri::command(rename_all = "snake_case")]
+pub fn export_data(state: tauri::State<AppState>, destination: String) -> CommandResult<()> {
+    let _conn = state.db.lock().map_err(to_command_error)?;
+    backup::export_to(&state.db_path, std::path::Path::new(&destination)).map_err(to_command_error)
 }

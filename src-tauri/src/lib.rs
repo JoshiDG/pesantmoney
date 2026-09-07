@@ -12,6 +12,8 @@ use tauri::Manager;
 pub struct AppState {
     pub db: Mutex<Connection>,
     pub app_data_dir: PathBuf,
+    pub db_path: PathBuf,
+    pub last_backup: Mutex<services::backup::BackupStatus>,
 }
 
 #[tauri::command]
@@ -25,6 +27,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_data_dir = app
                 .path()
@@ -35,9 +38,17 @@ pub fn run() {
             let db_path = app_data_dir.join("pesantmoney.db");
             let conn = db::open(&db_path).expect("open application database");
 
+            // Rolling automatic snapshot, taken once per launch with no user
+            // action needed. Failure here (disk full, permission denied,
+            // etc.) must never block startup — it's recorded in AppState and
+            // surfaced later via the `get_backup_status` command instead.
+            let last_backup = services::backup::run_startup_backup(&db_path, &app_data_dir);
+
             app.manage(AppState {
                 db: Mutex::new(conn),
                 app_data_dir,
+                db_path,
+                last_backup: Mutex::new(last_backup),
             });
 
             Ok(())
@@ -102,6 +113,8 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::check_for_update,
+            commands::get_backup_status,
+            commands::export_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
