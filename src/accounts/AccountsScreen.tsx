@@ -3,7 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { AccountForm } from "./AccountForm";
 import { ACCOUNT_TYPE_LABELS, Account, AccountFields } from "./types";
 
-export function AccountsScreen() {
+interface AccountsScreenProps {
+  onSelectAccount: (account: Account) => void;
+}
+
+export function AccountsScreen({ onSelectAccount }: AccountsScreenProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +80,9 @@ export function AccountsScreen() {
                 {account.name} — {ACCOUNT_TYPE_LABELS[account.account_type]}
                 {account.institution_name ? ` — ${account.institution_name}` : ""}
               </span>
+              <button type="button" onClick={() => onSelectAccount(account)}>
+                View Transactions
+              </button>
               <button type="button" onClick={() => setEditingId(account.id)}>
                 Edit
               </button>

@@ -1,4 +1,5 @@
 use crate::services::accounts::{self, Account, AccountType};
+use crate::services::transactions::{self, Transaction};
 use crate::AppState;
 
 type CommandResult<T> = Result<T, String>;
@@ -42,4 +43,50 @@ pub fn update_account(
 pub fn delete_account(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
     let conn = state.db.lock().map_err(to_command_error)?;
     accounts::delete(&conn, id).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn create_transaction(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    date: String,
+    amount_cents: i64,
+    description: String,
+) -> CommandResult<Transaction> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::create(&conn, account_id, &date, amount_cents, &description)
+        .map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn list_transactions(
+    state: tauri::State<AppState>,
+    account_id: i64,
+) -> CommandResult<Vec<Transaction>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::list_for_account(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn update_transaction(
+    state: tauri::State<AppState>,
+    id: i64,
+    date: String,
+    amount_cents: i64,
+    description: String,
+) -> CommandResult<Transaction> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::update(&conn, id, &date, amount_cents, &description).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn delete_transaction(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::delete(&conn, id).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn account_balance_cents(state: tauri::State<AppState>, account_id: i64) -> CommandResult<i64> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::balance_cents(&conn, account_id).map_err(to_command_error)
 }

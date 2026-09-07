@@ -43,6 +43,11 @@ pub fn run() {
             commands::list_accounts,
             commands::update_account,
             commands::delete_account,
+            commands::create_transaction,
+            commands::list_transactions,
+            commands::update_transaction,
+            commands::delete_transaction,
+            commands::account_balance_cents,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

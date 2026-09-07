@@ -6,6 +6,7 @@ use rusqlite::{params, Connection, Result};
 pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0001_initial", include_str!("../../migrations/0001_initial.sql")),
     ("0002_accounts", include_str!("../../migrations/0002_accounts.sql")),
+    ("0003_transactions", include_str!("../../migrations/0003_transactions.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<()> {
