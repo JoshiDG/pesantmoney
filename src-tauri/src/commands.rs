@@ -8,7 +8,7 @@ fn to_command_error(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn create_account(
     state: tauri::State<AppState>,
     name: String,
@@ -26,7 +26,7 @@ pub fn list_accounts(state: tauri::State<AppState>) -> CommandResult<Vec<Account
     accounts::list(&conn).map_err(to_command_error)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn update_account(
     state: tauri::State<AppState>,
     id: i64,
@@ -39,13 +39,13 @@ pub fn update_account(
         .map_err(to_command_error)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_account(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
     let conn = state.db.lock().map_err(to_command_error)?;
     accounts::delete(&conn, id).map_err(to_command_error)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn create_transaction(
     state: tauri::State<AppState>,
     account_id: i64,
@@ -58,7 +58,7 @@ pub fn create_transaction(
         .map_err(to_command_error)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_transactions(
     state: tauri::State<AppState>,
     account_id: i64,
@@ -67,7 +67,7 @@ pub fn list_transactions(
     transactions::list_for_account(&conn, account_id).map_err(to_command_error)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn update_transaction(
     state: tauri::State<AppState>,
     id: i64,
@@ -79,13 +79,13 @@ pub fn update_transaction(
     transactions::update(&conn, id, &date, amount_cents, &description).map_err(to_command_error)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_transaction(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
     let conn = state.db.lock().map_err(to_command_error)?;
     transactions::delete(&conn, id).map_err(to_command_error)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn account_balance_cents(state: tauri::State<AppState>, account_id: i64) -> CommandResult<i64> {
     let conn = state.db.lock().map_err(to_command_error)?;
     transactions::balance_cents(&conn, account_id).map_err(to_command_error)
