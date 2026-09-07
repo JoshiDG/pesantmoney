@@ -1,12 +1,12 @@
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account, ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { Category } from "../categories/types";
 import { HoldingsScreen } from "../holdings/HoldingsScreen";
 import { RecurringItemsScreen } from "../recurring/RecurringItemsScreen";
-import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
 import { TransactionForm } from "./TransactionForm";
+import { TransactionsGrid } from "./TransactionsGrid";
 import { formatCents, Transaction, TransactionFields } from "./types";
 
 interface TransactionsScreenProps {
@@ -24,12 +24,9 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [balanceCents, setBalanceCents] = useState(0);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ledgerView, setLedgerView] = useState<LedgerView>(isInvestment ? "holdings" : "transactions");
-
-  const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
 
   const linkedTransactionIds = new Set(
     transfers.flatMap((transfer) => [transfer.from_transaction_id, transfer.to_transaction_id]),
@@ -78,7 +75,31 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   async function handleUpdate(id: number, fields: TransactionFields) {
     try {
       await invoke("update_transaction", { id, ...fields });
-      setEditingId(null);
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  // Bulk Category assignment for the grid's multi-row selection. Reuses the
+  // same `update_transaction` command as a single inline edit — each
+  // selected Transaction keeps its own date/amount/description and only
+  // gets a new category_id, so no new backend command is introduced.
+  async function handleBulkAssignCategory(ids: number[], categoryId: number | null) {
+    try {
+      await Promise.all(
+        ids.map((id) => {
+          const transaction = transactions.find((t) => t.id === id);
+          if (!transaction) return Promise.resolve();
+          return invoke("update_transaction", {
+            id,
+            date: transaction.date,
+            amount_cents: transaction.amount_cents,
+            description: transaction.description,
+            category_id: categoryId,
+          });
+        }),
+      );
       await refresh();
     } catch (err) {
       setError(String(err));
@@ -180,87 +201,26 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
       ) : ledgerView === "recurring" ? (
         <RecurringItemsScreen account={account} categories={categories} />
       ) : (
-        <div className="ledger">
-          <div className="ledger-head">
-            <span>Date</span>
-            <span>Description</span>
-            <span>Category</span>
-            <span>Amount</span>
-            <span></span>
+        <div className="ledger-container">
+          <TransactionsGrid
+            transactions={transactions}
+            categories={categories}
+            accounts={accounts}
+            linkedTransactionIds={linkedTransactionIds}
+            transferByTransactionId={transferByTransactionId}
+            linkingId={linkingId}
+            onStartLink={setLinkingId}
+            onCancelLink={() => setLinkingId(null)}
+            onLink={handleLink}
+            onUnlink={handleUnlink}
+            onUpdate={handleUpdate}
+            onBulkAssignCategory={handleBulkAssignCategory}
+            onDelete={handleDelete}
+          />
+
+          <div className="ledger new-transaction-row">
+            <TransactionForm categories={categories} onSubmit={handleCreate} />
           </div>
-
-          {transactions.map((transaction) =>
-            editingId === transaction.id ? (
-              <TransactionForm
-                key={transaction.id}
-                categories={categories}
-                initial={transaction}
-                onSubmit={(fields) => handleUpdate(transaction.id, fields)}
-                onCancel={() => setEditingId(null)}
-              />
-            ) : (
-              <Fragment key={transaction.id}>
-                <div className={`ledger-row${linkedTransactionIds.has(transaction.id) ? " is-transfer" : ""}`}>
-                  <span>{transaction.date}</span>
-                  <span className="cell-description">
-                    {linkedTransactionIds.has(transaction.id) && (
-                      <span className="transfer-badge" title="Part of a transfer">
-                        ⇄
-                      </span>
-                    )}
-                    {transaction.description}
-                  </span>
-                  <span className="cell-category">
-                    {transaction.category_id != null
-                      ? categoryNameById.get(transaction.category_id) ?? "Uncategorized"
-                      : "Uncategorized"}
-                  </span>
-                  <span className={`amount ${transaction.amount_cents < 0 ? "debit" : "credit"}`}>
-                    {formatCents(transaction.amount_cents)}
-                  </span>
-                  <span className="row-actions">
-                    <button type="button" onClick={() => setEditingId(transaction.id)}>
-                      Edit
-                    </button>
-                    {linkedTransactionIds.has(transaction.id) ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const transfer = transferByTransactionId.get(transaction.id);
-                          if (transfer) {
-                            handleUnlink(transfer);
-                          }
-                        }}
-                      >
-                        Unlink
-                      </button>
-                    ) : (
-                      <button type="button" onClick={() => setLinkingId(transaction.id)}>
-                        Link transfer
-                      </button>
-                    )}
-                    <button type="button" onClick={() => handleDelete(transaction)}>
-                      Delete
-                    </button>
-                  </span>
-                </div>
-
-                {linkingId === transaction.id && (
-                  <div className="transfer-picker-row">
-                    <TransferPicker
-                      transaction={transaction}
-                      accounts={accounts}
-                      linkedTransactionIds={linkedTransactionIds}
-                      onLink={(toTransactionId) => handleLink(transaction.id, toTransactionId)}
-                      onCancel={() => setLinkingId(null)}
-                    />
-                  </div>
-                )}
-              </Fragment>
-            ),
-          )}
-
-          <TransactionForm categories={categories} onSubmit={handleCreate} />
         </div>
       )}
     </section>
