@@ -31,5 +31,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/JoshiDG/pesantmoney/releases/latest/download/latest.json"
+      ],
+      "pubkey": "PLACEHOLDER_PUBKEY_GENERATE_BEFORE_RELEASE_WITH_npx_tauri_signer_generate"
+    }
   }
 }

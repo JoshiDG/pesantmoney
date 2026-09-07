@@ -1162,6 +1162,57 @@ button.danger:hover,
   background: var(--debit);
 }
 
+/* ---------- settings ---------- */
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 640px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--paper-line);
+  border-radius: 6px;
+}
+
+.settings-row-label {
+  font-weight: 500;
+  margin-bottom: 0.2rem;
+}
+
+.settings-row-meta {
+  font-size: 0.82rem;
+  color: rgba(28, 36, 48, 0.55);
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.settings-check-result {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+}
+
+.settings-note {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: rgba(28, 36, 48, 0.6);
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--paper-line);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #1a1d22;
@@ -1191,7 +1242,9 @@ button.danger:hover,
   .net-worth-row-meta,
   .cash-flow-stat-label,
   .trend-chart-label,
-  .trend-chart-legend {
+  .trend-chart-legend,
+  .settings-row-meta,
+  .settings-note {
     color: rgba(233, 230, 223, 0.55);
   }
 

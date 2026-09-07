@@ -7,5 +7,6 @@ pub mod health;
 pub mod holdings;
 pub mod import_profiles;
 pub mod recurring_items;
+pub mod settings;
 pub mod transactions;
 pub mod transfers;

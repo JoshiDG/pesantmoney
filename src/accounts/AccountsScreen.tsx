@@ -10,12 +10,14 @@ interface AccountsScreenProps {
   isBudgetActive: boolean;
   isGoalsActive: boolean;
   isRulesActive: boolean;
+  isSettingsActive: boolean;
   onSelectAccount: (account: Account) => void;
   onOpenDashboard: () => void;
   onOpenCategories: () => void;
   onOpenBudget: () => void;
   onOpenGoals: () => void;
   onOpenRules: () => void;
+  onOpenSettings: () => void;
   onAccountUpdated: (account: Account) => void;
   onAccountDeleted: (id: number) => void;
 }
@@ -27,12 +29,14 @@ export function AccountsScreen({
   isBudgetActive,
   isGoalsActive,
   isRulesActive,
+  isSettingsActive,
   onSelectAccount,
   onOpenDashboard,
   onOpenCategories,
   onOpenBudget,
   onOpenGoals,
   onOpenRules,
+  onOpenSettings,
   onAccountUpdated,
   onAccountDeleted,
 }: AccountsScreenProps) {
@@ -123,6 +127,12 @@ export function AccountsScreen({
           onClick={onOpenRules}
         >
           <div className="account-row-name">Rules</div>
+        </li>
+        <li
+          className={`account-row${isSettingsActive ? " selected" : ""}`}
+          onClick={onOpenSettings}
+        >
+          <div className="account-row-name">Settings</div>
         </li>
       </ul>
 

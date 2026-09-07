@@ -3,6 +3,7 @@ mod db;
 mod import;
 mod services;
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use rusqlite::Connection;
@@ -10,6 +11,7 @@ use tauri::Manager;
 
 pub struct AppState {
     pub db: Mutex<Connection>,
+    pub app_data_dir: PathBuf,
 }
 
 #[tauri::command]
@@ -22,6 +24,7 @@ fn schema_version(state: tauri::State<AppState>) -> Result<i64, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_data_dir = app
                 .path()
@@ -34,6 +37,7 @@ pub fn run() {
 
             app.manage(AppState {
                 db: Mutex::new(conn),
+                app_data_dir,
             });
 
             Ok(())
@@ -95,6 +99,9 @@ pub fn run() {
             commands::update_categorization_rule,
             commands::delete_categorization_rule,
             commands::apply_categorization_rules,
+            commands::get_settings,
+            commands::update_settings,
+            commands::check_for_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,3 +1,6 @@
+use serde::Serialize;
+use tauri_plugin_updater::UpdaterExt;
+
 use crate::import::{self, ColumnMapping, ImportFormat, ImportResult, ParsedTransaction, PreviewRow, SignConvention};
 use crate::services::accounts::{self, Account, AccountType};
 use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
@@ -7,6 +10,7 @@ use crate::services::goals::{self, Goal, GoalWithProgress};
 use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
 use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::recurring_items::{self, Frequency, RecurringItem};
+use crate::services::settings::{self, Settings};
 use crate::services::transactions::{self, Transaction};
 use crate::services::transfers::{self, Transfer};
 use crate::AppState;
@@ -571,4 +575,66 @@ pub fn apply_categorization_rules(
 ) -> CommandResult<usize> {
     let conn = state.db.lock().map_err(to_command_error)?;
     categorization_rules::apply_to_uncategorized(&conn, account_id).map_err(to_command_error)
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct UpdateCheckResult {
+    pub available: bool,
+    pub current_version: String,
+    pub latest_version: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_settings(state: tauri::State<AppState>) -> CommandResult<Settings> {
+    Ok(settings::load(&state.app_data_dir))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_settings(
+    state: tauri::State<AppState>,
+    update_checks_enabled: bool,
+) -> CommandResult<Settings> {
+    let new_settings = Settings {
+        update_checks_enabled,
+    };
+    settings::save(&state.app_data_dir, &new_settings).map_err(to_command_error)?;
+    Ok(new_settings)
+}
+
+/// Checks GitHub Releases (via the Tauri updater plugin) for a newer version.
+/// Network failures, missing manifests, etc. are surfaced as a normal
+/// `CommandResult` error string rather than panicking, so a user with no
+/// network connection just sees "couldn't check for updates" in the UI.
+///
+/// Gated on the stored `update_checks_enabled` preference here, not just in
+/// the frontend's button visibility, so a disabled user gets no network call
+/// no matter what invokes this command.
+#[tauri::command]
+pub async fn check_for_update(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> CommandResult<UpdateCheckResult> {
+    let update_checks_enabled = settings::load(&state.app_data_dir).update_checks_enabled;
+    if !update_checks_enabled {
+        return Err("Update checks are disabled in Settings.".to_string());
+    }
+
+    let current_version = app.package_info().version.to_string();
+
+    let updater = app.updater().map_err(to_command_error)?;
+    let update = updater.check().await.map_err(to_command_error)?;
+
+    Ok(match update {
+        Some(update) => UpdateCheckResult {
+            available: true,
+            current_version,
+            latest_version: Some(update.version),
+        },
+        None => UpdateCheckResult {
+            available: false,
+            current_version,
+            latest_version: None,
+        },
+    })
 }
