@@ -7,9 +7,11 @@ interface AccountsScreenProps {
   selectedAccountId: number | null;
   isCategoriesActive: boolean;
   isBudgetActive: boolean;
+  isGoalsActive: boolean;
   onSelectAccount: (account: Account) => void;
   onOpenCategories: () => void;
   onOpenBudget: () => void;
+  onOpenGoals: () => void;
   onAccountUpdated: (account: Account) => void;
   onAccountDeleted: (id: number) => void;
 }
@@ -18,9 +20,11 @@ export function AccountsScreen({
   selectedAccountId,
   isCategoriesActive,
   isBudgetActive,
+  isGoalsActive,
   onSelectAccount,
   onOpenCategories,
   onOpenBudget,
+  onOpenGoals,
   onAccountUpdated,
   onAccountDeleted,
 }: AccountsScreenProps) {
@@ -93,6 +97,12 @@ export function AccountsScreen({
           onClick={onOpenCategories}
         >
           <div className="account-row-name">Categories</div>
+        </li>
+        <li
+          className={`account-row${isGoalsActive ? " selected" : ""}`}
+          onClick={onOpenGoals}
+        >
+          <div className="account-row-name">Goals</div>
         </li>
       </ul>
 

@@ -786,6 +786,89 @@ body {
   border-color: var(--paper-line);
 }
 
+/* ---------- goals ---------- */
+
+.goal-list {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.goal-card {
+  border: 1px solid var(--paper-line);
+  border-radius: 5px;
+  padding: 1rem 1.25rem;
+}
+
+.goal-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.goal-card-name {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+}
+
+.goal-card-meta {
+  font-size: 0.82rem;
+  color: rgba(28, 36, 48, 0.6);
+  margin-top: 0.15rem;
+}
+
+.goal-progress-bar {
+  margin-top: 0.85rem;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--paper-line);
+  overflow: hidden;
+}
+
+.goal-progress-fill {
+  height: 100%;
+  background: var(--credit);
+  transition: width 0.2s ease;
+}
+
+.goal-progress-fill.negative {
+  background: var(--debit);
+}
+
+.goal-progress-label {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: rgba(28, 36, 48, 0.7);
+}
+
+.goal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.goal-form-link-type {
+  display: flex;
+  gap: 1.25rem;
+  font-size: 0.85rem;
+}
+
+.goal-form-link-type label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.goal-form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* ---------- forms & inputs ---------- */
 
 .account-form {

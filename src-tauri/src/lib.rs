@@ -83,6 +83,10 @@ pub fn run() {
             commands::set_security_price,
             commands::get_latest_price,
             commands::list_holdings_with_values,
+            commands::create_goal,
+            commands::list_goals_with_progress,
+            commands::update_goal,
+            commands::delete_goal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

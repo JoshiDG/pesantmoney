@@ -125,6 +125,22 @@ fn earliest_month_for_category(conn: &Connection, category_id: i64) -> rusqlite:
     })
 }
 
+/// Cumulative Assigned to a Category across every month through `month`
+/// (inclusive), ignoring Activity entirely. This is the reusable piece a
+/// savings-linked Goal's progress is built from (see `services::goals`): a
+/// Goal tracks money that was *put aside*, not money left after spending, so
+/// unlike `category_available_cents` it must NOT net out Activity — a
+/// category that's a savings target typically has little/no spending against
+/// it anyway, but if it did, spending shouldn't claw back Goal progress.
+pub fn cumulative_assigned_cents(conn: &Connection, category_id: i64, month: &str) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(assigned_cents), 0) FROM budget_assignments \
+         WHERE category_id = ?1 AND month <= ?2",
+        rusqlite::params![category_id, month],
+        |row| row.get(0),
+    )
+}
+
 /// A Category's Available balance going into `month`: this month's Assigned
 /// plus this month's Activity, plus whatever Available carried forward from
 /// the prior month. This is intentionally cumulative/recursive (rollover):
@@ -410,6 +426,37 @@ mod tests {
         let january_available = category_available_cents(&conn, category_id, "2026-01").expect("compute available");
 
         assert_eq!(january_available, 5_000);
+    }
+
+    #[test]
+    fn cumulative_assigned_cents_sums_assignments_through_the_month_ignoring_activity() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn);
+        let account_id = create_test_account(&conn);
+
+        assign(&conn, category_id, "2026-01", 5_000).expect("assign budget");
+        assign(&conn, category_id, "2026-02", 3_000).expect("assign budget");
+        // Spending should NOT reduce cumulative assigned -- only Activity does
+        // that for `category_available_cents`, but a Goal cares about money
+        // put aside, not money left after spending.
+        transactions::create(&conn, account_id, "2026-02-10", -1_000, "Spent", Some(category_id))
+            .expect("create transaction");
+        // A later assignment (March) must not count toward February's total.
+        assign(&conn, category_id, "2026-03", 10_000).expect("assign budget");
+
+        let cumulative = cumulative_assigned_cents(&conn, category_id, "2026-02").expect("compute cumulative");
+
+        assert_eq!(cumulative, 8_000);
+    }
+
+    #[test]
+    fn cumulative_assigned_cents_is_zero_when_nothing_ever_assigned() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn);
+
+        let cumulative = cumulative_assigned_cents(&conn, category_id, "2026-02").expect("compute cumulative");
+
+        assert_eq!(cumulative, 0);
     }
 
     #[test]

@@ -2,6 +2,7 @@ use crate::import::{self, ColumnMapping, ImportFormat, ImportResult, ParsedTrans
 use crate::services::accounts::{self, Account, AccountType};
 use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
 use crate::services::categories::{self, Category, CategoryGroup};
+use crate::services::goals::{self, Goal, GoalWithProgress};
 use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
 use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::recurring_items::{self, Frequency, RecurringItem};
@@ -374,6 +375,51 @@ pub fn detect_recurring_items(
 ) -> CommandResult<Vec<RecurringItem>> {
     let conn = state.db.lock().map_err(to_command_error)?;
     recurring_items::detect_candidates(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_goal(
+    state: tauri::State<AppState>,
+    name: String,
+    target_cents: i64,
+    target_date: String,
+    linked_category_id: Option<i64>,
+    linked_account_id: Option<i64>,
+) -> CommandResult<Goal> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    goals::create(
+        &conn,
+        &name,
+        target_cents,
+        &target_date,
+        linked_category_id,
+        linked_account_id,
+    )
+    .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_goals_with_progress(state: tauri::State<AppState>) -> CommandResult<Vec<GoalWithProgress>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    goals::list_with_progress(&conn).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_goal(
+    state: tauri::State<AppState>,
+    id: i64,
+    name: String,
+    target_cents: i64,
+    target_date: String,
+) -> CommandResult<Goal> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    goals::update(&conn, id, &name, target_cents, &target_date).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_goal(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    goals::delete(&conn, id).map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]
