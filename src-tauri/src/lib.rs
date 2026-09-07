@@ -66,6 +66,9 @@ pub fn run() {
             commands::list_transfers,
             commands::suggest_transfer_matches,
             commands::income_expense_totals,
+            commands::assign_budget,
+            commands::get_budget_for_month,
+            commands::get_ready_to_assign,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

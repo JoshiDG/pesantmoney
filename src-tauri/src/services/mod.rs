@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod budgets;
 pub mod categories;
 pub mod health;
 pub mod import_profiles;

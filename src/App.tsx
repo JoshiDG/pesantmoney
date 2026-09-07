@@ -2,12 +2,14 @@ import { useState } from "react";
 import "./App.css";
 import { AccountsScreen } from "./accounts/AccountsScreen";
 import { Account } from "./accounts/types";
+import { BudgetScreen } from "./budget/BudgetScreen";
 import { CategoriesScreen } from "./categories/CategoriesScreen";
 import { ImportScreen } from "./import/ImportScreen";
 import { TransactionsScreen } from "./transactions/TransactionsScreen";
 
 type ContentView =
   | { type: "categories" }
+  | { type: "budget" }
   | { type: "account"; account: Account }
   | { type: "import"; account: Account }
   | { type: "none" };
@@ -22,8 +24,10 @@ function App() {
       <AccountsScreen
         selectedAccountId={selectedAccount?.id ?? null}
         isCategoriesActive={view.type === "categories"}
+        isBudgetActive={view.type === "budget"}
         onSelectAccount={(account) => setView({ type: "account", account })}
         onOpenCategories={() => setView({ type: "categories" })}
+        onOpenBudget={() => setView({ type: "budget" })}
         onAccountUpdated={(account) =>
           setView((current) =>
             (current.type === "account" || current.type === "import") && current.account.id === account.id
@@ -41,6 +45,7 @@ function App() {
       />
       <main className="content">
         {view.type === "categories" && <CategoriesScreen />}
+        {view.type === "budget" && <BudgetScreen />}
         {view.type === "account" && (
           <TransactionsScreen
             account={view.account}

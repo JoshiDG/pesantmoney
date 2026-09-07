@@ -6,8 +6,10 @@ import { ACCOUNT_TYPE_LABELS, Account, AccountFields } from "./types";
 interface AccountsScreenProps {
   selectedAccountId: number | null;
   isCategoriesActive: boolean;
+  isBudgetActive: boolean;
   onSelectAccount: (account: Account) => void;
   onOpenCategories: () => void;
+  onOpenBudget: () => void;
   onAccountUpdated: (account: Account) => void;
   onAccountDeleted: (id: number) => void;
 }
@@ -15,8 +17,10 @@ interface AccountsScreenProps {
 export function AccountsScreen({
   selectedAccountId,
   isCategoriesActive,
+  isBudgetActive,
   onSelectAccount,
   onOpenCategories,
+  onOpenBudget,
   onAccountUpdated,
   onAccountDeleted,
 }: AccountsScreenProps) {
@@ -78,6 +82,12 @@ export function AccountsScreen({
       <div className="sidebar-brand">PesantMoney</div>
 
       <ul className="account-list nav-list">
+        <li
+          className={`account-row${isBudgetActive ? " selected" : ""}`}
+          onClick={onOpenBudget}
+        >
+          <div className="account-row-name">Budget</div>
+        </li>
         <li
           className={`account-row${isCategoriesActive ? " selected" : ""}`}
           onClick={onOpenCategories}

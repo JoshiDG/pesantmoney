@@ -1,5 +1,6 @@
 use crate::import::{self, ColumnMapping, ImportFormat, ImportResult, ParsedTransaction, PreviewRow, SignConvention};
 use crate::services::accounts::{self, Account, AccountType};
+use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
 use crate::services::categories::{self, Category, CategoryGroup};
 use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::transactions::{self, Transaction};
@@ -268,4 +269,30 @@ pub fn income_expense_totals(
 ) -> CommandResult<(i64, i64)> {
     let conn = state.db.lock().map_err(to_command_error)?;
     transactions::income_expense_totals(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn assign_budget(
+    state: tauri::State<AppState>,
+    category_id: i64,
+    month: String,
+    assigned_cents: i64,
+) -> CommandResult<BudgetAssignment> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    budgets::assign(&conn, category_id, &month, assigned_cents).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_budget_for_month(
+    state: tauri::State<AppState>,
+    month: String,
+) -> CommandResult<Vec<CategoryBudgetLine>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    budgets::list_budget_for_month(&conn, &month).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_ready_to_assign(state: tauri::State<AppState>, month: String) -> CommandResult<i64> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    budgets::ready_to_assign_cents(&conn, &month).map_err(to_command_error)
 }
