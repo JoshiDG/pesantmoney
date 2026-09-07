@@ -25,6 +25,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let app_data_dir = app
                 .path()
@@ -102,6 +103,7 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::check_for_update,
+            commands::run_notification_check,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

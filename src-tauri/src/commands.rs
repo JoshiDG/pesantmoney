@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::import::{self, ColumnMapping, ImportFormat, ImportResult, ParsedTransaction, PreviewRow, SignConvention};
@@ -9,11 +10,17 @@ use crate::services::categorization_rules::{self, CategorizationRule, MatchType,
 use crate::services::goals::{self, Goal, GoalWithProgress};
 use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
 use crate::services::import_profiles::{self, ImportProfile};
+use crate::services::notifications;
 use crate::services::recurring_items::{self, Frequency, RecurringItem};
 use crate::services::settings::{self, Settings};
 use crate::services::transactions::{self, Transaction};
 use crate::services::transfers::{self, Transfer};
 use crate::AppState;
+
+/// How many days ahead a confirmed Recurring Item's `next_expected_date` can
+/// be before it counts as "upcoming" for the bill notification. Not
+/// currently user-configurable -- see Settings for the on/off toggles.
+const BILL_NOTIFICATION_WINDOW_DAYS: i64 = 3;
 
 type CommandResult<T> = Result<T, String>;
 
@@ -594,12 +601,60 @@ pub fn get_settings(state: tauri::State<AppState>) -> CommandResult<Settings> {
 pub fn update_settings(
     state: tauri::State<AppState>,
     update_checks_enabled: bool,
+    bill_notifications_enabled: bool,
+    overspend_notifications_enabled: bool,
 ) -> CommandResult<Settings> {
     let new_settings = Settings {
         update_checks_enabled,
+        bill_notifications_enabled,
+        overspend_notifications_enabled,
     };
     settings::save(&state.app_data_dir, &new_settings).map_err(to_command_error)?;
     Ok(new_settings)
+}
+
+/// Evaluates the upcoming-bill and category-overspend conditions (see
+/// `services::notifications`) and fires a native OS notification for each
+/// one that just became true and hasn't already been notified. Intended to
+/// be polled periodically by the frontend (on launch and on an interval)
+/// while the app is running -- there is no background daemon, so nothing
+/// fires while the app is closed.
+///
+/// Returns the number of notifications fired, mostly for the frontend to log
+/// / test against; the frontend does not need to do anything else with it.
+#[tauri::command]
+pub fn run_notification_check(app: tauri::AppHandle, state: tauri::State<AppState>) -> CommandResult<usize> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    let settings = settings::load(&state.app_data_dir);
+
+    if !settings.bill_notifications_enabled && !settings.overspend_notifications_enabled {
+        return Ok(0);
+    }
+
+    let now = chrono::Local::now();
+    let as_of = now.format("%Y-%m-%d").to_string();
+    let month = now.format("%Y-%m").to_string();
+
+    let candidates = notifications::pending(
+        &conn,
+        &as_of,
+        BILL_NOTIFICATION_WINDOW_DAYS,
+        &month,
+        settings.bill_notifications_enabled,
+        settings.overspend_notifications_enabled,
+    )
+    .map_err(to_command_error)?;
+
+    for candidate in &candidates {
+        let (title, body) = candidate.title_and_body();
+        // A failed notification (e.g. OS-level permission denied) shouldn't
+        // stop the rest of the batch or surface as an app error -- the
+        // condition stays logged as "notified" either way, matching how a
+        // user who dismisses/misses a real OS notification isn't re-shown it.
+        let _ = app.notification().builder().title(title).body(body).show();
+    }
+
+    Ok(candidates.len())
 }
 
 /// Checks GitHub Releases (via the Tauri updater plugin) for a newer version.

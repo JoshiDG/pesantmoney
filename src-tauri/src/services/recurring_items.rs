@@ -425,6 +425,20 @@ pub fn upcoming(
     rows.collect()
 }
 
+/// Same window filter as `upcoming`, but across every account rather than
+/// one — used by the notification check (see `services::notifications`),
+/// which has no single account in view.
+pub fn upcoming_all(conn: &Connection, as_of: &str, within_days: i64) -> rusqlite::Result<Vec<RecurringItem>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM recurring_items \
+         WHERE is_confirmed = 1 \
+         AND next_expected_date >= ?1 AND next_expected_date <= date(?1, '+' || ?2 || ' days') \
+         ORDER BY next_expected_date, id"
+    ))?;
+    let rows = stmt.query_map(rusqlite::params![as_of, within_days], recurring_item_from_row)?;
+    rows.collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -709,6 +723,22 @@ mod tests {
         let upcoming_items = upcoming(&conn, account_id, "2026-09-10", 10).expect("upcoming items");
 
         assert!(upcoming_items.is_empty());
+    }
+
+    #[test]
+    fn upcoming_all_spans_every_account() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let other_account_id = create_test_account(&conn);
+        create(&conn, account_id, "Netflix", -1599, Frequency::Monthly, "2026-09-15", None)
+            .expect("create recurring item");
+        create(&conn, other_account_id, "Gym", -4000, Frequency::Monthly, "2026-09-16", None)
+            .expect("create recurring item");
+
+        let upcoming_items = upcoming_all(&conn, "2026-09-10", 10).expect("upcoming items across accounts");
+
+        let descriptions: Vec<&str> = upcoming_items.iter().map(|i| i.description.as_str()).collect();
+        assert_eq!(descriptions, vec!["Netflix", "Gym"]);
     }
 
     #[test]
