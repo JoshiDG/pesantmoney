@@ -132,6 +132,50 @@ pub fn delete(conn: &Connection, id: i64) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Net worth: the sum of `transactions::balance_cents` across every Account.
+///
+/// Sign convention (verified against `transactions::balance_cents` and
+/// `transactions::income_expense_totals`, and the Transfer test fixture in
+/// `services::transactions::tests`): `amount_cents` is NOT re-signed per
+/// Account type anywhere in this codebase. A Transaction's amount is always
+/// "the effect on that Account's own balance" — positive increases
+/// `balance_cents`, negative decreases it — for every AccountType alike,
+/// including CreditCard and Loan. The transfers-pair fixture makes this
+/// concrete: paying down a credit card is `-50_000` on the checking Account
+/// ("CC payment") and `+50_000` on the credit card Account ("Payment
+/// received"). A payment *reduces debt*, and it is recorded as a *positive*
+/// amount on the credit card Account — meaning a CreditCard Account's
+/// `balance_cents` is already a signed liability figure: it runs negative as
+/// charges (debt) accrue and moves back toward zero as payments are made.
+/// That is exactly the sign a liability needs to contribute correctly to net
+/// worth by plain addition. So checking/savings/cash/investment balances
+/// (positive = asset) and credit_card/loan balances (negative when money is
+/// owed) can simply be summed as-is — no per-AccountType sign-flipping is
+/// needed or correct here. (Flipping credit_card/loan signs would double
+/// the effect of debt already encoded as a negative balance, which is
+/// exactly the bug this function must avoid.)
+pub fn net_worth_cents(conn: &Connection) -> rusqlite::Result<i64> {
+    let accounts = list(conn)?;
+    let mut total = 0i64;
+    for account in &accounts {
+        total += crate::services::transactions::balance_cents(conn, account.id)?;
+    }
+    Ok(total)
+}
+
+/// Per-Account breakdown backing the net worth figure: every Account paired
+/// with its own `balance_cents`, in the same order as `list` (by id).
+pub fn net_worth_by_account(conn: &Connection) -> rusqlite::Result<Vec<(Account, i64)>> {
+    let accounts = list(conn)?;
+    accounts
+        .into_iter()
+        .map(|account| {
+            let balance = crate::services::transactions::balance_cents(conn, account.id)?;
+            Ok((account, balance))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +264,62 @@ mod tests {
         let result = delete(&conn, 999);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn net_worth_cents_is_zero_with_no_accounts() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+
+        let net_worth = net_worth_cents(&conn).expect("compute net worth");
+
+        assert_eq!(net_worth, 0);
+    }
+
+    #[test]
+    fn net_worth_cents_sums_an_asset_and_a_liability_account_without_sign_flipping() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking = create(&conn, "Everyday Checking", AccountType::Checking, None)
+            .expect("create account");
+        let credit_card =
+            create(&conn, "Rewards Card", AccountType::CreditCard, None).expect("create account");
+
+        // Checking: paycheck in, a purchase out -> balance 80_000 (an asset).
+        crate::services::transactions::create(&conn, checking.id, "2026-08-01", 100_000, "Paycheck", None)
+            .expect("create transaction");
+        crate::services::transactions::create(&conn, checking.id, "2026-08-02", -20_000, "Rent", None)
+            .expect("create transaction");
+
+        // Credit card: a charge (debt increases, recorded negative per the
+        // sign convention documented on `net_worth_cents`) -> balance
+        // -15_000 (a liability).
+        crate::services::transactions::create(&conn, credit_card.id, "2026-08-03", -15_000, "Groceries", None)
+            .expect("create transaction");
+
+        let net_worth = net_worth_cents(&conn).expect("compute net worth");
+
+        // 80_000 asset + (-15_000) liability = 65_000, the intuitively
+        // correct net worth: what you own minus what you owe.
+        assert_eq!(net_worth, 65_000);
+    }
+
+    #[test]
+    fn net_worth_by_account_pairs_each_account_with_its_own_balance() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking = create(&conn, "Everyday Checking", AccountType::Checking, None)
+            .expect("create account");
+        let credit_card =
+            create(&conn, "Rewards Card", AccountType::CreditCard, None).expect("create account");
+        crate::services::transactions::create(&conn, checking.id, "2026-08-01", 50_000, "Paycheck", None)
+            .expect("create transaction");
+        crate::services::transactions::create(&conn, credit_card.id, "2026-08-02", -3_000, "Coffee", None)
+            .expect("create transaction");
+
+        let breakdown = net_worth_by_account(&conn).expect("compute breakdown");
+
+        assert_eq!(breakdown.len(), 2);
+        assert_eq!(breakdown[0].0.id, checking.id);
+        assert_eq!(breakdown[0].1, 50_000);
+        assert_eq!(breakdown[1].0.id, credit_card.id);
+        assert_eq!(breakdown[1].1, -3_000);
     }
 }

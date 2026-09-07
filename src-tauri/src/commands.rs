@@ -103,6 +103,30 @@ pub fn account_balance_cents(state: tauri::State<AppState>, account_id: i64) -> 
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn get_net_worth(state: tauri::State<AppState>) -> CommandResult<i64> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    accounts::net_worth_cents(&conn).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_net_worth_by_account(state: tauri::State<AppState>) -> CommandResult<Vec<(Account, i64)>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    accounts::net_worth_by_account(&conn).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_cash_flow_for_range(
+    state: tauri::State<AppState>,
+    account_id: Option<i64>,
+    start_date: String,
+    end_date: String,
+) -> CommandResult<(i64, i64)> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::income_expense_totals_for_range(&conn, account_id, &start_date, &end_date)
+        .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn create_category_group(state: tauri::State<AppState>, name: String) -> CommandResult<CategoryGroup> {
     let conn = state.db.lock().map_err(to_command_error)?;
     categories::create_group(&conn, &name).map_err(to_command_error)

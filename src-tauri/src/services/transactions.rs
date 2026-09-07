@@ -160,6 +160,42 @@ pub fn income_expense_totals(
     }
 }
 
+/// Like `income_expense_totals`, but additionally scoped to Transactions
+/// whose `date` falls within `[start_date, end_date]` (both inclusive, each
+/// "YYYY-MM-DD"). Added rather than changing `income_expense_totals`'s
+/// signature, since other code (e.g. the Budget screen's lifetime totals)
+/// already calls that function without a date range. Reuses the same
+/// linked-Transfer exclusion so a month's cash flow doesn't count money
+/// moved between the user's own Accounts as income or expense.
+pub fn income_expense_totals_for_range(
+    conn: &Connection,
+    account_id: Option<i64>,
+    start_date: &str,
+    end_date: &str,
+) -> rusqlite::Result<(i64, i64)> {
+    let base_sql = "SELECT \
+            COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0), \
+            COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) \
+        FROM transactions t \
+        WHERE t.date >= ?1 AND t.date <= ?2 \
+        AND t.id NOT IN ( \
+            SELECT from_transaction_id FROM transfers \
+            UNION \
+            SELECT to_transaction_id FROM transfers \
+        )";
+
+    match account_id {
+        Some(id) => conn.query_row(
+            &format!("{base_sql} AND t.account_id = ?3"),
+            rusqlite::params![start_date, end_date, id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ),
+        None => conn.query_row(base_sql, rusqlite::params![start_date, end_date], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,6 +434,74 @@ mod tests {
             .expect("create transaction");
 
         let (income, expense) = income_expense_totals(&conn, Some(checking_id)).expect("compute totals");
+
+        assert_eq!(income, 0);
+        assert_eq!(expense, 1_000);
+    }
+
+    #[test]
+    fn income_expense_totals_for_range_includes_only_dates_within_the_range() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+
+        create(&conn, account_id, "2026-07-31", 10_000, "Before range", None)
+            .expect("create transaction");
+        create(&conn, account_id, "2026-08-01", 5_000, "Start of range", None)
+            .expect("create transaction");
+        create(&conn, account_id, "2026-08-15", -1_500, "Inside range", None)
+            .expect("create transaction");
+        create(&conn, account_id, "2026-08-31", 2_000, "End of range", None)
+            .expect("create transaction");
+        create(&conn, account_id, "2026-09-01", 50_000, "After range", None)
+            .expect("create transaction");
+
+        let (income, expense) =
+            income_expense_totals_for_range(&conn, None, "2026-08-01", "2026-08-31")
+                .expect("compute totals");
+
+        assert_eq!(income, 7_000);
+        assert_eq!(expense, 1_500);
+    }
+
+    #[test]
+    fn income_expense_totals_for_range_excludes_a_linked_transfer_pair_within_range() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let credit_card_id = create_test_account(&conn);
+
+        let out = create(&conn, checking_id, "2026-08-10", -50_000, "CC payment", None)
+            .expect("create transaction");
+        let in_ = create(&conn, credit_card_id, "2026-08-10", 50_000, "Payment received", None)
+            .expect("create transaction");
+        transfers::link(&conn, out.id, in_.id).expect("link transfer");
+
+        create(&conn, checking_id, "2026-08-12", -2_500, "Groceries", None)
+            .expect("create transaction");
+        create(&conn, checking_id, "2026-08-13", 3_000, "Refund", None)
+            .expect("create transaction");
+
+        let (income, expense) =
+            income_expense_totals_for_range(&conn, None, "2026-08-01", "2026-08-31")
+                .expect("compute totals");
+
+        assert_eq!(income, 3_000);
+        assert_eq!(expense, 2_500);
+    }
+
+    #[test]
+    fn income_expense_totals_for_range_can_scope_to_a_single_account() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let savings_id = create_test_account(&conn);
+
+        create(&conn, checking_id, "2026-08-05", -1_000, "Checking expense", None)
+            .expect("create transaction");
+        create(&conn, savings_id, "2026-08-05", 5_000, "Savings income", None)
+            .expect("create transaction");
+
+        let (income, expense) =
+            income_expense_totals_for_range(&conn, Some(checking_id), "2026-08-01", "2026-08-31")
+                .expect("compute totals");
 
         assert_eq!(income, 0);
         assert_eq!(expense, 1_000);

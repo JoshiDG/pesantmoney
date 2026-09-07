@@ -960,6 +960,167 @@ button.danger:hover,
   border-color: var(--debit);
 }
 
+/* ---------- dashboard ---------- */
+
+.net-worth-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1.4rem 1.5rem;
+  margin-bottom: 2rem;
+  border-radius: 5px;
+  border: 1px solid var(--paper-line);
+  background: rgba(31, 111, 92, 0.05);
+}
+
+.net-worth-label {
+  font-size: 0.78rem;
+  color: rgba(28, 36, 48, 0.55);
+}
+
+.net-worth-amount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 2.5rem;
+}
+
+.net-worth-amount.credit {
+  color: var(--credit);
+}
+
+.net-worth-amount.debit {
+  color: var(--debit);
+}
+
+.dashboard-section {
+  margin-bottom: 2.25rem;
+}
+
+.dashboard-section-title {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  margin: 0 0 0.85rem;
+}
+
+.net-worth-breakdown {
+  display: flex;
+  flex-direction: column;
+}
+
+.net-worth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--paper-line);
+}
+
+.net-worth-row-name {
+  font-size: 0.92rem;
+}
+
+.net-worth-row-meta {
+  font-size: 0.78rem;
+  color: rgba(28, 36, 48, 0.55);
+}
+
+.cash-flow-summary {
+  display: flex;
+  gap: 2rem;
+}
+
+.cash-flow-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cash-flow-stat-label {
+  font-size: 0.78rem;
+  color: rgba(28, 36, 48, 0.55);
+}
+
+.cash-flow-stat .amount {
+  font-size: 1.4rem;
+  justify-content: flex-start;
+}
+
+.trend-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  height: 140px;
+  padding: 0.5rem 0.25rem 0;
+  border-bottom: 1px solid var(--paper-line);
+}
+
+.trend-chart-month {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.trend-chart-bars {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  width: 100%;
+  justify-content: center;
+}
+
+.trend-chart-bar {
+  width: 40%;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+}
+
+.trend-chart-bar-income {
+  background: var(--credit);
+}
+
+.trend-chart-bar-expense {
+  background: var(--debit);
+}
+
+.trend-chart-label {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: rgba(28, 36, 48, 0.55);
+}
+
+.trend-chart-legend {
+  display: flex;
+  gap: 1.25rem;
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: rgba(28, 36, 48, 0.55);
+}
+
+.trend-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.trend-chart-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.trend-chart-swatch-income {
+  background: var(--credit);
+}
+
+.trend-chart-swatch-expense {
+  background: var(--debit);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #1a1d22;
@@ -984,7 +1145,12 @@ button.danger:hover,
   .empty-state,
   .account-title-meta,
   .balance-label,
-  .back-link {
+  .back-link,
+  .net-worth-label,
+  .net-worth-row-meta,
+  .cash-flow-stat-label,
+  .trend-chart-label,
+  .trend-chart-legend {
     color: rgba(233, 230, 223, 0.55);
   }
 
