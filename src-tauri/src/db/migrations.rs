@@ -12,6 +12,7 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0006_transfers", include_str!("../../migrations/0006_transfers.sql")),
     ("0007_budgets", include_str!("../../migrations/0007_budgets.sql")),
     ("0008_recurring_items", include_str!("../../migrations/0008_recurring_items.sql")),
+    ("0009_holdings", include_str!("../../migrations/0009_holdings.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<()> {

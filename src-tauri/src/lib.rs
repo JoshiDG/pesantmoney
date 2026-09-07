@@ -76,6 +76,13 @@ pub fn run() {
             commands::confirm_recurring_item,
             commands::detect_recurring_items,
             commands::upcoming_recurring_items,
+            commands::create_holding,
+            commands::list_holdings,
+            commands::update_holding,
+            commands::delete_holding,
+            commands::set_security_price,
+            commands::get_latest_price,
+            commands::list_holdings_with_values,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

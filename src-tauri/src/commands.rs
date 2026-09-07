@@ -2,6 +2,7 @@ use crate::import::{self, ColumnMapping, ImportFormat, ImportResult, ParsedTrans
 use crate::services::accounts::{self, Account, AccountType};
 use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
 use crate::services::categories::{self, Category, CategoryGroup};
+use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
 use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::recurring_items::{self, Frequency, RecurringItem};
 use crate::services::transactions::{self, Transaction};
@@ -384,4 +385,67 @@ pub fn upcoming_recurring_items(
     let conn = state.db.lock().map_err(to_command_error)?;
     let as_of = chrono::Local::now().format("%Y-%m-%d").to_string();
     recurring_items::upcoming(&conn, account_id, &as_of, within_days).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_holding(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    ticker: String,
+    quantity: f64,
+    cost_basis_cents: Option<i64>,
+) -> CommandResult<Holding> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    holdings::create_holding(&conn, account_id, &ticker, quantity, cost_basis_cents)
+        .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_holdings(state: tauri::State<AppState>, account_id: i64) -> CommandResult<Vec<Holding>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    holdings::list_holdings_for_account(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_holding(
+    state: tauri::State<AppState>,
+    id: i64,
+    ticker: String,
+    quantity: f64,
+    cost_basis_cents: Option<i64>,
+) -> CommandResult<Holding> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    holdings::update_holding(&conn, id, &ticker, quantity, cost_basis_cents).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_holding(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    holdings::delete_holding(&conn, id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_security_price(
+    state: tauri::State<AppState>,
+    ticker: String,
+    price_cents: i64,
+    as_of_date: String,
+) -> CommandResult<SecurityPrice> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    holdings::set_price(&conn, &ticker, price_cents, &as_of_date).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_latest_price(state: tauri::State<AppState>, ticker: String) -> CommandResult<Option<SecurityPrice>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    holdings::latest_price(&conn, &ticker).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_holdings_with_values(
+    state: tauri::State<AppState>,
+    account_id: i64,
+) -> CommandResult<Vec<HoldingWithValue>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    holdings::list_holdings_with_values(&conn, account_id).map_err(to_command_error)
 }
