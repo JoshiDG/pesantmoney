@@ -7,3 +7,7 @@ export interface UpdateCheckResult {
   current_version: string;
   latest_version: string | null;
 }
+
+export type BackupStatus =
+  | { outcome: "success"; path: string; taken_at: string }
+  | { outcome: "failed"; message: string };

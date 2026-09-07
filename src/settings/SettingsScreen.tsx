@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Settings, UpdateCheckResult } from "./types";
+import { save } from "@tauri-apps/plugin-dialog";
+import { BackupStatus, Settings, UpdateCheckResult } from "./types";
 
 export function SettingsScreen() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -8,6 +9,11 @@ export function SettingsScreen() {
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<UpdateCheckResult | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
+  const [backupStatusError, setBackupStatusError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   async function refresh() {
     try {
@@ -18,8 +24,18 @@ export function SettingsScreen() {
     }
   }
 
+  async function refreshBackupStatus() {
+    try {
+      setBackupStatus(await invoke<BackupStatus>("get_backup_status"));
+      setBackupStatusError(null);
+    } catch (err) {
+      setBackupStatusError(String(err));
+    }
+  }
+
   useEffect(() => {
     refresh();
+    refreshBackupStatus();
   }, []);
 
   async function handleToggleUpdateChecks(enabled: boolean) {
@@ -45,6 +61,38 @@ export function SettingsScreen() {
       setCheckError(String(err));
     } finally {
       setChecking(false);
+    }
+  }
+
+  async function handleExportData() {
+    setExportResult(null);
+    setExportError(null);
+
+    const defaultPath = `pesantmoney-export-${new Date().toISOString().slice(0, 10)}.db`;
+    let destination: string | null;
+    try {
+      destination = await save({
+        defaultPath,
+        filters: [{ name: "SQLite database", extensions: ["db"] }],
+      });
+    } catch (err) {
+      setExportError(String(err));
+      return;
+    }
+
+    if (!destination) {
+      // User cancelled the dialog.
+      return;
+    }
+
+    setExporting(true);
+    try {
+      await invoke("export_data", { destination });
+      setExportResult(destination);
+    } catch (err) {
+      setExportError(String(err));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -99,6 +147,48 @@ export function SettingsScreen() {
             </div>
           </div>
         )}
+
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">Automatic local backups</div>
+            <div className="settings-row-meta">
+              A snapshot of your database is taken automatically each time PesantMoney launches. The
+              last 10 snapshots are kept in the app data folder; older ones are pruned automatically.
+            </div>
+            {backupStatus?.outcome === "success" && (
+              <p className="settings-check-result">Last backup: {backupStatus.taken_at}</p>
+            )}
+            {backupStatus?.outcome === "failed" && (
+              <p className="settings-check-result" role="alert">
+                Last automatic backup failed: {backupStatus.message}
+              </p>
+            )}
+            {backupStatusError && (
+              <p className="settings-check-result" role="alert">
+                Couldn't load backup status: {backupStatusError}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">Export data</div>
+            <div className="settings-row-meta">
+              Save a full copy of your database to a location of your choice — a USB drive, cloud
+              storage folder, or anywhere else you'd like a portable backup.
+            </div>
+            <button type="button" onClick={handleExportData} disabled={exporting}>
+              {exporting ? "Exporting…" : "Export data…"}
+            </button>
+            {exportResult && <p className="settings-check-result">Exported to {exportResult}.</p>}
+            {exportError && (
+              <p className="settings-check-result" role="alert">
+                Export failed: {exportError}
+              </p>
+            )}
+          </div>
+        </div>
 
         <p className="settings-note">
           PesantMoney is offline-only for your financial data — no bank sync, no credentials, and no
