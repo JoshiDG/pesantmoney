@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account, ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { Category } from "../categories/types";
+import { RecurringItemsScreen } from "../recurring/RecurringItemsScreen";
 import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
 import { TransactionForm } from "./TransactionForm";
@@ -13,6 +14,8 @@ interface TransactionsScreenProps {
   onImport: () => void;
 }
 
+type LedgerView = "transactions" | "recurring";
+
 export function TransactionsScreen({ account, onBack, onImport }: TransactionsScreenProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -22,6 +25,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [editingId, setEditingId] = useState<number | null>(null);
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ledgerView, setLedgerView] = useState<LedgerView>("transactions");
 
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
 
@@ -56,6 +60,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
 
   useEffect(() => {
     refresh();
+    setLedgerView("transactions");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id]);
 
@@ -140,90 +145,111 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
         </div>
       </div>
 
+      <div className="ledger-view-toggle">
+        <button
+          type="button"
+          className={ledgerView === "transactions" ? "active" : ""}
+          onClick={() => setLedgerView("transactions")}
+        >
+          Transactions
+        </button>
+        <button
+          type="button"
+          className={ledgerView === "recurring" ? "active" : ""}
+          onClick={() => setLedgerView("recurring")}
+        >
+          Recurring
+        </button>
+      </div>
+
       {error && <p role="alert">{error}</p>}
 
-      <div className="ledger">
-        <div className="ledger-head">
-          <span>Date</span>
-          <span>Description</span>
-          <span>Category</span>
-          <span>Amount</span>
-          <span></span>
-        </div>
+      {ledgerView === "recurring" ? (
+        <RecurringItemsScreen account={account} categories={categories} />
+      ) : (
+        <div className="ledger">
+          <div className="ledger-head">
+            <span>Date</span>
+            <span>Description</span>
+            <span>Category</span>
+            <span>Amount</span>
+            <span></span>
+          </div>
 
-        {transactions.map((transaction) =>
-          editingId === transaction.id ? (
-            <TransactionForm
-              key={transaction.id}
-              categories={categories}
-              initial={transaction}
-              onSubmit={(fields) => handleUpdate(transaction.id, fields)}
-              onCancel={() => setEditingId(null)}
-            />
-          ) : (
-            <Fragment key={transaction.id}>
-              <div className={`ledger-row${linkedTransactionIds.has(transaction.id) ? " is-transfer" : ""}`}>
-                <span>{transaction.date}</span>
-                <span className="cell-description">
-                  {linkedTransactionIds.has(transaction.id) && (
-                    <span className="transfer-badge" title="Part of a transfer">
-                      ⇄
-                    </span>
-                  )}
-                  {transaction.description}
-                </span>
-                <span className="cell-category">
-                  {transaction.category_id != null
-                    ? categoryNameById.get(transaction.category_id) ?? "Uncategorized"
-                    : "Uncategorized"}
-                </span>
-                <span className={`amount ${transaction.amount_cents < 0 ? "debit" : "credit"}`}>
-                  {formatCents(transaction.amount_cents)}
-                </span>
-                <span className="row-actions">
-                  <button type="button" onClick={() => setEditingId(transaction.id)}>
-                    Edit
-                  </button>
-                  {linkedTransactionIds.has(transaction.id) ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const transfer = transferByTransactionId.get(transaction.id);
-                        if (transfer) {
-                          handleUnlink(transfer);
-                        }
-                      }}
-                    >
-                      Unlink
+          {transactions.map((transaction) =>
+            editingId === transaction.id ? (
+              <TransactionForm
+                key={transaction.id}
+                categories={categories}
+                initial={transaction}
+                onSubmit={(fields) => handleUpdate(transaction.id, fields)}
+                onCancel={() => setEditingId(null)}
+              />
+            ) : (
+              <Fragment key={transaction.id}>
+                <div className={`ledger-row${linkedTransactionIds.has(transaction.id) ? " is-transfer" : ""}`}>
+                  <span>{transaction.date}</span>
+                  <span className="cell-description">
+                    {linkedTransactionIds.has(transaction.id) && (
+                      <span className="transfer-badge" title="Part of a transfer">
+                        ⇄
+                      </span>
+                    )}
+                    {transaction.description}
+                  </span>
+                  <span className="cell-category">
+                    {transaction.category_id != null
+                      ? categoryNameById.get(transaction.category_id) ?? "Uncategorized"
+                      : "Uncategorized"}
+                  </span>
+                  <span className={`amount ${transaction.amount_cents < 0 ? "debit" : "credit"}`}>
+                    {formatCents(transaction.amount_cents)}
+                  </span>
+                  <span className="row-actions">
+                    <button type="button" onClick={() => setEditingId(transaction.id)}>
+                      Edit
                     </button>
-                  ) : (
-                    <button type="button" onClick={() => setLinkingId(transaction.id)}>
-                      Link transfer
+                    {linkedTransactionIds.has(transaction.id) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const transfer = transferByTransactionId.get(transaction.id);
+                          if (transfer) {
+                            handleUnlink(transfer);
+                          }
+                        }}
+                      >
+                        Unlink
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => setLinkingId(transaction.id)}>
+                        Link transfer
+                      </button>
+                    )}
+                    <button type="button" onClick={() => handleDelete(transaction)}>
+                      Delete
                     </button>
-                  )}
-                  <button type="button" onClick={() => handleDelete(transaction)}>
-                    Delete
-                  </button>
-                </span>
-              </div>
-
-              {linkingId === transaction.id && (
-                <div className="transfer-picker-row">
-                  <TransferPicker
-                    transaction={transaction}
-                    accounts={accounts}
-                    linkedTransactionIds={linkedTransactionIds}
-                    onLink={(toTransactionId) => handleLink(transaction.id, toTransactionId)}
-                    onCancel={() => setLinkingId(null)}
-                  />
+                  </span>
                 </div>
-              )}
-            </Fragment>
-          ),
-        )}
 
-        <TransactionForm categories={categories} onSubmit={handleCreate} />
-      </div>
+                {linkingId === transaction.id && (
+                  <div className="transfer-picker-row">
+                    <TransferPicker
+                      transaction={transaction}
+                      accounts={accounts}
+                      linkedTransactionIds={linkedTransactionIds}
+                      onLink={(toTransactionId) => handleLink(transaction.id, toTransactionId)}
+                      onCancel={() => setLinkingId(null)}
+                    />
+                  </div>
+                )}
+              </Fragment>
+            ),
+          )}
+
+          <TransactionForm categories={categories} onSubmit={handleCreate} />
+        </div>
+      )}
     </section>
   );
 }

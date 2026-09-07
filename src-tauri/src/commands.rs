@@ -3,6 +3,7 @@ use crate::services::accounts::{self, Account, AccountType};
 use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
 use crate::services::categories::{self, Category, CategoryGroup};
 use crate::services::import_profiles::{self, ImportProfile};
+use crate::services::recurring_items::{self, Frequency, RecurringItem};
 use crate::services::transactions::{self, Transaction};
 use crate::services::transfers::{self, Transfer};
 use crate::AppState;
@@ -185,6 +186,30 @@ pub fn create_import_profile(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+#[allow(clippy::too_many_arguments)]
+pub fn create_recurring_item(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    description: String,
+    amount_cents: i64,
+    frequency: Frequency,
+    next_expected_date: String,
+    category_id: Option<i64>,
+) -> CommandResult<RecurringItem> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    recurring_items::create(
+        &conn,
+        account_id,
+        &description,
+        amount_cents,
+        frequency,
+        &next_expected_date,
+        category_id,
+    )
+    .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_import_profiles(state: tauri::State<AppState>) -> CommandResult<Vec<ImportProfile>> {
     let conn = state.db.lock().map_err(to_command_error)?;
     import_profiles::list(&conn).map_err(to_command_error)
@@ -295,4 +320,68 @@ pub fn get_budget_for_month(
 pub fn get_ready_to_assign(state: tauri::State<AppState>, month: String) -> CommandResult<i64> {
     let conn = state.db.lock().map_err(to_command_error)?;
     budgets::ready_to_assign_cents(&conn, &month).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_recurring_items(
+    state: tauri::State<AppState>,
+    account_id: i64,
+) -> CommandResult<Vec<RecurringItem>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    recurring_items::list_for_account(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_recurring_item(
+    state: tauri::State<AppState>,
+    id: i64,
+    description: String,
+    amount_cents: i64,
+    frequency: Frequency,
+    next_expected_date: String,
+    category_id: Option<i64>,
+) -> CommandResult<RecurringItem> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    recurring_items::update(
+        &conn,
+        id,
+        &description,
+        amount_cents,
+        frequency,
+        &next_expected_date,
+        category_id,
+    )
+    .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_recurring_item(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    recurring_items::delete(&conn, id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn confirm_recurring_item(state: tauri::State<AppState>, id: i64) -> CommandResult<RecurringItem> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    recurring_items::confirm(&conn, id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn detect_recurring_items(
+    state: tauri::State<AppState>,
+    account_id: i64,
+) -> CommandResult<Vec<RecurringItem>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    recurring_items::detect_candidates(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn upcoming_recurring_items(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    within_days: i64,
+) -> CommandResult<Vec<RecurringItem>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    let as_of = chrono::Local::now().format("%Y-%m-%d").to_string();
+    recurring_items::upcoming(&conn, account_id, &as_of, within_days).map_err(to_command_error)
 }

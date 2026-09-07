@@ -69,6 +69,13 @@ pub fn run() {
             commands::assign_budget,
             commands::get_budget_for_month,
             commands::get_ready_to_assign,
+            commands::create_recurring_item,
+            commands::list_recurring_items,
+            commands::update_recurring_item,
+            commands::delete_recurring_item,
+            commands::confirm_recurring_item,
+            commands::detect_recurring_items,
+            commands::upcoming_recurring_items,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
