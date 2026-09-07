@@ -61,6 +61,7 @@ pub fn parse(contents: &str) -> Result<Vec<ParsedTransaction>, String> {
             date: normalize_ofx_date(&date_raw)?,
             amount_cents: parse_amount_cents(&amount_raw)?,
             description,
+            category_id: None,
         });
     }
 

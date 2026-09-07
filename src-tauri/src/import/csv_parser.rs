@@ -97,6 +97,7 @@ pub fn parse(contents: &str, mapping: &ColumnMapping) -> Result<Vec<ParsedTransa
             date,
             amount_cents,
             description,
+            category_id: None,
         });
     }
 

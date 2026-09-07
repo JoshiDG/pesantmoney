@@ -2,6 +2,7 @@ use crate::import::{self, ColumnMapping, ImportFormat, ImportResult, ParsedTrans
 use crate::services::accounts::{self, Account, AccountType};
 use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
 use crate::services::categories::{self, Category, CategoryGroup};
+use crate::services::categorization_rules::{self, CategorizationRule, MatchType, RuleField};
 use crate::services::goals::{self, Goal, GoalWithProgress};
 use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
 use crate::services::import_profiles::{self, ImportProfile};
@@ -471,6 +472,21 @@ pub fn create_holding(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+#[allow(clippy::too_many_arguments)]
+pub fn create_categorization_rule(
+    state: tauri::State<AppState>,
+    field: RuleField,
+    match_type: MatchType,
+    match_value: String,
+    category_id: i64,
+    priority: i64,
+) -> CommandResult<CategorizationRule> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    categorization_rules::create(&conn, field, match_type, &match_value, category_id, priority)
+        .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_holdings(state: tauri::State<AppState>, account_id: i64) -> CommandResult<Vec<Holding>> {
     let conn = state.db.lock().map_err(to_command_error)?;
     holdings::list_holdings_for_account(&conn, account_id).map_err(to_command_error)
@@ -518,4 +534,41 @@ pub fn list_holdings_with_values(
 ) -> CommandResult<Vec<HoldingWithValue>> {
     let conn = state.db.lock().map_err(to_command_error)?;
     holdings::list_holdings_with_values(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_categorization_rules(state: tauri::State<AppState>) -> CommandResult<Vec<CategorizationRule>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    categorization_rules::list(&conn).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+#[allow(clippy::too_many_arguments)]
+pub fn update_categorization_rule(
+    state: tauri::State<AppState>,
+    id: i64,
+    field: RuleField,
+    match_type: MatchType,
+    match_value: String,
+    category_id: i64,
+    priority: i64,
+) -> CommandResult<CategorizationRule> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    categorization_rules::update(&conn, id, field, match_type, &match_value, category_id, priority)
+        .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_categorization_rule(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    categorization_rules::delete(&conn, id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn apply_categorization_rules(
+    state: tauri::State<AppState>,
+    account_id: Option<i64>,
+) -> CommandResult<usize> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    categorization_rules::apply_to_uncategorized(&conn, account_id).map_err(to_command_error)
 }

@@ -90,6 +90,11 @@ pub fn run() {
             commands::list_goals_with_progress,
             commands::update_goal,
             commands::delete_goal,
+            commands::create_categorization_rule,
+            commands::list_categorization_rules,
+            commands::update_categorization_rule,
+            commands::delete_categorization_rule,
+            commands::apply_categorization_rules,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

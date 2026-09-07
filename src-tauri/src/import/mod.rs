@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 
 pub use csv_parser::{ColumnMapping, SignConvention};
 
+use crate::services::categorization_rules;
 use crate::services::transactions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,6 +36,13 @@ pub struct ParsedTransaction {
     pub date: String,
     pub amount_cents: i64,
     pub description: String,
+    /// An explicit Category, if the caller already knows one (e.g. a
+    /// user-edited preview row). When absent, `commit_import` tries to fill
+    /// it in from a matching Categorization Rule instead of leaving it
+    /// uncategorized. `#[serde(default)]` keeps existing frontend payloads
+    /// that don't send this field working unchanged.
+    #[serde(default)]
+    pub category_id: Option<i64>,
 }
 
 /// How a [`ParsedTransaction`] compares to the Account's existing
@@ -227,7 +235,20 @@ pub fn commit_import(
             skipped_count += 1;
             continue;
         }
-        transactions::create(conn, account_id, &row.date, row.amount_cents, &row.description, None)
+        // Respect an explicit category_id from the caller; only fall back to
+        // a matching Categorization Rule when none was given.
+        let category_id = match row.category_id {
+            Some(category_id) => Some(category_id),
+            None => categorization_rules::apply_to_transaction(
+                conn,
+                account_id,
+                &row.date,
+                row.amount_cents,
+                &row.description,
+            )
+            .map_err(|e| e.to_string())?,
+        };
+        transactions::create(conn, account_id, &row.date, row.amount_cents, &row.description, category_id)
             .map_err(|e| e.to_string())?;
         seen_fingerprints.insert(fp);
         imported_count += 1;
@@ -363,6 +384,7 @@ mod tests {
             date: "2026-08-01".to_string(),
             amount_cents: -1250,
             description: "Coffee Shop".to_string(),
+            category_id: None,
         }];
 
         let result = commit_import(&conn, account_id, rows).expect("commit import");
@@ -375,6 +397,75 @@ mod tests {
     }
 
     #[test]
+    fn commit_applies_a_matching_categorization_rule_when_no_category_is_given() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let group_id = crate::services::categories::create_group(&conn, "Food")
+            .expect("create category group")
+            .id;
+        let category_id = crate::services::categories::create(&conn, group_id, "Coffee")
+            .expect("create category")
+            .id;
+        crate::services::categorization_rules::create(
+            &conn,
+            crate::services::categorization_rules::RuleField::Description,
+            crate::services::categorization_rules::MatchType::Contains,
+            "coffee",
+            category_id,
+            0,
+        )
+        .expect("create categorization rule");
+        let rows = vec![ParsedTransaction {
+            date: "2026-08-01".to_string(),
+            amount_cents: -1250,
+            description: "Coffee Shop".to_string(),
+            category_id: None,
+        }];
+
+        let result = commit_import(&conn, account_id, rows).expect("commit import");
+
+        assert_eq!(result.imported_count, 1);
+        let stored = transactions::list_for_account(&conn, account_id).expect("list transactions");
+        assert_eq!(stored[0].category_id, Some(category_id));
+    }
+
+    #[test]
+    fn commit_does_not_override_an_explicit_category_id_with_a_rule() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let group_id = crate::services::categories::create_group(&conn, "Food")
+            .expect("create category group")
+            .id;
+        let rule_category_id = crate::services::categories::create(&conn, group_id, "Coffee")
+            .expect("create category")
+            .id;
+        let explicit_category_id = crate::services::categories::create(&conn, group_id, "Business Expense")
+            .expect("create category")
+            .id;
+        crate::services::categorization_rules::create(
+            &conn,
+            crate::services::categorization_rules::RuleField::Description,
+            crate::services::categorization_rules::MatchType::Contains,
+            "coffee",
+            rule_category_id,
+            0,
+        )
+        .expect("create categorization rule");
+        let rows = vec![ParsedTransaction {
+            date: "2026-08-01".to_string(),
+            amount_cents: -1250,
+            description: "Coffee Shop".to_string(),
+            category_id: Some(explicit_category_id),
+        }];
+
+        let result = commit_import(&conn, account_id, rows).expect("commit import");
+
+        assert_eq!(result.imported_count, 1);
+        let stored = transactions::list_for_account(&conn, account_id).expect("list transactions");
+        assert_eq!(stored[0].category_id, Some(explicit_category_id));
+    }
+
+    #[test]
     fn commit_silently_skips_exact_fingerprint_matches_already_in_the_db() {
         let conn = db::open_in_memory().expect("open in-memory test database");
         let account_id = create_test_account(&conn);
@@ -384,6 +475,7 @@ mod tests {
             date: "2026-08-01".to_string(),
             amount_cents: -1250,
             description: "Coffee Shop".to_string(),
+            category_id: None,
         }];
 
         let result = commit_import(&conn, account_id, rows).expect("commit import");
@@ -403,11 +495,13 @@ mod tests {
                 date: "2026-08-01".to_string(),
                 amount_cents: -1250,
                 description: "Coffee Shop".to_string(),
+                category_id: None,
             },
             ParsedTransaction {
                 date: "2026-08-01".to_string(),
                 amount_cents: -1250,
                 description: "Coffee Shop".to_string(),
+                category_id: None,
             },
         ];
 
@@ -429,6 +523,7 @@ mod tests {
             date: "2026-08-01".to_string(),
             amount_cents: -1250,
             description: "Coffee Shop B".to_string(),
+            category_id: None,
         }];
 
         let result = commit_import(&conn, account_id, rows).expect("commit import");

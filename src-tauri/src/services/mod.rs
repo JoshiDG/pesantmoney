@@ -1,6 +1,7 @@
 pub mod accounts;
 pub mod budgets;
 pub mod categories;
+pub mod categorization_rules;
 pub mod goals;
 pub mod health;
 pub mod holdings;
