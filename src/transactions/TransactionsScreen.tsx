@@ -8,9 +8,10 @@ import { formatCents, Transaction, TransactionFields } from "./types";
 interface TransactionsScreenProps {
   account: Account;
   onBack: () => void;
+  onImport: () => void;
 }
 
-export function TransactionsScreen({ account, onBack }: TransactionsScreenProps) {
+export function TransactionsScreen({ account, onBack, onImport }: TransactionsScreenProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [balanceCents, setBalanceCents] = useState(0);
@@ -88,9 +89,14 @@ export function TransactionsScreen({ account, onBack }: TransactionsScreenProps)
             {account.institution_name ? ` · ${account.institution_name}` : ""}
           </div>
         </div>
-        <div className="balance">
-          <span className="balance-label">Balance</span>
-          {formatCents(balanceCents)}
+        <div className="content-header-actions">
+          <button type="button" onClick={onImport}>
+            Import
+          </button>
+          <div className="balance">
+            <span className="balance-label">Balance</span>
+            {formatCents(balanceCents)}
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod import;
 mod services;
 
 use std::sync::Mutex;
@@ -56,6 +57,10 @@ pub fn run() {
             commands::list_categories,
             commands::update_category,
             commands::delete_category,
+            commands::create_import_profile,
+            commands::list_import_profiles,
+            commands::preview_import,
+            commands::commit_import,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

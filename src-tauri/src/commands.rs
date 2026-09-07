@@ -1,5 +1,7 @@
+use crate::import::{self, ColumnMapping, ImportFormat, ImportResult, ParsedTransaction, PreviewRow, SignConvention};
 use crate::services::accounts::{self, Account, AccountType};
 use crate::services::categories::{self, Category, CategoryGroup};
+use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::transactions::{self, Transaction};
 use crate::AppState;
 
@@ -154,4 +156,75 @@ pub fn update_category(
 pub fn delete_category(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
     let conn = state.db.lock().map_err(to_command_error)?;
     categories::delete(&conn, id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+#[allow(clippy::too_many_arguments)]
+pub fn create_import_profile(
+    state: tauri::State<AppState>,
+    institution_name: String,
+    date_column: i64,
+    amount_column: i64,
+    description_column: i64,
+    sign_convention: SignConvention,
+    has_header_row: bool,
+) -> CommandResult<ImportProfile> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    import_profiles::create(
+        &conn,
+        &institution_name,
+        date_column,
+        amount_column,
+        description_column,
+        sign_convention,
+        has_header_row,
+    )
+    .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_import_profiles(state: tauri::State<AppState>) -> CommandResult<Vec<ImportProfile>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    import_profiles::list(&conn).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn preview_import(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    file_contents: String,
+    format: ImportFormat,
+    mapping: Option<ColumnMapping>,
+    profile_id: Option<i64>,
+) -> CommandResult<Vec<PreviewRow>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+
+    // A saved Import Profile (by id) and an inline mapping are two ways to
+    // supply the same thing; an inline mapping wins if both are somehow
+    // given, since it reflects what's currently on screen.
+    let resolved_mapping = match mapping {
+        Some(mapping) => Some(mapping),
+        None => match profile_id {
+            Some(profile_id) => Some(
+                import_profiles::get(&conn, profile_id)
+                    .map_err(to_command_error)?
+                    .ok_or_else(|| "Import profile not found".to_string())?
+                    .to_column_mapping(),
+            ),
+            None => None,
+        },
+    };
+
+    import::preview_import(&conn, account_id, &file_contents, format, resolved_mapping.as_ref())
+        .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn commit_import(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    transactions: Vec<ParsedTransaction>,
+) -> CommandResult<ImportResult> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    import::commit_import(&conn, account_id, transactions).map_err(to_command_error)
 }
