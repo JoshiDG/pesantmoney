@@ -9,12 +9,27 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub struct Settings {
     pub update_checks_enabled: bool,
+    /// Native OS notification for a confirmed Recurring Item due soon. See
+    /// `services::notifications`. Defaults on; `#[serde(default)]` so an
+    /// older settings.json written before this field existed still loads.
+    #[serde(default = "default_true")]
+    pub bill_notifications_enabled: bool,
+    /// Native OS notification for a Category going over its Assigned amount
+    /// for the current Budget month. See `services::notifications`.
+    #[serde(default = "default_true")]
+    pub overspend_notifications_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
             update_checks_enabled: true,
+            bill_notifications_enabled: true,
+            overspend_notifications_enabled: true,
         }
     }
 }
@@ -63,6 +78,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("create tempdir");
         let settings = Settings {
             update_checks_enabled: false,
+            bill_notifications_enabled: false,
+            overspend_notifications_enabled: true,
         };
 
         save(dir.path(), &settings).expect("save settings");
@@ -82,11 +99,26 @@ mod tests {
     }
 
     #[test]
+    fn load_defaults_notification_toggles_to_true_for_a_settings_file_predating_them() {
+        let dir = tempfile::tempdir().expect("create tempdir");
+        std::fs::write(settings_path(dir.path()), r#"{"update_checks_enabled":false}"#)
+            .expect("write old-shape settings file");
+
+        let settings = load(dir.path());
+
+        assert!(!settings.update_checks_enabled);
+        assert!(settings.bill_notifications_enabled);
+        assert!(settings.overspend_notifications_enabled);
+    }
+
+    #[test]
     fn save_creates_the_app_data_directory_if_missing() {
         let dir = tempfile::tempdir().expect("create tempdir");
         let nested = dir.path().join("nested").join("app-data");
         let settings = Settings {
             update_checks_enabled: false,
+            bill_notifications_enabled: false,
+            overspend_notifications_enabled: false,
         };
 
         save(&nested, &settings).expect("save settings into missing directory");

@@ -38,17 +38,32 @@ export function SettingsScreen() {
     refreshBackupStatus();
   }, []);
 
-  async function handleToggleUpdateChecks(enabled: boolean) {
+  async function saveSettings(next: Settings) {
     try {
-      setSettings(await invoke<Settings>("update_settings", { update_checks_enabled: enabled }));
+      setSettings(await invoke<Settings>("update_settings", { ...next }));
       setError(null);
-      if (!enabled) {
-        setCheckResult(null);
-        setCheckError(null);
-      }
     } catch (err) {
       setError(String(err));
     }
+  }
+
+  async function handleToggleUpdateChecks(enabled: boolean) {
+    if (!settings) return;
+    await saveSettings({ ...settings, update_checks_enabled: enabled });
+    if (!enabled) {
+      setCheckResult(null);
+      setCheckError(null);
+    }
+  }
+
+  async function handleToggleBillNotifications(enabled: boolean) {
+    if (!settings) return;
+    await saveSettings({ ...settings, bill_notifications_enabled: enabled });
+  }
+
+  async function handleToggleOverspendNotifications(enabled: boolean) {
+    if (!settings) return;
+    await saveSettings({ ...settings, overspend_notifications_enabled: enabled });
   }
 
   async function handleCheckForUpdate() {
@@ -147,6 +162,44 @@ export function SettingsScreen() {
             </div>
           </div>
         )}
+
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">Notify me about upcoming bills</div>
+            <div className="settings-row-meta">
+              Native OS notification when a confirmed Recurring Item is due soon. Only fires while
+              PesantMoney is running.
+            </div>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={settings?.bill_notifications_enabled ?? false}
+              disabled={settings === null}
+              onChange={(e) => handleToggleBillNotifications(e.target.checked)}
+            />
+            <span>{settings?.bill_notifications_enabled ? "On" : "Off"}</span>
+          </label>
+        </div>
+
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">Notify me about budget overspending</div>
+            <div className="settings-row-meta">
+              Native OS notification when a Category goes over its Assigned amount for the current
+              Budget month. Only fires while PesantMoney is running.
+            </div>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={settings?.overspend_notifications_enabled ?? false}
+              disabled={settings === null}
+              onChange={(e) => handleToggleOverspendNotifications(e.target.checked)}
+            />
+            <span>{settings?.overspend_notifications_enabled ? "On" : "Off"}</span>
+          </label>
+        </div>
 
         <div className="settings-row">
           <div>
