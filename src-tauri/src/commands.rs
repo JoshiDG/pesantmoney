@@ -8,6 +8,7 @@ use crate::services::backup::{self, BackupStatus};
 use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
 use crate::services::categories::{self, Category, CategoryGroup};
 use crate::services::categorization_rules::{self, CategorizationRule, MatchType, RuleField};
+use crate::services::csv_export;
 use crate::services::goals::{self, Goal, GoalWithProgress};
 use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
 use crate::services::import_profiles::{self, ImportProfile};
@@ -720,4 +721,15 @@ pub fn get_backup_status(state: tauri::State<AppState>) -> CommandResult<BackupS
 pub fn export_data(state: tauri::State<AppState>, destination: String) -> CommandResult<()> {
     let _conn = state.db.lock().map_err(to_command_error)?;
     backup::export_to(&state.db_path, std::path::Path::new(&destination)).map_err(to_command_error)
+}
+
+/// Writes every Transaction across every Account to `destination` as a
+/// portable, human-readable CSV file — an alternative to [`export_data`]'s
+/// raw database-file copy, for a user who wants to open their transactions
+/// in a spreadsheet or import them into another tool. Returns the number of
+/// rows written so the frontend can confirm the export succeeded.
+#[tauri::command(rename_all = "snake_case")]
+pub fn export_transactions_csv(state: tauri::State<AppState>, destination: String) -> CommandResult<usize> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    csv_export::export_transactions_csv(&conn, std::path::Path::new(&destination)).map_err(to_command_error)
 }

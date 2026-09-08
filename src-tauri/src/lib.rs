@@ -116,6 +116,7 @@ pub fn run() {
             commands::check_for_update,
             commands::get_backup_status,
             commands::export_data,
+            commands::export_transactions_csv,
             commands::run_notification_check,
         ])
         .run(tauri::generate_context!())
