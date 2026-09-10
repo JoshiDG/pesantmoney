@@ -1290,6 +1290,53 @@ button.danger:hover,
   border-top: 1px solid var(--paper-line);
 }
 
+.confirmation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(28, 36, 48, 0.4);
+}
+
+.confirmation-panel {
+  width: min(24rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(28, 36, 48, 0.25);
+}
+
+.confirmation-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.confirmation-message {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+}
+
+.confirmation-destructive {
+  color: var(--debit);
+}
+
+.confirmation-cancel {
+  border: 2px solid var(--focus);
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
+  font-weight: 600;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #1a1d22;
@@ -1351,5 +1398,13 @@ button.danger:hover,
   .transfer-candidate-date,
   .transfer-candidate-description {
     color: rgba(233, 230, 223, 0.7);
+  }
+
+  .confirmation-overlay {
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .confirmation-panel {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   }
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AccountForm } from "./AccountForm";
 import { ACCOUNT_TYPE_LABELS, Account, AccountFields } from "./types";
+import { useConfirmation } from "../ui/ConfirmationProvider";
 
 interface AccountsScreenProps {
   selectedAccountId: number | null;
@@ -44,6 +45,7 @@ export function AccountsScreen({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useConfirmation();
 
   async function refresh() {
     try {
@@ -80,7 +82,11 @@ export function AccountsScreen({
   }
 
   async function handleDelete(account: Account) {
-    const confirmed = window.confirm(`Delete the account "${account.name}"? This cannot be undone.`);
+    const confirmed = await confirm({
+      title: "Delete Account",
+      message: `Delete the account "${account.name}"? This cannot be undone.`,
+      confirmLabel: "Delete Account",
+    });
     if (!confirmed) {
       return;
     }

@@ -11,6 +11,7 @@ import { ImportScreen } from "./import/ImportScreen";
 import { RulesScreen } from "./rules/RulesScreen";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { TransactionsScreen } from "./transactions/TransactionsScreen";
+import { ConfirmationProvider } from "./ui/ConfirmationProvider";
 
 // How often to re-check the upcoming-bill / budget-overspend notification
 // conditions while the app is open (see `run_notification_check` and
@@ -49,59 +50,61 @@ function App() {
   }, []);
 
   return (
-    <div className="app-shell">
-      <AccountsScreen
-        selectedAccountId={selectedAccount?.id ?? null}
-        isDashboardActive={view.type === "dashboard"}
-        isCategoriesActive={view.type === "categories"}
-        isBudgetActive={view.type === "budget"}
-        isGoalsActive={view.type === "goals"}
-        isRulesActive={view.type === "rules"}
-        isSettingsActive={view.type === "settings"}
-        onSelectAccount={(account) => setView({ type: "account", account })}
-        onOpenDashboard={() => setView({ type: "dashboard" })}
-        onOpenCategories={() => setView({ type: "categories" })}
-        onOpenBudget={() => setView({ type: "budget" })}
-        onOpenGoals={() => setView({ type: "goals" })}
-        onOpenRules={() => setView({ type: "rules" })}
-        onOpenSettings={() => setView({ type: "settings" })}
-        onAccountUpdated={(account) =>
-          setView((current) =>
-            (current.type === "account" || current.type === "import") && current.account.id === account.id
-              ? { type: current.type, account }
-              : current,
-          )
-        }
-        onAccountDeleted={(id) =>
-          setView((current) =>
-            (current.type === "account" || current.type === "import") && current.account.id === id
-              ? { type: "none" }
-              : current,
-          )
-        }
-      />
-      <main className="content">
-        {view.type === "dashboard" && <DashboardScreen />}
-        {view.type === "categories" && <CategoriesScreen />}
-        {view.type === "budget" && <BudgetScreen />}
-        {view.type === "goals" && <GoalsScreen />}
-        {view.type === "rules" && <RulesScreen />}
-        {view.type === "settings" && <SettingsScreen />}
-        {view.type === "account" && (
-          <TransactionsScreen
-            account={view.account}
-            onBack={() => setView({ type: "none" })}
-            onImport={() => setView({ type: "import", account: view.account })}
-          />
-        )}
-        {view.type === "import" && (
-          <ImportScreen account={view.account} onBack={() => setView({ type: "account", account: view.account })} />
-        )}
-        {view.type === "none" && (
-          <p className="empty-state">Select an account to see its transactions.</p>
-        )}
-      </main>
-    </div>
+    <ConfirmationProvider>
+      <div className="app-shell">
+        <AccountsScreen
+          selectedAccountId={selectedAccount?.id ?? null}
+          isDashboardActive={view.type === "dashboard"}
+          isCategoriesActive={view.type === "categories"}
+          isBudgetActive={view.type === "budget"}
+          isGoalsActive={view.type === "goals"}
+          isRulesActive={view.type === "rules"}
+          isSettingsActive={view.type === "settings"}
+          onSelectAccount={(account) => setView({ type: "account", account })}
+          onOpenDashboard={() => setView({ type: "dashboard" })}
+          onOpenCategories={() => setView({ type: "categories" })}
+          onOpenBudget={() => setView({ type: "budget" })}
+          onOpenGoals={() => setView({ type: "goals" })}
+          onOpenRules={() => setView({ type: "rules" })}
+          onOpenSettings={() => setView({ type: "settings" })}
+          onAccountUpdated={(account) =>
+            setView((current) =>
+              (current.type === "account" || current.type === "import") && current.account.id === account.id
+                ? { type: current.type, account }
+                : current,
+            )
+          }
+          onAccountDeleted={(id) =>
+            setView((current) =>
+              (current.type === "account" || current.type === "import") && current.account.id === id
+                ? { type: "none" }
+                : current,
+            )
+          }
+        />
+        <main className="content">
+          {view.type === "dashboard" && <DashboardScreen />}
+          {view.type === "categories" && <CategoriesScreen />}
+          {view.type === "budget" && <BudgetScreen />}
+          {view.type === "goals" && <GoalsScreen />}
+          {view.type === "rules" && <RulesScreen />}
+          {view.type === "settings" && <SettingsScreen />}
+          {view.type === "account" && (
+            <TransactionsScreen
+              account={view.account}
+              onBack={() => setView({ type: "none" })}
+              onImport={() => setView({ type: "import", account: view.account })}
+            />
+          )}
+          {view.type === "import" && (
+            <ImportScreen account={view.account} onBack={() => setView({ type: "account", account: view.account })} />
+          )}
+          {view.type === "none" && (
+            <p className="empty-state">Select an account to see its transactions.</p>
+          )}
+        </main>
+      </div>
+    </ConfirmationProvider>
   );
 }
 
