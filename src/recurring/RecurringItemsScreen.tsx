@@ -5,6 +5,7 @@ import { Category } from "../categories/types";
 import { formatCents } from "../transactions/types";
 import { RecurringItemForm } from "./RecurringItemForm";
 import { FREQUENCY_LABELS, RecurringItem, RecurringItemFields } from "./types";
+import { useConfirmation } from "../ui/ConfirmationProvider";
 
 interface RecurringItemsScreenProps {
   account: Account;
@@ -16,6 +17,7 @@ export function RecurringItemsScreen({ account, categories }: RecurringItemsScre
   const [editingId, setEditingId] = useState<number | null>(null);
   const [addingManual, setAddingManual] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useConfirmation();
 
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
 
@@ -73,9 +75,17 @@ export function RecurringItemsScreen({ account, categories }: RecurringItemsScre
   }
 
   async function handleDelete(item: RecurringItem) {
-    const confirmed = window.confirm(
-      `Delete this recurring item ("${item.description}")? This cannot be undone.`,
-    );
+    const confirmed = item.is_confirmed
+      ? await confirm({
+          title: "Delete Recurring Item",
+          message: `Delete this recurring item ("${item.description}")? This cannot be undone.`,
+          confirmLabel: "Delete Recurring Item",
+        })
+      : await confirm({
+          title: "Dismiss Recurring Item",
+          message: `Dismiss the detected recurring pattern "${item.description}"? It won't be suggested again.`,
+          confirmLabel: "Dismiss",
+        });
     if (!confirmed) {
       return;
     }

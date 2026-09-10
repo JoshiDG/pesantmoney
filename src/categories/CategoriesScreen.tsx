@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { CategoryForm } from "./CategoryForm";
 import { CategoryGroupForm } from "./CategoryGroupForm";
 import { Category, CategoryFields, CategoryGroup } from "./types";
+import { useConfirmation } from "../ui/ConfirmationProvider";
 
 export function CategoriesScreen() {
   const [groups, setGroups] = useState<CategoryGroup[]>([]);
@@ -12,6 +13,7 @@ export function CategoriesScreen() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [addingCategoryForGroupId, setAddingCategoryForGroupId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useConfirmation();
 
   async function refresh() {
     try {
@@ -52,9 +54,11 @@ export function CategoriesScreen() {
   }
 
   async function handleDeleteGroup(group: CategoryGroup) {
-    const confirmed = window.confirm(
-      `Delete the group "${group.name}" and all its categories? This cannot be undone.`,
-    );
+    const confirmed = await confirm({
+      title: "Delete Group",
+      message: `Delete the group "${group.name}" and all its categories? This cannot be undone.`,
+      confirmLabel: "Delete Group",
+    });
     if (!confirmed) {
       return;
     }
@@ -87,9 +91,11 @@ export function CategoriesScreen() {
   }
 
   async function handleDeleteCategory(category: Category) {
-    const confirmed = window.confirm(
-      `Delete the category "${category.name}"? Transactions using it become uncategorized.`,
-    );
+    const confirmed = await confirm({
+      title: "Delete Category",
+      message: `Delete the category "${category.name}"? Transactions using it become uncategorized.`,
+      confirmLabel: "Delete Category",
+    });
     if (!confirmed) {
       return;
     }

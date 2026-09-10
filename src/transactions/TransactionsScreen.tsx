@@ -8,6 +8,7 @@ import { Transfer } from "../transfers/types";
 import { TransactionForm } from "./TransactionForm";
 import { TransactionsGrid } from "./TransactionsGrid";
 import { formatCents, Transaction, TransactionFields } from "./types";
+import { useConfirmation } from "../ui/ConfirmationProvider";
 
 interface TransactionsScreenProps {
   account: Account;
@@ -27,6 +28,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ledgerView, setLedgerView] = useState<LedgerView>(isInvestment ? "holdings" : "transactions");
+  const { confirm } = useConfirmation();
 
   const linkedTransactionIds = new Set(
     transfers.flatMap((transfer) => [transfer.from_transaction_id, transfer.to_transaction_id]),
@@ -107,9 +109,11 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   }
 
   async function handleDelete(transaction: Transaction) {
-    const confirmed = window.confirm(
-      `Delete this transaction ("${transaction.description}")? This cannot be undone.`,
-    );
+    const confirmed = await confirm({
+      title: "Delete Transaction",
+      message: `Delete this transaction ("${transaction.description}")? This cannot be undone.`,
+      confirmLabel: "Delete Transaction",
+    });
     if (!confirmed) {
       return;
     }

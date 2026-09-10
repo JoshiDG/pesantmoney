@@ -5,6 +5,7 @@ import { Category } from "../categories/types";
 import { formatCents } from "../transactions/types";
 import { GoalForm } from "./GoalForm";
 import { GoalFields, GoalWithProgress, progressFraction } from "./types";
+import { useConfirmation } from "../ui/ConfirmationProvider";
 
 const DEBT_ACCOUNT_TYPES = new Set(["credit_card", "loan"]);
 
@@ -15,6 +16,7 @@ export function GoalsScreen() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useConfirmation();
 
   const debtAccounts = accounts.filter((account) => DEBT_ACCOUNT_TYPES.has(account.account_type));
 
@@ -64,7 +66,11 @@ export function GoalsScreen() {
   }
 
   async function handleDelete(goal: GoalWithProgress) {
-    const confirmed = window.confirm(`Delete the goal "${goal.name}"? This cannot be undone.`);
+    const confirmed = await confirm({
+      title: "Delete Goal",
+      message: `Delete the goal "${goal.name}"? This cannot be undone.`,
+      confirmLabel: "Delete Goal",
+    });
     if (!confirmed) {
       return;
     }

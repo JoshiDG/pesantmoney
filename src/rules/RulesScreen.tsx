@@ -5,6 +5,7 @@ import { Category } from "../categories/types";
 import { centsToDollarInput } from "../transactions/types";
 import { RuleForm } from "./RuleForm";
 import { MATCH_TYPE_LABELS, Rule, RuleFields, RULE_FIELD_LABELS } from "./types";
+import { useConfirmation } from "../ui/ConfirmationProvider";
 
 function describeMatchValue(rule: Rule, accounts: Account[]): string {
   switch (rule.field) {
@@ -29,6 +30,7 @@ export function RulesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [runResultMessage, setRunResultMessage] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const { confirm } = useConfirmation();
 
   async function refresh() {
     try {
@@ -75,7 +77,11 @@ export function RulesScreen() {
   }
 
   async function handleDelete(rule: Rule) {
-    const confirmed = window.confirm("Delete this rule? This cannot be undone.");
+    const confirmed = await confirm({
+      title: "Delete Rule",
+      message: "Delete this rule? This cannot be undone.",
+      confirmLabel: "Delete Rule",
+    });
     if (!confirmed) {
       return;
     }

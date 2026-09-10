@@ -4,6 +4,7 @@ import { Account } from "../accounts/types";
 import { HoldingForm } from "./HoldingForm";
 import { PriceForm } from "./PriceForm";
 import { formatCents, Holding, HoldingFields, HoldingWithValue } from "./types";
+import { useConfirmation } from "../ui/ConfirmationProvider";
 
 interface HoldingsScreenProps {
   account: Account;
@@ -14,6 +15,7 @@ export function HoldingsScreen({ account }: HoldingsScreenProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [pricingTicker, setPricingTicker] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useConfirmation();
 
   async function refresh() {
     try {
@@ -54,7 +56,11 @@ export function HoldingsScreen({ account }: HoldingsScreenProps) {
   }
 
   async function handleDelete(holding: Holding) {
-    const confirmed = window.confirm(`Delete this holding ("${holding.ticker}")? This cannot be undone.`);
+    const confirmed = await confirm({
+      title: "Delete Holding",
+      message: `Delete this holding ("${holding.ticker}")? This cannot be undone.`,
+      confirmLabel: "Delete Holding",
+    });
     if (!confirmed) {
       return;
     }
