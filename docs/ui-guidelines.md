@@ -53,6 +53,10 @@ Three of Apple's ten 1987 principles are worth stating as ongoing house rules, s
 
 None of the six source systems yields a portable, prescriptive spacing grid or typography rule strict enough to import wholesale (see `docs/research/legacy-ui-guidelines.md` — this absence is confirmed, not an unresearched gap, for CUA's graphical rendering, QNX Photon, NeXTSTEP, and BeOS alike; only BB10's 0.69mm "design unit" is genuinely that precise, and it's a touch-density unit that doesn't transfer to a desktop pointer app). **Conclusion: don't manufacture a grid rule from these sources.** Keep evaluating spacing/typography changes case-by-case against the existing App.css token system and against Apple's Aesthetic Integrity / Perceived Stability principles (don't change spacing/type "randomly" between screens) rather than against an imported numeric rule.
 
+### Resolved case: hero numbers (issue #43)
+
+The single most important figure per screen — net worth (Dashboard), ready-to-assign (Budget), account balance (ledger/account view) — uses a shared display treatment rather than three unrelated one-off sizes: `--display-family` (`var(--font-serif)`, not mono — mono stays correct for dense tabular ledger rows), `--display-weight: 500`, `--display-tracking: -0.02em`, and a per-context size (`--display-size-1: 3rem` for net worth, `--display-size-2: 2.5rem` for ready-to-assign, `--display-size-3: 2rem` for balance). Scoped to exactly these three contexts — other large figures (e.g. Holdings' total value) keep their own standalone mono treatment.
+
 ## Explicitly not adopted
 
 - **QNX Photon's and BeOS's architecture-level philosophy** (microkernel decomposition, resource-constrained embedded targets) — not relevant to a desktop Tauri app; only their concrete UI-widget conventions (dialog button defaults, reserved shortcuts) are drawn from.

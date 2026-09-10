@@ -13,23 +13,26 @@
 
   /* Secondary text: readable content that is intentionally de-emphasized
      (descriptions, results, values, interactive labels) — needs to stay legible. */
-  --text-secondary: rgba(28, 36, 48, 0.65);
+  --text-secondary: rgba(28, 36, 48, 0.6);
   /* Tertiary text: structural chrome (column headers, small-caps captions,
      meta labels) — the most muted tier, decorative rather than content. */
-  --text-tertiary: rgba(28, 36, 48, 0.5);
+  --text-tertiary: rgba(28, 36, 48, 0.55);
 
   --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --font-sans: -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
   --font-mono: "SF Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
 
-  /* Hero-number display treatment: the single most important figure per screen
-     (net worth on Dashboard, account balance on the ledger, ready-to-assign on
-     Budget, total value on Holdings). Serif at real display size — mono
-     already owns tabular ledger rows (.amount) well; a giant mono figure reads
-     more like a terminal than "architecture". Tracking ratio mirrors Copilot's
-     112px/-2.24px headline (-0.02em) rather than importing the pixel value. */
-  --display-size: 2.5rem;
+  /* Hero-number display treatment (issue #43, triage-resolved scale): the
+     single most important figure per screen — net worth (Dashboard),
+     ready-to-assign (Budget), account balance (ledger). Serif at real
+     display size — mono already owns tabular ledger rows (.amount) well; a
+     giant mono figure reads more like a terminal than "architecture". */
+  --display-family: var(--font-serif);
+  --display-weight: 500;
   --display-tracking: -0.02em;
+  --display-size-1: 3rem;
+  --display-size-2: 2.5rem;
+  --display-size-3: 2rem;
 
   font-family: var(--font-sans);
   font-size: 16px;
@@ -169,7 +172,7 @@ body {
   border: none;
   box-shadow: none;
   padding: 0;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-size: 0.82rem;
   cursor: pointer;
   margin-bottom: 1rem;
@@ -202,22 +205,32 @@ body {
 }
 
 /* Hero-number display treatment (issue #43): the single most important figure
-   per screen — .balance (ledger), .ready-to-assign-amount (Budget),
-   .net-worth-amount (Dashboard), .holdings-total-value (Holdings) — all share
-   one deliberate serif display size/tracking instead of four ad-hoc mono
-   sizes. font-variant-numeric: lining-nums keeps digits uniform-height in the
-   serif stack (which defaults to old-style figures otherwise). */
+   per screen — .net-worth-amount (Dashboard), .ready-to-assign-amount
+   (Budget), .balance (ledger/account view) — share one deliberate serif
+   display family/weight/tracking, each at its own size per the triage's
+   resolved modular scale. font-variant-numeric: lining-nums keeps digits
+   uniform-height in the serif stack (which defaults to old-style figures
+   otherwise). Scoped to these three named contexts only — other large
+   figures (e.g. .holdings-total-value) keep their own standalone size. */
 .balance,
 .ready-to-assign-amount,
-.net-worth-amount,
-.holdings-total-value {
-  font-family: var(--font-serif);
+.net-worth-amount {
+  font-family: var(--display-family);
+  font-weight: var(--display-weight);
   font-variant-numeric: lining-nums tabular-nums;
-  font-size: var(--display-size);
   letter-spacing: var(--display-tracking);
 }
 
+.net-worth-amount {
+  font-size: var(--display-size-1);
+}
+
+.ready-to-assign-amount {
+  font-size: var(--display-size-2);
+}
+
 .balance {
+  font-size: var(--display-size-3);
   text-align: right;
   white-space: nowrap;
 }
@@ -363,7 +376,7 @@ body {
 
 .ledger-row.is-transfer .cell-description,
 .ledger-row.is-transfer .amount {
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
 }
 
 .transfer-badge {
@@ -451,7 +464,7 @@ body {
 .ledger-view-toggle button {
   background: none;
   border-color: transparent;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
 }
 
 .ledger-view-toggle button.active {
@@ -526,8 +539,11 @@ body {
   letter-spacing: 0.03em;
 }
 
-/* font-family/size/tracking for .holdings-total-value come from the shared
-   hero-number rule above (src/App.css:~213). */
+.holdings-total-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.3rem;
+}
 
 .holdings-unpriced-note {
   font-size: 0.78rem;
@@ -684,7 +700,7 @@ body {
 
 .rule-row-priority {
   font-size: 0.8rem;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .rule-form {
@@ -960,7 +976,7 @@ body {
 
 .goal-card-meta {
   font-size: 0.82rem;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   margin-top: 0.15rem;
 }
 
@@ -975,7 +991,9 @@ body {
 .goal-progress-fill {
   height: 100%;
   background: var(--credit);
-  transition: width 0.2s ease;
+  transition:
+    width 0.2s ease,
+    background-color 0.2s ease;
 }
 
 .goal-progress-fill.negative {
@@ -1496,20 +1514,18 @@ button.danger:hover,
   :root {
     /* Warm near-black canvas (not pure black), consistent with the paper/ledger
        identity rather than a neutral-cool dark gray. */
-    --paper: #1c1a17;
+    --paper: #14120f;
     --paper-line: #38352f;
-    /* ~90%-opacity-equivalent body text (not pure white) — eases eye strain
-       during extended data-review sessions. */
-    --paper-text: #e9e6df;
+    /* ~90%-opacity body text (not pure white) — eases eye strain during
+       extended data-review sessions. */
+    --paper-text: rgba(233, 230, 223, 0.9);
     --ink: #101317;
     --ink-line: #2a323b;
 
     /* Secondary/tertiary text tokens (see base :root, introduced for #47)
-       retuned against the dark canvas above: --text-secondary clears WCAG AA
-       (~5.7:1) for readable secondary content, --text-tertiary clears AA
-       (~4.7:1) with a smaller margin appropriate to purely decorative labels. */
-    --text-secondary: rgba(233, 230, 223, 0.6);
-    --text-tertiary: rgba(233, 230, 223, 0.52);
+       retuned against the dark canvas above per #45's resolved values. */
+    --text-secondary: rgba(233, 230, 223, 0.7);
+    --text-tertiary: rgba(233, 230, 223, 0.55);
   }
 
   input,
