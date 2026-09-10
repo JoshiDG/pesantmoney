@@ -11,6 +11,7 @@ interface AccountsScreenProps {
   isBudgetActive: boolean;
   isGoalsActive: boolean;
   isRulesActive: boolean;
+  isMerchantsActive: boolean;
   isSettingsActive: boolean;
   onSelectAccount: (account: Account) => void;
   onOpenDashboard: () => void;
@@ -18,6 +19,7 @@ interface AccountsScreenProps {
   onOpenBudget: () => void;
   onOpenGoals: () => void;
   onOpenRules: () => void;
+  onOpenMerchants: () => void;
   onOpenSettings: () => void;
   onAccountUpdated: (account: Account) => void;
   onAccountDeleted: (id: number) => void;
@@ -30,6 +32,7 @@ export function AccountsScreen({
   isBudgetActive,
   isGoalsActive,
   isRulesActive,
+  isMerchantsActive,
   isSettingsActive,
   onSelectAccount,
   onOpenDashboard,
@@ -37,6 +40,7 @@ export function AccountsScreen({
   onOpenBudget,
   onOpenGoals,
   onOpenRules,
+  onOpenMerchants,
   onOpenSettings,
   onAccountUpdated,
   onAccountDeleted,
@@ -133,6 +137,12 @@ export function AccountsScreen({
           onClick={onOpenRules}
         >
           <div className="account-row-name">Rules</div>
+        </li>
+        <li
+          className={`account-row${isMerchantsActive ? " selected" : ""}`}
+          onClick={onOpenMerchants}
+        >
+          <div className="account-row-name">Merchants</div>
         </li>
         <li
           className={`account-row${isSettingsActive ? " selected" : ""}`}

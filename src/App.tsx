@@ -8,6 +8,7 @@ import { CategoriesScreen } from "./categories/CategoriesScreen";
 import { DashboardScreen } from "./dashboard/DashboardScreen";
 import { GoalsScreen } from "./goals/GoalsScreen";
 import { ImportScreen } from "./import/ImportScreen";
+import { MerchantsScreen } from "./merchants/MerchantsScreen";
 import { RulesScreen } from "./rules/RulesScreen";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { TransactionsScreen } from "./transactions/TransactionsScreen";
@@ -26,6 +27,7 @@ type ContentView =
   | { type: "budget" }
   | { type: "goals" }
   | { type: "rules" }
+  | { type: "merchants" }
   | { type: "settings" }
   | { type: "account"; account: Account }
   | { type: "import"; account: Account }
@@ -59,6 +61,7 @@ function App() {
           isBudgetActive={view.type === "budget"}
           isGoalsActive={view.type === "goals"}
           isRulesActive={view.type === "rules"}
+          isMerchantsActive={view.type === "merchants"}
           isSettingsActive={view.type === "settings"}
           onSelectAccount={(account) => setView({ type: "account", account })}
           onOpenDashboard={() => setView({ type: "dashboard" })}
@@ -66,6 +69,7 @@ function App() {
           onOpenBudget={() => setView({ type: "budget" })}
           onOpenGoals={() => setView({ type: "goals" })}
           onOpenRules={() => setView({ type: "rules" })}
+          onOpenMerchants={() => setView({ type: "merchants" })}
           onOpenSettings={() => setView({ type: "settings" })}
           onAccountUpdated={(account) =>
             setView((current) =>
@@ -88,6 +92,7 @@ function App() {
           {view.type === "budget" && <BudgetScreen />}
           {view.type === "goals" && <GoalsScreen />}
           {view.type === "rules" && <RulesScreen />}
+          {view.type === "merchants" && <MerchantsScreen />}
           {view.type === "settings" && <SettingsScreen />}
           {view.type === "account" && (
             <TransactionsScreen

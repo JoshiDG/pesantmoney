@@ -258,13 +258,17 @@ export function TransactionsGrid({
         return <div {...commonProps}>{transaction.date}</div>;
       case "description":
         return (
-          <div {...commonProps} className={`${commonProps.className} cell-description`}>
+          <div
+            {...commonProps}
+            className={`${commonProps.className} cell-description`}
+            title={transaction.merchant_name ? `Original: ${transaction.description}` : undefined}
+          >
             {linkedTransactionIds.has(transaction.id) && (
               <span className="transfer-badge" title="Part of a transfer">
                 ⇄
               </span>
             )}
-            {transaction.description}
+            {transaction.merchant_name ?? transaction.description}
           </div>
         );
       case "category":

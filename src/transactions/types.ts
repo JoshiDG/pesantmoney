@@ -8,6 +8,11 @@ export interface TransactionFields {
 export interface Transaction extends TransactionFields {
   id: number;
   account_id: number;
+  // Identified merchant name (Merchant-dictionary match at import time, or a
+  // Categorization Rule's rename action). Display-only: never a substitute
+  // for `description`, which stays the raw imported/edited source of truth.
+  merchant_name: string | null;
+  hidden: boolean;
 }
 
 export function centsToDollarInput(cents: number): string {

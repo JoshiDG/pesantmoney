@@ -7,8 +7,26 @@ import { Transaction } from "./types";
 
 function makeTransactions(): Transaction[] {
   return [
-    { id: 1, account_id: 1, date: "2026-08-01", amount_cents: -1250, description: "Coffee shop", category_id: null },
-    { id: 2, account_id: 1, date: "2026-08-02", amount_cents: 300000, description: "Paycheck", category_id: null },
+    {
+      id: 1,
+      account_id: 1,
+      date: "2026-08-01",
+      amount_cents: -1250,
+      description: "Coffee shop",
+      category_id: null,
+      merchant_name: null,
+      hidden: false,
+    },
+    {
+      id: 2,
+      account_id: 1,
+      date: "2026-08-02",
+      amount_cents: 300000,
+      description: "Paycheck",
+      category_id: null,
+      merchant_name: null,
+      hidden: false,
+    },
   ];
 }
 
@@ -135,7 +153,16 @@ describe("TransactionsGrid multi-row selection and bulk category assignment", ()
   it("shift-clicking a second checkbox selects the range in between", () => {
     const transactions: Transaction[] = [
       ...makeTransactions(),
-      { id: 3, account_id: 1, date: "2026-08-03", amount_cents: -500, description: "Groceries", category_id: null },
+      {
+        id: 3,
+        account_id: 1,
+        date: "2026-08-03",
+        amount_cents: -500,
+        description: "Groceries",
+        category_id: null,
+        merchant_name: null,
+        hidden: false,
+      },
     ];
     const props = renderGrid({ transactions });
 
@@ -147,5 +174,32 @@ describe("TransactionsGrid multi-row selection and bulk category assignment", ()
     const bulkSelect = screen.getByLabelText("Assign category to selection") as HTMLSelectElement;
     fireEvent.change(bulkSelect, { target: { value: "10" } });
     expect(props.onBulkAssignCategory).toHaveBeenCalledWith([1, 2, 3], 10);
+  });
+});
+
+describe("TransactionsGrid merchant name display", () => {
+  it("shows the identified merchant name in place of the raw description when present", () => {
+    const transactions: Transaction[] = [
+      {
+        id: 1,
+        account_id: 1,
+        date: "2026-08-01",
+        amount_cents: -1250,
+        description: "SQ *BLUE BOTTLE COF 04/12",
+        category_id: null,
+        merchant_name: "Blue Bottle Coffee",
+        hidden: false,
+      },
+    ];
+    renderGrid({ transactions });
+
+    expect(screen.getByText("Blue Bottle Coffee")).toBeInTheDocument();
+    expect(screen.queryByText("SQ *BLUE BOTTLE COF 04/12")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the raw description when no merchant is identified", () => {
+    renderGrid();
+
+    expect(screen.getByText("Coffee shop")).toBeInTheDocument();
   });
 });
