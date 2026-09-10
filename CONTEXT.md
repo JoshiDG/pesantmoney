@@ -13,8 +13,12 @@ The bank, brokerage, or lender an Account is held at. Metadata only (name, logo)
 _Avoid_: Bank, provider
 
 **Transaction**:
-A single dated money movement posted to an Account, arriving either via Import or manual entry.
+A single dated money movement posted to an Account, arriving either via Import or manual entry. May be marked Hidden.
 _Avoid_: Purchase, entry
+
+**Hidden** (Transaction):
+A per-Transaction flag, set by a Categorization Rule's hide action or manually, and independently reversible. Excludes the Transaction from the default Transactions list view (revealed by a "show hidden" toggle) and from income/expense/budget/report totals. A stronger, single-Transaction exclusion than Transfer-linking — see ADR-0014.
+_Avoid_: Excluded, archived (Excluded is used loosely for Transfers, which use a different mechanism; Hidden is its own flag)
 
 **Import**:
 The act of loading a batch of Transactions into an Account from a user-supplied file (CSV/OFX/QFX). Never automated or credential-based.
@@ -28,8 +32,12 @@ _Avoid_: Template, format (too generic)
 A user-facing label for what a Transaction was for (e.g. Groceries, Rent), assigned manually or by a Categorization Rule. Belongs to a Category Group.
 
 **Categorization Rule**:
-A user-defined condition (matching on description, amount, or Account) that assigns a Category to matching Transactions automatically on Import. Entirely local; no cloud merchant lookup. Description matching prefers a Transaction's Merchant name when one was identified, falling back to the raw imported description otherwise.
+A user-defined condition (matching on description, amount, or Account) that, on matching Transactions automatically on Import, assigns a Category, renames the merchant (see ADR-0012; shares the same `merchant_name` field as any Merchant-dictionary match, taking precedence over it), adds a Tag, or marks the Transaction Hidden (see ADR-0014). Entirely local; no cloud merchant lookup. Description matching prefers a Transaction's Merchant name when one was identified, falling back to the raw imported description otherwise.
 _Avoid_: Auto-categorization (describes the behavior, not the entity)
+
+**Tag**:
+A user-defined, freeform label a Transaction can carry zero or more of, independent of its Category — many-to-many, unlike Category's one-per-Transaction model. Created ad hoc wherever assigned (manually or by a Categorization Rule action); no dedicated management screen in v1. See ADR-0013.
+_Avoid_: Label (too generic), Category (a Transaction has exactly one Category but any number of Tags)
 
 **Merchant**:
 A user-maintained keyword-to-name mapping (e.g. `"SQ *BLUE BOTTLE"` → "Blue Bottle Coffee") used to identify a clean, human-readable name from a Transaction's raw imported description. Matched by substring at Import time only; seeded with a small local dictionary and freely editable/extendable by the user. Never a cloud lookup or ML model — see ADR-0011.
@@ -58,3 +66,11 @@ _Avoid_: Payment (a Transfer is a specific kind of movement, not any payment)
 **Goal**:
 A target dollar amount by a target date, linked to either a savings Category (progress accrues from Assigned amounts) or a debt Account (progress accrues from balance paydown). Progress is derived from existing Transaction/Budget/Account data, not a separate input.
 _Avoid_: Target (already used for Monarch's rejected budget model — see Budget)
+
+**Goal Pace**:
+A Goal's on-track/ahead/behind classification: the trailing 3-month average of realized monthly progress compared against the pace required to reach the target amount by the target date. Derived entirely from existing progress data — never a separate user-entered contribution amount (unlike Monarch) — see ADR-0015. Goals with fewer than 3 months of history report "insufficient data" rather than a projection.
+_Avoid_: On-track score, projection input (implies a user-supplied contribution figure)
+
+**Payoff Projection**:
+A hypothetical debt-free date computed for a single debt Account from its current balance, a manually-entered APR, and a manually-entered hypothetical monthly payment, using standard amortization math. Entirely local and recomputed on demand — never persisted as Transaction data, and never affects Goal progress, which stays derived solely from balance paydown per **Goal**. If the entered payment doesn't cover accruing interest, no finite payoff date exists and the app says so explicitly rather than showing a misleading number. See ADR-0016; multi-Account avalanche/snowball prioritization across debts is a separate, larger concept deferred to a follow-up.
+_Avoid_: Payoff Goal (a Payoff Projection is a what-if calculator, not a persisted Goal)
