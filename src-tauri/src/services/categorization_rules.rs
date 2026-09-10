@@ -368,6 +368,14 @@ pub struct RuleEffects {
     pub tag_ids: Vec<i64>,
 }
 
+impl RuleEffects {
+    /// Mirrors `RuleActions::is_empty` -- true when no matching rule (or an
+    /// unmatched Transaction) produced any effect at all.
+    pub fn is_noop(&self) -> bool {
+        self.category_id.is_none() && self.rename_value.is_none() && !self.hide && self.tag_ids.is_empty()
+    }
+}
+
 /// Returns the actions of the first matching rule (by priority, lower runs
 /// first), or `RuleEffects::default()` (no effect) if no rule matches this
 /// Transaction. Only the single highest-priority matching rule's actions
@@ -454,8 +462,7 @@ pub fn apply_to_uncategorized(conn: &Connection, account_id: Option<i64>) -> rus
             &txn.description,
             txn.merchant_name.as_deref(),
         )?;
-        if effects.category_id.is_none() && effects.rename_value.is_none() && !effects.hide && effects.tag_ids.is_empty()
-        {
+        if effects.is_noop() {
             continue;
         }
 
