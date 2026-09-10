@@ -49,6 +49,8 @@ function mockInvokeWithAccountBalances(balances: [Account, number][]) {
         return [];
       case "upcoming_recurring_items_all":
         return [];
+      case "list_goals_with_progress":
+        return [];
       default:
         return null;
     }
@@ -414,5 +416,81 @@ describe("DashboardScreen recurring widget", () => {
     render(<DashboardScreen />);
 
     expect(await screen.findByText("Nothing upcoming.")).toBeInTheDocument();
+  });
+});
+
+describe("DashboardScreen goals widget", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+  });
+
+  it("shows each goal's progress and pace", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_net_worth":
+        case "get_net_worth_as_of":
+        case "get_ready_to_assign":
+          return 0;
+        case "get_net_worth_by_account":
+        case "get_budget_for_month":
+        case "get_daily_cash_flow_for_range":
+        case "list_accounts":
+        case "list_categories":
+        case "list_transactions":
+        case "upcoming_recurring_items_all":
+          return [];
+        case "list_goals_with_progress":
+          return [
+            {
+              id: 1,
+              name: "Emergency Fund",
+              target_cents: 500_000,
+              target_date: "2027-01-01",
+              linked_category_id: null,
+              linked_account_id: null,
+              starting_balance_cents: null,
+              created_at: "2026-01-01",
+              progress_cents: 250_000,
+              pace: "on_track",
+            },
+          ];
+        default:
+          return null;
+      }
+    });
+
+    render(<DashboardScreen />);
+
+    await screen.findByText("Emergency Fund");
+    expect(screen.getByText("On track")).toBeInTheDocument();
+    expect(screen.getByText(/\$2,500\.00 of \$5,000\.00/)).toBeInTheDocument();
+  });
+
+  it("shows an empty-state prompt when there are no goals", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_net_worth":
+        case "get_net_worth_as_of":
+        case "get_ready_to_assign":
+          return 0;
+        case "get_net_worth_by_account":
+        case "get_budget_for_month":
+        case "get_daily_cash_flow_for_range":
+        case "list_accounts":
+        case "list_categories":
+        case "list_transactions":
+        case "upcoming_recurring_items_all":
+        case "list_goals_with_progress":
+          return [];
+        default:
+          return null;
+      }
+    });
+
+    render(<DashboardScreen />);
+
+    expect(
+      await screen.findByText("No goals yet. Create one from the Goals screen to track it here."),
+    ).toBeInTheDocument();
   });
 });

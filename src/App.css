@@ -1512,6 +1512,15 @@ button.danger:hover,
   color: var(--text-tertiary);
 }
 
+.goal-widget-row {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--paper-line);
+}
+
+.goal-widget-row .dashboard-list-row-name {
+  margin-bottom: 0.4rem;
+}
+
 /* ---------- settings ---------- */
 
 .settings-panel {
