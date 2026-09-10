@@ -21,6 +21,7 @@ pub use csv_parser::{ColumnMapping, SignConvention};
 
 use crate::services::categorization_rules;
 use crate::services::merchants;
+use crate::services::tags;
 use crate::services::transactions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -240,28 +241,47 @@ pub fn commit_import(
         // time; this never overwrites `row.description`, which stays intact
         // for fingerprint-based dedup on future imports (issue #36).
         let merchant_name = merchants::match_description(conn, &row.description).map_err(|e| e.to_string())?;
+
+        // Rule actions are computed regardless of whether the caller already
+        // supplied an explicit category_id (e.g. a user-edited preview row):
+        // rename/hide/tag are independent of category assignment, so they
+        // still apply even when category assignment itself is overridden.
+        // Rule matching prefers the identified Merchant name over the raw
+        // description when one was found.
+        let rule_effects = categorization_rules::apply_to_transaction(
+            conn,
+            account_id,
+            &row.date,
+            row.amount_cents,
+            &row.description,
+            merchant_name.as_deref(),
+        )
+        .map_err(|e| e.to_string())?;
+
         // Respect an explicit category_id from the caller; only fall back to
-        // a matching Categorization Rule when none was given. Rule matching
-        // prefers the identified Merchant name over the raw description
-        // when one was found.
-        let category_id = match row.category_id {
-            Some(category_id) => Some(category_id),
-            None => categorization_rules::apply_to_transaction_with_merchant(
-                conn,
-                account_id,
-                &row.date,
-                row.amount_cents,
-                &row.description,
-                merchant_name.as_deref(),
-            )
-            .map_err(|e| e.to_string())?,
-        };
+        // a matching Categorization Rule's category when none was given.
+        let category_id = row.category_id.or(rule_effects.category_id);
+
         let created =
             transactions::create(conn, account_id, &row.date, row.amount_cents, &row.description, category_id)
                 .map_err(|e| e.to_string())?;
-        if let Some(merchant_name) = &merchant_name {
+
+        // A rule's rename (issue #37) always wins over whatever a
+        // Merchant-dictionary pass would have produced for the same
+        // Transaction (issue #36), since it's a more specific, intentional
+        // signal -- and neither ever touches `description`, which must stay
+        // stable for fingerprinting (ADR-0002).
+        let effective_merchant_name = rule_effects.rename_value.as_deref().or(merchant_name.as_deref());
+        if let Some(merchant_name) = effective_merchant_name {
             transactions::set_merchant_name(conn, created.id, Some(merchant_name)).map_err(|e| e.to_string())?;
         }
+        if rule_effects.hide {
+            transactions::set_hidden(conn, created.id, true).map_err(|e| e.to_string())?;
+        }
+        for tag_id in &rule_effects.tag_ids {
+            tags::attach(conn, created.id, *tag_id).map_err(|e| e.to_string())?;
+        }
+
         seen_fingerprints.insert(fp);
         imported_count += 1;
     }
@@ -423,7 +443,10 @@ mod tests {
             crate::services::categorization_rules::RuleField::Description,
             crate::services::categorization_rules::MatchType::Contains,
             "coffee",
-            category_id,
+            crate::services::categorization_rules::RuleActions {
+                category_id: Some(category_id),
+                ..Default::default()
+            },
             0,
         )
         .expect("create categorization rule");
@@ -459,7 +482,10 @@ mod tests {
             crate::services::categorization_rules::RuleField::Description,
             crate::services::categorization_rules::MatchType::Contains,
             "coffee",
-            rule_category_id,
+            crate::services::categorization_rules::RuleActions {
+                category_id: Some(rule_category_id),
+                ..Default::default()
+            },
             0,
         )
         .expect("create categorization rule");
@@ -602,7 +628,10 @@ mod tests {
             crate::services::categorization_rules::RuleField::Description,
             crate::services::categorization_rules::MatchType::Equals,
             "zzz test coffee",
-            category_id,
+            crate::services::categorization_rules::RuleActions {
+                category_id: Some(category_id),
+                ..Default::default()
+            },
             0,
         )
         .expect("create categorization rule");

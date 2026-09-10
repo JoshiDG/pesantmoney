@@ -21,6 +21,15 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "0014_transaction_merchant_name",
         include_str!("../../migrations/0014_transaction_merchant_name.sql"),
     ),
+    (
+        "0015_transaction_hidden",
+        include_str!("../../migrations/0015_transaction_hidden.sql"),
+    ),
+    (
+        "0016_categorization_rule_actions",
+        include_str!("../../migrations/0016_categorization_rule_actions.sql"),
+    ),
+    ("0017_tags", include_str!("../../migrations/0017_tags.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<()> {
