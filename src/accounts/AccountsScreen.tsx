@@ -5,43 +5,21 @@ import { ACCOUNT_TYPE_LABELS, Account, AccountFields } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 
 interface AccountsScreenProps {
-  selectedAccountId: number | null;
-  isDashboardActive: boolean;
-  isCategoriesActive: boolean;
-  isBudgetActive: boolean;
-  isGoalsActive: boolean;
-  isRulesActive: boolean;
-  isMerchantsActive: boolean;
-  isSettingsActive: boolean;
+  // Opens the account's existing per-Account ledger screen (unchanged from
+  // today). Per issue #50, this stays pointed at the per-Account ledger for
+  // now -- it will be repointed to the new all-Accounts Transactions view,
+  // pre-filtered to this Account, once that view lands in #51.
   onSelectAccount: (account: Account) => void;
-  onOpenDashboard: () => void;
-  onOpenCategories: () => void;
-  onOpenBudget: () => void;
-  onOpenGoals: () => void;
-  onOpenRules: () => void;
-  onOpenMerchants: () => void;
-  onOpenSettings: () => void;
+  // Import always targets exactly one Account, so its entry point lives here
+  // as a per-Account row action (per #49/#50).
+  onImportAccount: (account: Account) => void;
   onAccountUpdated: (account: Account) => void;
   onAccountDeleted: (id: number) => void;
 }
 
 export function AccountsScreen({
-  selectedAccountId,
-  isDashboardActive,
-  isCategoriesActive,
-  isBudgetActive,
-  isGoalsActive,
-  isRulesActive,
-  isMerchantsActive,
-  isSettingsActive,
   onSelectAccount,
-  onOpenDashboard,
-  onOpenCategories,
-  onOpenBudget,
-  onOpenGoals,
-  onOpenRules,
-  onOpenMerchants,
-  onOpenSettings,
+  onImportAccount,
   onAccountUpdated,
   onAccountDeleted,
 }: AccountsScreenProps) {
@@ -104,53 +82,21 @@ export function AccountsScreen({
   }
 
   return (
-    <nav className="sidebar">
-      <div className="sidebar-brand">PesantMoney</div>
+    <section>
+      <div className="content-header">
+        <div>
+          <h2 className="account-title">Accounts</h2>
+          <div className="account-title-meta">
+            Every account you&rsquo;ve added -- select one to see its transactions
+          </div>
+        </div>
+      </div>
 
-      <ul className="account-list nav-list">
-        <li
-          className={`account-row${isDashboardActive ? " selected" : ""}`}
-          onClick={onOpenDashboard}
-        >
-          <div className="account-row-name">Dashboard</div>
-        </li>
-        <li
-          className={`account-row${isBudgetActive ? " selected" : ""}`}
-          onClick={onOpenBudget}
-        >
-          <div className="account-row-name">Budget</div>
-        </li>
-        <li
-          className={`account-row${isCategoriesActive ? " selected" : ""}`}
-          onClick={onOpenCategories}
-        >
-          <div className="account-row-name">Categories</div>
-        </li>
-        <li
-          className={`account-row${isGoalsActive ? " selected" : ""}`}
-          onClick={onOpenGoals}
-        >
-          <div className="account-row-name">Goals</div>
-        </li>
-        <li
-          className={`account-row${isRulesActive ? " selected" : ""}`}
-          onClick={onOpenRules}
-        >
-          <div className="account-row-name">Rules</div>
-        </li>
-        <li
-          className={`account-row${isMerchantsActive ? " selected" : ""}`}
-          onClick={onOpenMerchants}
-        >
-          <div className="account-row-name">Merchants</div>
-        </li>
-        <li
-          className={`account-row${isSettingsActive ? " selected" : ""}`}
-          onClick={onOpenSettings}
-        >
-          <div className="account-row-name">Settings</div>
-        </li>
-      </ul>
+      {error && (
+        <p className="sidebar-error" role="alert">
+          {error}
+        </p>
+      )}
 
       <ul className="account-list">
         {accounts.map((account) =>
@@ -163,11 +109,7 @@ export function AccountsScreen({
               />
             </li>
           ) : (
-            <li
-              key={account.id}
-              className={`account-row${account.id === selectedAccountId ? " selected" : ""}`}
-              onClick={() => onSelectAccount(account)}
-            >
+            <li key={account.id} className="account-row" onClick={() => onSelectAccount(account)}>
               <div>
                 <div className="account-row-name">{account.name}</div>
                 <div className="account-row-meta">
@@ -176,6 +118,15 @@ export function AccountsScreen({
                 </div>
               </div>
               <div className="account-actions">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onImportAccount(account);
+                  }}
+                >
+                  Import
+                </button>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -200,16 +151,13 @@ export function AccountsScreen({
         )}
       </ul>
 
-      <div className="sidebar-footer">
-        {adding ? (
-          <AccountForm onSubmit={handleCreate} onCancel={() => setAdding(false)} />
-        ) : (
-          <button type="button" onClick={() => setAdding(true)}>
-            Add account
-          </button>
-        )}
-        {error && <p className="sidebar-error" role="alert">{error}</p>}
-      </div>
-    </nav>
+      {adding ? (
+        <AccountForm onSubmit={handleCreate} onCancel={() => setAdding(false)} />
+      ) : (
+        <button type="button" onClick={() => setAdding(true)}>
+          Add account
+        </button>
+      )}
+    </section>
   );
 }

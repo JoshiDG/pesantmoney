@@ -9,6 +9,7 @@ import { DashboardScreen } from "./dashboard/DashboardScreen";
 import { GoalsScreen } from "./goals/GoalsScreen";
 import { ImportScreen } from "./import/ImportScreen";
 import { MerchantsScreen } from "./merchants/MerchantsScreen";
+import { NavRail } from "./ui/NavRail";
 import { RulesScreen } from "./rules/RulesScreen";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { TransactionsScreen } from "./transactions/TransactionsScreen";
@@ -21,8 +22,13 @@ import { ConfirmationProvider } from "./ui/ConfirmationProvider";
 // runs once immediately on launch rather than waiting a full interval.
 const NOTIFICATION_CHECK_INTERVAL_MS = 60_000;
 
+// Categories/Rules/Merchants remain reachable as their own view states for
+// now (their screens/routes are unchanged) even though the nav rail no
+// longer links to them directly -- per issue #50, they move under Settings
+// as tabs in a later slice (#58), at which point these view states go away.
 type ContentView =
   | { type: "dashboard" }
+  | { type: "accounts" }
   | { type: "categories" }
   | { type: "budget" }
   | { type: "goals" }
@@ -35,8 +41,6 @@ type ContentView =
 
 function App() {
   const [view, setView] = useState<ContentView>({ type: "dashboard" });
-
-  const selectedAccount = view.type === "account" || view.type === "import" ? view.account : null;
 
   useEffect(() => {
     function checkNotifications() {
@@ -54,40 +58,36 @@ function App() {
   return (
     <ConfirmationProvider>
       <div className="app-shell">
-        <AccountsScreen
-          selectedAccountId={selectedAccount?.id ?? null}
-          isDashboardActive={view.type === "dashboard"}
-          isCategoriesActive={view.type === "categories"}
-          isBudgetActive={view.type === "budget"}
-          isGoalsActive={view.type === "goals"}
-          isRulesActive={view.type === "rules"}
-          isMerchantsActive={view.type === "merchants"}
-          isSettingsActive={view.type === "settings"}
-          onSelectAccount={(account) => setView({ type: "account", account })}
+        <NavRail
+          active={view.type}
           onOpenDashboard={() => setView({ type: "dashboard" })}
-          onOpenCategories={() => setView({ type: "categories" })}
+          onOpenAccounts={() => setView({ type: "accounts" })}
           onOpenBudget={() => setView({ type: "budget" })}
           onOpenGoals={() => setView({ type: "goals" })}
-          onOpenRules={() => setView({ type: "rules" })}
-          onOpenMerchants={() => setView({ type: "merchants" })}
           onOpenSettings={() => setView({ type: "settings" })}
-          onAccountUpdated={(account) =>
-            setView((current) =>
-              (current.type === "account" || current.type === "import") && current.account.id === account.id
-                ? { type: current.type, account }
-                : current,
-            )
-          }
-          onAccountDeleted={(id) =>
-            setView((current) =>
-              (current.type === "account" || current.type === "import") && current.account.id === id
-                ? { type: "none" }
-                : current,
-            )
-          }
         />
         <main className="content">
           {view.type === "dashboard" && <DashboardScreen />}
+          {view.type === "accounts" && (
+            <AccountsScreen
+              onSelectAccount={(account) => setView({ type: "account", account })}
+              onImportAccount={(account) => setView({ type: "import", account })}
+              onAccountUpdated={(account) =>
+                setView((current) =>
+                  (current.type === "account" || current.type === "import") && current.account.id === account.id
+                    ? { type: current.type, account }
+                    : current,
+                )
+              }
+              onAccountDeleted={(id) =>
+                setView((current) =>
+                  (current.type === "account" || current.type === "import") && current.account.id === id
+                    ? { type: "none" }
+                    : current,
+                )
+              }
+            />
+          )}
           {view.type === "categories" && <CategoriesScreen />}
           {view.type === "budget" && <BudgetScreen />}
           {view.type === "goals" && <GoalsScreen />}
@@ -97,7 +97,7 @@ function App() {
           {view.type === "account" && (
             <TransactionsScreen
               account={view.account}
-              onBack={() => setView({ type: "none" })}
+              onBack={() => setView({ type: "accounts" })}
               onImport={() => setView({ type: "import", account: view.account })}
             />
           )}

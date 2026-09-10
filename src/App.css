@@ -69,8 +69,11 @@ body {
   min-height: 100vh;
 }
 
+/* Pure icon+label nav rail (#50 / ADR-0017) -- no inline Account list, so it
+   no longer needs the wide, scrollable-list width the old sidebar (which
+   doubled as the Account list) required. */
 .sidebar {
-  width: 272px;
+  width: 208px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -88,42 +91,66 @@ body {
   border-bottom: 1px solid var(--ink-line);
 }
 
-.account-list {
+.nav-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 1 1 auto;
-  overflow-y: auto;
 }
 
-.nav-list {
-  flex: 0 0 auto;
-  padding-bottom: 0.75rem;
-  margin-bottom: 0.75rem;
-  border-bottom: 1px solid var(--ink-line);
+.nav-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border-radius: 3px;
+  border: none;
+  border-left: 3px solid transparent;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-rail-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-rail-item.selected {
+  background: rgba(255, 255, 255, 0.08);
+  border-left-color: var(--credit);
+}
+
+.nav-rail-label {
+  font-size: 0.92rem;
+}
+
+/* ---------- Accounts screen (content pane) ---------- */
+
+.account-list {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .account-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.55rem 0.65rem;
-  border-radius: 3px;
-  border-left: 3px solid transparent;
+  gap: 1rem;
+  padding: 0.65rem 0.25rem;
+  border-bottom: 1px solid var(--paper-line);
   cursor: pointer;
 }
 
 .account-row:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.account-row.selected {
-  background: rgba(255, 255, 255, 0.08);
-  border-left-color: var(--credit);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .account-row-name {
@@ -131,8 +158,8 @@ body {
 }
 
 .account-row-meta {
-  font-size: 0.76rem;
-  color: rgba(231, 227, 216, 0.55);
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
 }
 
 .account-actions {
@@ -141,16 +168,10 @@ body {
   flex-shrink: 0;
 }
 
-.sidebar-footer {
-  padding-top: 0.75rem;
-  margin-top: 0.5rem;
-  border-top: 1px solid var(--ink-line);
-}
-
 .sidebar-error {
-  color: #e3a99e;
+  color: var(--debit);
   font-size: 0.8rem;
-  margin: 0.5rem 0 0;
+  margin: 0.5rem 0 1rem;
 }
 
 /* ---------- content pane ---------- */
