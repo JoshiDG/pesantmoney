@@ -29,6 +29,10 @@ function mockInvokeWithAccountBalances(balances: [Account, number][]) {
         return balances.reduce((sum, [, balance]) => sum + balance, 0);
       case "get_daily_cash_flow_for_range":
         return [];
+      case "get_ready_to_assign":
+        return 0;
+      case "get_budget_for_month":
+        return [];
       default:
         return null;
     }
@@ -114,6 +118,59 @@ describe("DashboardScreen net worth widget", () => {
   });
 });
 
+describe("DashboardScreen budget widget", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+  });
+
+  it("shows Ready to Assign and a per-group Assigned/Activity/Available rollup", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_net_worth":
+        case "get_net_worth_as_of":
+          return 0;
+        case "get_net_worth_by_account":
+          return [];
+        case "get_daily_cash_flow_for_range":
+          return [];
+        case "get_ready_to_assign":
+          return 15_000;
+        case "get_budget_for_month":
+          return [
+            {
+              category_id: 1,
+              category_name: "Groceries",
+              group_id: 1,
+              group_name: "Food",
+              assigned_cents: 40_000,
+              activity_cents: -12_000,
+              available_cents: 28_000,
+            },
+            {
+              category_id: 2,
+              category_name: "Restaurants",
+              group_id: 1,
+              group_name: "Food",
+              assigned_cents: 10_000,
+              activity_cents: -5_000,
+              available_cents: 5_000,
+            },
+          ];
+        default:
+          return null;
+      }
+    });
+
+    render(<DashboardScreen />);
+
+    expect(await screen.findByText("$150.00")).toBeInTheDocument();
+    expect(screen.getByText("Food")).toBeInTheDocument();
+    expect(screen.getByText("$500.00")).toBeInTheDocument();
+    expect(screen.getByText("-$170.00")).toBeInTheDocument();
+    expect(screen.getByText("$330.00")).toBeInTheDocument();
+  });
+});
+
 describe("DashboardScreen spending widget", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();
@@ -126,6 +183,10 @@ describe("DashboardScreen spending widget", () => {
         case "get_net_worth_as_of":
           return 0;
         case "get_net_worth_by_account":
+          return [];
+        case "get_ready_to_assign":
+          return 0;
+        case "get_budget_for_month":
           return [];
         case "get_daily_cash_flow_for_range": {
           const startDate = String((args as { start_date?: string } | undefined)?.start_date ?? "");

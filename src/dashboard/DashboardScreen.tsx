@@ -1,3 +1,4 @@
+import { BudgetWidget } from "./BudgetWidget";
 import { NetWorthWidget } from "./NetWorthWidget";
 import { SpendingWidget } from "./SpendingWidget";
 
@@ -13,6 +14,7 @@ export function DashboardScreen() {
 
       <div className="dashboard-grid">
         <div className="dashboard-column">
+          <BudgetWidget />
           <SpendingWidget />
           <NetWorthWidget />
         </div>
