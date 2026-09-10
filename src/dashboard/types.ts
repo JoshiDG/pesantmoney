@@ -66,3 +66,19 @@ export function formatMonthShort(month: string): string {
   const mon = Number(month.split("-")[1]);
   return SHORT_MONTH_LABELS[mon - 1];
 }
+
+/** Today as "YYYY-MM-DD", in the local timezone. */
+export function todayIso(): string {
+  return isoDateNDaysAgo(0);
+}
+
+/** "YYYY-MM-DD" for the date `days` calendar days before today, in the local timezone. */
+export function isoDateNDaysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}`.padStart(4, "0") +
+    "-" +
+    `${d.getMonth() + 1}`.padStart(2, "0") +
+    "-" +
+    `${d.getDate()}`.padStart(2, "0");
+}

@@ -23,8 +23,8 @@ function mockInvokeWithAccountBalances(balances: [Account, number][]) {
         return balances.reduce((sum, [, balance]) => sum + balance, 0);
       case "get_net_worth_by_account":
         return balances;
-      case "get_cash_flow_for_range":
-        return [0, 0];
+      case "get_net_worth_as_of":
+        return balances.reduce((sum, [, balance]) => sum + balance, 0);
       default:
         return null;
     }
@@ -89,5 +89,23 @@ describe("DashboardScreen accounts disclosure", () => {
 
     expect(await screen.findByText("No accounts yet.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /see all|show fewer/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("DashboardScreen net worth widget", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+  });
+
+  it("renders the net worth hero figure from get_net_worth", async () => {
+    mockInvokeWithAccountBalances([
+      [account(1, "First Checking"), 42_500],
+      [account(2, "Rewards Card", "credit_card"), -2_500],
+    ]);
+
+    render(<DashboardScreen />);
+
+    await screen.findByText("First Checking");
+    expect(screen.getByText("$400.00")).toBeInTheDocument();
   });
 });
