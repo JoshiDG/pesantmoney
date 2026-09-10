@@ -34,7 +34,9 @@ describe("GoalsScreen delete confirmation", () => {
               linked_category_id: 10,
               linked_account_id: null,
               starting_balance_cents: null,
+              created_at: "2026-01-01 00:00:00",
               progress_cents: 5000,
+              pace: "insufficient_data",
             },
           ];
         case "list_categories":

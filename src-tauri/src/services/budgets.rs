@@ -72,8 +72,12 @@ pub fn assign(
 }
 
 /// The Assigned amount recorded for a Category in exactly one month, or 0 if
-/// none was ever recorded for that month.
-fn assigned_cents_for_month(conn: &Connection, category_id: i64, month: &str) -> rusqlite::Result<i64> {
+/// none was ever recorded for that month. Public so `services::goals` can
+/// build a trailing-months average of incremental Assigned for a
+/// category-linked Goal's pace classification (see `Goal Pace` in
+/// CONTEXT.md) -- deliberately the same per-month figure `assign` writes,
+/// not the cumulative total `cumulative_assigned_cents` returns.
+pub fn assigned_cents_for_month(conn: &Connection, category_id: i64, month: &str) -> rusqlite::Result<i64> {
     conn.query_row(
         "SELECT assigned_cents FROM budget_assignments WHERE category_id = ?1 AND month = ?2",
         rusqlite::params![category_id, month],

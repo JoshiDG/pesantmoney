@@ -126,6 +126,23 @@ pub fn balance_cents(conn: &Connection, account_id: i64) -> rusqlite::Result<i64
     )
 }
 
+/// Net change in a single Account's balance from Transactions dated within
+/// `month` ("YYYY-MM") -- i.e. that month's contribution to `balance_cents`,
+/// not the cumulative balance itself. Used by `services::goals` to build a
+/// trailing-months average of realized progress for an account-linked
+/// (debt) Goal's pace classification: paying down debt is a positive net
+/// change per the same sign convention `balance_cents` and
+/// `goals::progress_cents` already establish (payments recorded positive,
+/// charges negative).
+pub fn net_change_cents_for_month(conn: &Connection, account_id: i64, month: &str) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(amount_cents), 0) FROM transactions \
+         WHERE account_id = ?1 AND substr(date, 1, 7) = ?2",
+        rusqlite::params![account_id, month],
+        |row| row.get(0),
+    )
+}
+
 /// Sums income (positive amounts) and expense (negative amounts, reported as
 /// a positive magnitude) across Transactions, excluding any Transaction that
 /// is one half of a linked Transfer. A Transfer moves money between two of

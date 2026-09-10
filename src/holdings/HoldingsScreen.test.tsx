@@ -12,7 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const mockedInvoke = vi.mocked(invoke);
 
-const account: Account = { id: 1, name: "Brokerage", account_type: "investment", institution_name: null };
+const account: Account = { id: 1, name: "Brokerage", account_type: "investment", institution_name: null, apr_bps: null };
 
 function renderScreen() {
   render(

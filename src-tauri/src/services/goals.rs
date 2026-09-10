@@ -3,6 +3,7 @@ use std::fmt;
 use rusqlite::{OptionalExtension, Connection};
 use serde::Serialize;
 
+use crate::services::accounts;
 use crate::services::budgets;
 use crate::services::transactions;
 
@@ -25,15 +26,42 @@ pub struct Goal {
     /// category-linked goals, where progress is derived from Assigned
     /// instead and there is no "starting point" to snapshot.
     pub starting_balance_cents: Option<i64>,
+    /// When the Goal was created, as SQLite's `datetime('now')` renders it
+    /// ("YYYY-MM-DD HH:MM:SS"). Used only to gate `goal_pace`'s
+    /// `InsufficientData` classification on whether 3 full calendar months
+    /// have elapsed since creation -- never shown as a headline figure.
+    pub created_at: String,
 }
 
-/// A Goal plus its derived progress, for rendering the Goals screen in one
-/// round trip.
+/// A Goal's on-track/ahead/behind pace classification -- see the "Goal Pace"
+/// term in CONTEXT.md and ADR-0015. Derived entirely from existing
+/// Assigned/Transaction history (via `goal_pace`), never from a
+/// separately-entered contribution amount.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GoalPace {
+    /// Fewer than 3 full calendar months have elapsed since the Goal was
+    /// created -- too little history to extrapolate a pace from.
+    InsufficientData,
+    /// Trailing 3-month average pace is at least 110% of the pace required
+    /// to hit the target by `target_date`.
+    Ahead,
+    /// Trailing 3-month average pace is within 90%-110% of the required
+    /// pace, or the Goal has already met its target.
+    OnTrack,
+    /// Trailing 3-month average pace is below 90% of the required pace, or
+    /// `target_date` has passed without the target being met.
+    Behind,
+}
+
+/// A Goal plus its derived progress and pace, for rendering the Goals screen
+/// in one round trip.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct GoalWithProgress {
     #[serde(flatten)]
     pub goal: Goal,
     pub progress_cents: i64,
+    pub pace: GoalPace,
 }
 
 /// Errors specific to Goal validation. Kept separate from `rusqlite::Error`
@@ -81,11 +109,12 @@ fn goal_from_row(row: &rusqlite::Row) -> rusqlite::Result<Goal> {
         linked_category_id: row.get(4)?,
         linked_account_id: row.get(5)?,
         starting_balance_cents: row.get(6)?,
+        created_at: row.get(7)?,
     })
 }
 
 const SELECT_GOAL: &str = "SELECT id, name, target_cents, target_date, linked_category_id, \
-     linked_account_id, starting_balance_cents FROM goals";
+     linked_account_id, starting_balance_cents, created_at FROM goals";
 
 /// Creates a Goal linked to exactly one of `linked_category_id` /
 /// `linked_account_id` (a caller passing both or neither gets
@@ -140,15 +169,9 @@ pub fn create(
     )?;
     let id = conn.last_insert_rowid();
 
-    Ok(Goal {
-        id,
-        name: name.to_string(),
-        target_cents,
-        target_date: target_date.to_string(),
-        linked_category_id,
-        linked_account_id,
-        starting_balance_cents,
-    })
+    // Re-fetch rather than constructing in-memory so `created_at` (a
+    // DB-generated default) is populated correctly.
+    get(conn, id)?.ok_or(GoalError::NotFound(id))
 }
 
 pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Goal>> {
@@ -242,9 +265,264 @@ pub fn list_with_progress(conn: &Connection) -> rusqlite::Result<Vec<GoalWithPro
         .into_iter()
         .map(|goal| {
             let progress_cents = progress_cents(conn, &goal)?;
-            Ok(GoalWithProgress { goal, progress_cents })
+            let pace = goal_pace(conn, &goal, progress_cents)?;
+            Ok(GoalWithProgress { goal, progress_cents, pace })
         })
         .collect()
+}
+
+/// The "YYYY-MM" month key from the front of a "YYYY-MM-DD..." date string
+/// (works equally for a plain date and SQLite's `datetime('now')` output,
+/// since both start with "YYYY-MM-DD").
+fn month_key(date: &str) -> &str {
+    &date[0..7]
+}
+
+fn split_year_month(month: &str) -> (i32, i32) {
+    let year: i32 = month[0..4].parse().expect("valid 4-digit year in month key");
+    let mon: i32 = month[5..7].parse().expect("valid 2-digit month in month key");
+    (year, mon)
+}
+
+/// Whole-month distance from `from_month` to `to_month` (positive if `to`
+/// is later, negative if earlier, 0 if the same month).
+fn month_diff(from_month: &str, to_month: &str) -> i32 {
+    let (from_year, from_mon) = split_year_month(from_month);
+    let (to_year, to_mon) = split_year_month(to_month);
+    (to_year * 12 + to_mon) - (from_year * 12 + from_mon)
+}
+
+/// Adds `delta` calendar months to a "YYYY-MM" key, wrapping the year as
+/// needed. Mirrors `budgets::add_months` but kept local to this module since
+/// pace math is the only caller here.
+fn add_months_to_month(month: &str, delta: i32) -> String {
+    let (year, mon) = split_year_month(month);
+    let zero_based_total = year * 12 + (mon - 1) + delta;
+    let new_year = zero_based_total.div_euclid(12);
+    let new_month = zero_based_total.rem_euclid(12) + 1;
+    format!("{new_year:04}-{new_month:02}")
+}
+
+/// The average of the realized incremental progress in each of the 3
+/// calendar months immediately before `current_month` (i.e. NOT including
+/// the current, still-in-progress month) -- the "actual pace" side of
+/// `goal_pace`'s comparison. Category-linked goals use that month's
+/// incremental Assigned; account-linked goals use that month's net balance
+/// change, per the same sign convention `progress_cents` already
+/// establishes (positive = progress toward the goal).
+fn trailing_average_progress_cents(
+    conn: &Connection,
+    goal: &Goal,
+    current_month: &str,
+) -> rusqlite::Result<i64> {
+    let mut total = 0i64;
+    for months_back in 1..=3 {
+        let month = add_months_to_month(current_month, -months_back);
+        total += if let Some(category_id) = goal.linked_category_id {
+            budgets::assigned_cents_for_month(conn, category_id, &month)?
+        } else if let Some(account_id) = goal.linked_account_id {
+            transactions::net_change_cents_for_month(conn, account_id, &month)?
+        } else {
+            0
+        };
+    }
+    Ok(total / 3)
+}
+
+/// A Goal's on-track/ahead/behind pace, derived entirely from existing
+/// progress data -- see the "Goal Pace" term in CONTEXT.md and ADR-0015.
+///
+/// Precedence, evaluated in order:
+/// 1. Progress already meets or exceeds the target -> `OnTrack`, regardless
+///    of `target_date` (a Goal met early is not "insufficient data" or
+///    "behind").
+/// 2. `target_date` has passed without the target being met -> `Behind`
+///    (a hard deadline miss, not a pace comparison -- avoids the
+///    ill-defined "infinite required pace" case).
+/// 3. Fewer than 3 full calendar months have elapsed since the Goal was
+///    created -> `InsufficientData` (do not extrapolate from 1-2 data
+///    points).
+/// 4. Otherwise, compare the trailing 3-month average actual pace against
+///    the pace required to hit the target by `target_date`
+///    (`(target - progress) / months_remaining`, `months_remaining` floored
+///    at 1): >=110% required is `Ahead`, 90%-110% is `OnTrack`, <90% is
+///    `Behind`.
+pub fn goal_pace(conn: &Connection, goal: &Goal, progress_cents: i64) -> rusqlite::Result<GoalPace> {
+    if progress_cents >= goal.target_cents {
+        return Ok(GoalPace::OnTrack);
+    }
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let current_month = month_key(&today).to_string();
+    let target_month = month_key(&goal.target_date).to_string();
+
+    if month_diff(&current_month, &target_month) < 0 {
+        // target_date has already passed and the target was not met.
+        return Ok(GoalPace::Behind);
+    }
+
+    let created_month = month_key(&goal.created_at).to_string();
+    if month_diff(&created_month, &current_month) < 3 {
+        return Ok(GoalPace::InsufficientData);
+    }
+
+    let months_remaining = month_diff(&current_month, &target_month).max(1);
+    let required_pace_cents = (goal.target_cents - progress_cents) as f64 / months_remaining as f64;
+    let actual_pace_cents = trailing_average_progress_cents(conn, goal, &current_month)? as f64;
+
+    // required_pace_cents is guaranteed > 0 here: progress_cents < target_cents
+    // was established above, and months_remaining is floored at 1.
+    let ratio = actual_pace_cents / required_pace_cents;
+
+    Ok(if ratio >= 1.10 {
+        GoalPace::Ahead
+    } else if ratio >= 0.90 {
+        GoalPace::OnTrack
+    } else {
+        GoalPace::Behind
+    })
+}
+
+/// The result of a single-Account debt payoff projection (see the "Payoff
+/// Projection" term in CONTEXT.md and ADR-0016): either a finite number of
+/// monthly payment periods and the resulting date, or an explicit signal
+/// that the entered payment does not even cover accruing interest so no
+/// finite payoff date exists.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum PayoffProjection {
+    Payoff { months: i64, payoff_date: String },
+    WillNotPayOff,
+}
+
+/// Safety cap on the amortization loop in `project_payoff` (100 years of
+/// monthly payments) so a payment that merely keeps pace with interest
+/// (converging to payoff only in the limit) terminates as `WillNotPayOff`
+/// instead of looping effectively forever.
+const MAX_PAYOFF_MONTHS: i64 = 1_200;
+
+/// Standard amortization: how many monthly payment periods until
+/// `balance_owed_cents` (a positive amount owed) reaches zero, applying one
+/// month of interest (`apr_bps / 12`) to the remaining balance before each
+/// payment is applied. If `monthly_payment_cents` does not exceed the
+/// interest accrued in a period, the balance never shrinks and no finite
+/// payoff date exists.
+///
+/// `as_of_date` ("YYYY-MM-DD") is the date the projection counts forward
+/// from (typically today) -- used only to compute a human `payoff_date`,
+/// not the math itself.
+pub fn project_payoff(
+    balance_owed_cents: i64,
+    apr_bps: i64,
+    monthly_payment_cents: i64,
+    as_of_date: &str,
+) -> PayoffProjection {
+    if balance_owed_cents <= 0 {
+        return PayoffProjection::Payoff {
+            months: 0,
+            payoff_date: as_of_date.to_string(),
+        };
+    }
+
+    let monthly_rate = apr_bps as f64 / 10_000.0 / 12.0;
+    let mut remaining = balance_owed_cents as f64;
+    let mut months = 0i64;
+
+    loop {
+        let interest = remaining * monthly_rate;
+        if monthly_payment_cents as f64 <= interest {
+            return PayoffProjection::WillNotPayOff;
+        }
+        remaining = remaining + interest - monthly_payment_cents as f64;
+        months += 1;
+        if remaining <= 0.0 {
+            break;
+        }
+        if months >= MAX_PAYOFF_MONTHS {
+            return PayoffProjection::WillNotPayOff;
+        }
+    }
+
+    PayoffProjection::Payoff {
+        months,
+        payoff_date: add_months_to_date(as_of_date, months),
+    }
+}
+
+/// Adds `months` calendar months to a "YYYY-MM-DD" date, clamping the day
+/// downward if the target month is shorter (e.g. Jan 31 + 1 month -> Feb 28).
+fn add_months_to_date(date: &str, months: i64) -> String {
+    use chrono::{Datelike, NaiveDate};
+
+    let parsed = NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .unwrap_or_else(|_| NaiveDate::from_ymd_opt(1970, 1, 1).expect("valid fallback date"));
+
+    let zero_based_total = parsed.year() * 12 + (parsed.month() as i32 - 1) + months as i32;
+    let year = zero_based_total.div_euclid(12);
+    let month = (zero_based_total.rem_euclid(12) + 1) as u32;
+
+    for day in (1..=parsed.day()).rev() {
+        if let Some(date) = NaiveDate::from_ymd_opt(year, month, day) {
+            return date.format("%Y-%m-%d").to_string();
+        }
+    }
+    // Unreachable in practice (day 1 is always valid), but keep a safe
+    // fallback rather than panicking.
+    format!("{year:04}-{month:02}-01")
+}
+
+/// Errors specific to the debt payoff projection lookup, kept separate from
+/// `GoalError` since this is Account-centric, not Goal-centric (a Payoff
+/// Projection is a what-if calculator, not tied to any particular Goal --
+/// see CONTEXT.md).
+#[derive(Debug)]
+pub enum PayoffError {
+    AccountNotFound(i64),
+    AprNotSet(i64),
+    Db(rusqlite::Error),
+}
+
+impl fmt::Display for PayoffError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PayoffError::AccountNotFound(id) => write!(f, "account {id} does not exist"),
+            PayoffError::AprNotSet(id) => {
+                write!(f, "account {id} has no APR set -- cannot project a payoff date")
+            }
+            PayoffError::Db(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl From<rusqlite::Error> for PayoffError {
+    fn from(e: rusqlite::Error) -> Self {
+        PayoffError::Db(e)
+    }
+}
+
+impl std::error::Error for PayoffError {}
+
+/// Looks up a debt Account's current balance and APR, then projects a
+/// payoff date for a hypothetical `monthly_payment_cents`. The hypothetical
+/// payment is never persisted (not written to Transactions, Assigned
+/// amounts, or any Goal field) -- this is a recompute-on-demand what-if
+/// calculator, and it does not touch `Goal::progress_cents`.
+pub fn project_account_payoff(
+    conn: &Connection,
+    account_id: i64,
+    monthly_payment_cents: i64,
+) -> Result<PayoffProjection, PayoffError> {
+    let account = accounts::get(conn, account_id)?.ok_or(PayoffError::AccountNotFound(account_id))?;
+    let apr_bps = account.apr_bps.ok_or(PayoffError::AprNotSet(account_id))?;
+    // `balance_cents` is negative while debt is owed (see the sign
+    // convention documented on `progress_cents` and `accounts::net_worth_cents`);
+    // a positive or zero balance means no debt is owed, so there's nothing to
+    // project.
+    let balance = transactions::balance_cents(conn, account_id)?;
+    let balance_owed_cents = (-balance).max(0);
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+    Ok(project_payoff(balance_owed_cents, apr_bps, monthly_payment_cents, &today))
 }
 
 #[cfg(test)]
@@ -507,5 +785,271 @@ mod tests {
         let card = goals.iter().find(|g| g.goal.name == "Pay off card").unwrap();
         assert_eq!(vacation.progress_cents, 15_000);
         assert_eq!(card.progress_cents, 400);
+    }
+
+    /// Backdates a Goal's `created_at` by `months_ago` calendar months (via
+    /// SQLite's own datetime modifiers, so it stays consistent with however
+    /// the DB actually renders "now"), then re-fetches it so callers get a
+    /// `Goal` whose `created_at` reflects the change.
+    fn backdate_goal(conn: &Connection, goal_id: i64, months_ago: i64) -> Goal {
+        conn.execute(
+            &format!("UPDATE goals SET created_at = datetime('now', '-{months_ago} months') WHERE id = ?1"),
+            [goal_id],
+        )
+        .expect("backdate goal");
+        get(conn, goal_id).expect("get goal").expect("goal exists")
+    }
+
+    #[test]
+    fn goal_pace_is_insufficient_data_for_a_brand_new_goal() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn);
+        let goal = create(&conn, "Vacation", 200_000, "2030-12-31", Some(category_id), None)
+            .expect("create goal");
+
+        let pace = goal_pace(&conn, &goal, 0).expect("compute pace");
+
+        assert_eq!(pace, GoalPace::InsufficientData);
+    }
+
+    #[test]
+    fn goal_pace_is_on_track_when_progress_already_meets_the_target() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn);
+        let goal = create(&conn, "Vacation", 200_000, "2030-12-31", Some(category_id), None)
+            .expect("create goal");
+
+        // Met (or exceeded) early: on track regardless of target_date or
+        // history length.
+        let pace = goal_pace(&conn, &goal, 250_000).expect("compute pace");
+
+        assert_eq!(pace, GoalPace::OnTrack);
+    }
+
+    #[test]
+    fn goal_pace_is_behind_when_target_date_has_passed_without_meeting_the_target() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn);
+        let goal = create(&conn, "Vacation", 200_000, "2020-01-01", Some(category_id), None)
+            .expect("create goal");
+
+        let pace = goal_pace(&conn, &goal, 50_000).expect("compute pace");
+
+        assert_eq!(pace, GoalPace::Behind);
+    }
+
+    #[test]
+    fn goal_pace_is_ahead_when_trailing_pace_comfortably_exceeds_the_required_pace() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn);
+        let current_month = chrono::Local::now().format("%Y-%m").to_string();
+        // Target 3 months out, so months_remaining = 3.
+        let target_date = format!("{}-01", add_months_to_month(&current_month, 3));
+        let goal = create(&conn, "Vacation", 60_000, &target_date, Some(category_id), None)
+            .expect("create goal");
+        let goal = backdate_goal(&conn, goal.id, 3);
+
+        // 11,000/month assigned in each of the 3 trailing months -> progress
+        // 33,000, required pace (60,000 - 33,000) / 3 = 9,000/month, actual
+        // 11,000/month -> ratio 1.222, comfortably >= 1.10.
+        for months_back in 1..=3 {
+            let month = add_months_to_month(&current_month, -months_back);
+            budgets::assign(&conn, category_id, &month, 11_000).expect("assign budget");
+        }
+        let progress = progress_cents(&conn, &goal).expect("compute progress");
+
+        let pace = goal_pace(&conn, &goal, progress).expect("compute pace");
+
+        assert_eq!(progress, 33_000);
+        assert_eq!(pace, GoalPace::Ahead);
+    }
+
+    #[test]
+    fn goal_pace_is_on_track_when_trailing_pace_matches_the_required_pace() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn);
+        let current_month = chrono::Local::now().format("%Y-%m").to_string();
+        let target_date = format!("{}-01", add_months_to_month(&current_month, 3));
+        let goal = create(&conn, "Vacation", 60_000, &target_date, Some(category_id), None)
+            .expect("create goal");
+        let goal = backdate_goal(&conn, goal.id, 3);
+
+        // 10,000/month -> progress 30,000, required (60,000-30,000)/3 =
+        // 10,000/month, actual 10,000/month -> ratio exactly 1.0.
+        for months_back in 1..=3 {
+            let month = add_months_to_month(&current_month, -months_back);
+            budgets::assign(&conn, category_id, &month, 10_000).expect("assign budget");
+        }
+        let progress = progress_cents(&conn, &goal).expect("compute progress");
+
+        let pace = goal_pace(&conn, &goal, progress).expect("compute pace");
+
+        assert_eq!(pace, GoalPace::OnTrack);
+    }
+
+    #[test]
+    fn goal_pace_is_behind_when_trailing_pace_falls_short_of_the_required_pace() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn);
+        let current_month = chrono::Local::now().format("%Y-%m").to_string();
+        let target_date = format!("{}-01", add_months_to_month(&current_month, 3));
+        let goal = create(&conn, "Vacation", 60_000, &target_date, Some(category_id), None)
+            .expect("create goal");
+        let goal = backdate_goal(&conn, goal.id, 3);
+
+        // 8,000/month -> progress 24,000, required (60,000-24,000)/3 =
+        // 12,000/month, actual 8,000/month -> ratio 0.667, well below 0.90.
+        for months_back in 1..=3 {
+            let month = add_months_to_month(&current_month, -months_back);
+            budgets::assign(&conn, category_id, &month, 8_000).expect("assign budget");
+        }
+        let progress = progress_cents(&conn, &goal).expect("compute progress");
+
+        let pace = goal_pace(&conn, &goal, progress).expect("compute pace");
+
+        assert_eq!(pace, GoalPace::Behind);
+    }
+
+    #[test]
+    fn goal_pace_uses_net_balance_change_for_an_account_linked_goal() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn, AccountType::CreditCard);
+        transactions::create(&conn, account_id, "2020-01-01", -60_000, "Charge", None)
+            .expect("create transaction");
+        let current_month = chrono::Local::now().format("%Y-%m").to_string();
+        let target_date = format!("{}-01", add_months_to_month(&current_month, 3));
+        let goal = create(&conn, "Pay off card", 60_000, &target_date, None, Some(account_id))
+            .expect("create goal");
+        let goal = backdate_goal(&conn, goal.id, 3);
+
+        // Pay down 11,000/month for the trailing 3 months -> same shape as
+        // the category-linked "ahead" case above.
+        for months_back in 1..=3 {
+            let month = add_months_to_month(&current_month, -months_back);
+            let date = format!("{month}-15");
+            transactions::create(&conn, account_id, &date, 11_000, "Payment", None)
+                .expect("create transaction");
+        }
+        let progress = progress_cents(&conn, &goal).expect("compute progress");
+
+        let pace = goal_pace(&conn, &goal, progress).expect("compute pace");
+
+        assert_eq!(progress, 33_000);
+        assert_eq!(pace, GoalPace::Ahead);
+    }
+
+    #[test]
+    fn project_payoff_matches_a_hand_computed_amortization_example() {
+        // $5,000 balance, 20% APR, $200/month payment.
+        let projection = project_payoff(500_000, 2_000, 20_000, "2026-01-01");
+
+        match projection {
+            PayoffProjection::Payoff { months, payoff_date } => {
+                assert_eq!(months, 33);
+                assert_eq!(payoff_date, "2028-10-01");
+            }
+            PayoffProjection::WillNotPayOff => panic!("expected a finite payoff"),
+        }
+    }
+
+    #[test]
+    fn project_payoff_reports_will_not_pay_off_when_payment_does_not_exceed_interest() {
+        // $5,000 balance at 20% APR accrues ~$83.33/month in interest; an
+        // $80/month payment never touches principal.
+        let projection = project_payoff(500_000, 2_000, 8_000, "2026-01-01");
+
+        assert_eq!(projection, PayoffProjection::WillNotPayOff);
+    }
+
+    #[test]
+    fn project_payoff_reports_will_not_pay_off_when_payment_exactly_equals_interest() {
+        // The boundary case: a payment that exactly covers interest never
+        // reduces principal either.
+        let projection = project_payoff(500_000, 2_000, 8_333, "2026-01-01");
+
+        assert_eq!(projection, PayoffProjection::WillNotPayOff);
+    }
+
+    #[test]
+    fn project_payoff_is_immediate_for_a_zero_or_negative_balance() {
+        let projection = project_payoff(0, 2_000, 20_000, "2026-01-01");
+
+        assert_eq!(
+            projection,
+            PayoffProjection::Payoff {
+                months: 0,
+                payoff_date: "2026-01-01".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn project_payoff_handles_a_zero_apr_as_straight_division() {
+        // No interest: balance shrinks by exactly the payment each month.
+        let projection = project_payoff(10_000, 0, 2_500, "2026-01-01");
+
+        assert_eq!(
+            projection,
+            PayoffProjection::Payoff {
+                months: 4,
+                payoff_date: "2026-05-01".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn project_account_payoff_fails_when_the_account_does_not_exist() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+
+        let result = project_account_payoff(&conn, 999, 20_000);
+
+        assert!(matches!(result, Err(PayoffError::AccountNotFound(999))));
+    }
+
+    #[test]
+    fn project_account_payoff_fails_when_no_apr_is_set() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn, AccountType::CreditCard);
+        transactions::create(&conn, account_id, "2026-01-01", -500_000, "Charge", None)
+            .expect("create transaction");
+
+        let result = project_account_payoff(&conn, account_id, 20_000);
+
+        assert!(matches!(result, Err(PayoffError::AprNotSet(id)) if id == account_id));
+    }
+
+    #[test]
+    fn project_account_payoff_uses_the_accounts_balance_and_apr() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn, AccountType::CreditCard);
+        transactions::create(&conn, account_id, "2026-01-01", -500_000, "Charge", None)
+            .expect("create transaction");
+        accounts::set_apr(&conn, account_id, Some(2_000)).expect("set apr");
+
+        let projection = project_account_payoff(&conn, account_id, 20_000).expect("project payoff");
+
+        match projection {
+            PayoffProjection::Payoff { months, .. } => assert_eq!(months, 33),
+            PayoffProjection::WillNotPayOff => panic!("expected a finite payoff"),
+        }
+    }
+
+    #[test]
+    fn project_account_payoff_does_not_change_goal_progress_semantics() {
+        // Guardrail for the acceptance criterion that the payoff projection
+        // must never touch Goal::progress_cents / balance-paydown logic.
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn, AccountType::CreditCard);
+        transactions::create(&conn, account_id, "2026-01-01", -500_000, "Charge", None)
+            .expect("create transaction");
+        accounts::set_apr(&conn, account_id, Some(2_000)).expect("set apr");
+        let goal = create(&conn, "Pay off card", 500_000, "2030-12-31", None, Some(account_id))
+            .expect("create goal");
+
+        let progress_before = progress_cents(&conn, &goal).expect("compute progress");
+        project_account_payoff(&conn, account_id, 20_000).expect("project payoff");
+        let progress_after = progress_cents(&conn, &goal).expect("compute progress");
+
+        assert_eq!(progress_before, progress_after);
     }
 }

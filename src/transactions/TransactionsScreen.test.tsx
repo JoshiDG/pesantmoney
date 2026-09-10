@@ -18,7 +18,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 const mockedInvoke = vi.mocked(invoke);
 const mockedSave = vi.mocked(save);
 
-const account: Account = { id: 1, name: "Checking", account_type: "checking", institution_name: null };
+const account: Account = { id: 1, name: "Checking", account_type: "checking", institution_name: null, apr_bps: null };
 
 function renderScreen() {
   render(
