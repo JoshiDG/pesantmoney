@@ -1282,6 +1282,11 @@ button.danger:hover,
   font-size: 0.85rem;
 }
 
+.csv-export-status {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+}
+
 .settings-note {
   font-size: 0.82rem;
   line-height: 1.6;

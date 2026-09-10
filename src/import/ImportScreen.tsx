@@ -144,6 +144,28 @@ export function ImportScreen({ account, onBack }: ImportScreenProps) {
       {error && <p role="alert">{error}</p>}
 
       <div className="import-step">
+        <div className="import-csv-guidelines" role="note">
+          <h3 className="import-csv-guidelines-heading">CSV format guidelines</h3>
+          <ul>
+            <li>Your file needs a Date, Amount, and Description column, in any order — map their
+              positions below (0 is the first column).</li>
+            <li>Dates: <code>YYYY-MM-DD</code> (e.g. 2026-08-01) or <code>MM/DD/YYYY</code> (e.g.
+              8/1/2026).</li>
+            <li>Amounts: plain numbers, optionally with a <code>$</code> and thousands commas (e.g.
+              <code>$1,234.56</code>); parentheses (e.g. <code>(45.00)</code>) are treated as
+              negative.</li>
+            <li>Sign convention: choose whether a negative amount means money out (most exports) or
+              money in (some credit card exports invert this) — pick whichever matches your file
+              below.</li>
+            <li>If the first row is column names rather than data, leave "First row is a header"
+              checked.</li>
+            <li>OFX and QFX files are auto-detected and don't need column mapping — these guidelines
+              only apply to CSV files.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div className="import-step">
         <input
           aria-label="Choose file to import"
           type="file"
@@ -178,23 +200,6 @@ export function ImportScreen({ account, onBack }: ImportScreenProps) {
 
       {fileContents != null && format === "csv" && (
         <div className="import-step">
-          <div className="import-csv-guidelines" role="note">
-            <h3 className="import-csv-guidelines-heading">CSV format guidelines</h3>
-            <ul>
-              <li>Your file needs a Date, Amount, and Description column, in any order — map their
-                positions below (0 is the first column).</li>
-              <li>Dates: <code>YYYY-MM-DD</code> (e.g. 2026-08-01) or <code>MM/DD/YYYY</code> (e.g.
-                8/1/2026).</li>
-              <li>Amounts: plain numbers, optionally with a <code>$</code> and thousands commas (e.g.
-                <code>$1,234.56</code>); parentheses (e.g. <code>(45.00)</code>) are treated as
-                negative.</li>
-              <li>Sign convention: choose whether a negative amount means money out (most exports) or
-                money in (some credit card exports invert this) — pick whichever matches your file
-                below.</li>
-              <li>If the first row is column names rather than data, leave "First row is a header"
-                checked.</li>
-            </ul>
-          </div>
           <ImportMappingForm
             profiles={profiles}
             mapping={mapping}

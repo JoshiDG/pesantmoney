@@ -9,6 +9,7 @@ import { TransactionForm } from "./TransactionForm";
 import { TransactionsGrid } from "./TransactionsGrid";
 import { formatCents, Transaction, TransactionFields } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
+import { useCsvExport } from "../ui/useCsvExport";
 
 interface TransactionsScreenProps {
   account: Account;
@@ -29,6 +30,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [error, setError] = useState<string | null>(null);
   const [ledgerView, setLedgerView] = useState<LedgerView>(isInvestment ? "holdings" : "transactions");
   const { confirm } = useConfirmation();
+  const { exportCsv, exporting: exportingCsv, result: csvExportResult, error: csvExportError } = useCsvExport();
 
   const linkedTransactionIds = new Set(
     transfers.flatMap((transfer) => [transfer.from_transaction_id, transfer.to_transaction_id]),
@@ -165,12 +167,22 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
           <button type="button" onClick={onImport}>
             Import
           </button>
+          <button type="button" onClick={exportCsv} disabled={exportingCsv}>
+            {exportingCsv ? "Exporting…" : "Export CSV…"}
+          </button>
           <div className="balance">
             <span className="balance-label">Balance</span>
             {formatCents(balanceCents)}
           </div>
         </div>
       </div>
+
+      {csvExportResult && <p className="csv-export-status">{csvExportResult}</p>}
+      {csvExportError && (
+        <p className="csv-export-status" role="alert">
+          {csvExportError}
+        </p>
+      )}
 
       <div className="ledger-view-toggle">
         {isInvestment && (

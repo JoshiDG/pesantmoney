@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
+import { useCsvExport } from "../ui/useCsvExport";
 import { BackupStatus, Settings, UpdateCheckResult } from "./types";
 
 export function SettingsScreen() {
@@ -14,9 +15,12 @@ export function SettingsScreen() {
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [exportingCsv, setExportingCsv] = useState(false);
-  const [csvExportResult, setCsvExportResult] = useState<string | null>(null);
-  const [csvExportError, setCsvExportError] = useState<string | null>(null);
+  const {
+    exportCsv,
+    exporting: exportingCsv,
+    result: csvExportResult,
+    error: csvExportError,
+  } = useCsvExport();
 
   async function refresh() {
     try {
@@ -111,38 +115,6 @@ export function SettingsScreen() {
       setExportError(String(err));
     } finally {
       setExporting(false);
-    }
-  }
-
-  async function handleExportCsv() {
-    setCsvExportResult(null);
-    setCsvExportError(null);
-
-    const defaultPath = `pesantmoney-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
-    let destination: string | null;
-    try {
-      destination = await save({
-        defaultPath,
-        filters: [{ name: "CSV", extensions: ["csv"] }],
-      });
-    } catch (err) {
-      setCsvExportError(String(err));
-      return;
-    }
-
-    if (!destination) {
-      // User cancelled the dialog.
-      return;
-    }
-
-    setExportingCsv(true);
-    try {
-      const rowCount = await invoke<number>("export_transactions_csv", { destination });
-      setCsvExportResult(`Exported ${rowCount} transaction${rowCount === 1 ? "" : "s"} to ${destination}.`);
-    } catch (err) {
-      setCsvExportError(String(err));
-    } finally {
-      setExportingCsv(false);
     }
   }
 
@@ -280,13 +252,13 @@ export function SettingsScreen() {
               Or export just your transactions as a CSV file, to open in a spreadsheet or import into
               another tool.
             </div>
-            <button type="button" onClick={handleExportCsv} disabled={exportingCsv}>
+            <button type="button" onClick={exportCsv} disabled={exportingCsv}>
               {exportingCsv ? "Exporting…" : "Export as CSV…"}
             </button>
             {csvExportResult && <p className="settings-check-result">{csvExportResult}</p>}
             {csvExportError && (
               <p className="settings-check-result" role="alert">
-                CSV export failed: {csvExportError}
+                {csvExportError}
               </p>
             )}
           </div>
