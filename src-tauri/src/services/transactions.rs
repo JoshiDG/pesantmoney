@@ -9,6 +9,18 @@ pub struct Transaction {
     pub amount_cents: i64,
     pub description: String,
     pub category_id: Option<i64>,
+    /// Excluded from the default Transactions list and from all
+    /// income/expense/budget/report totals -- same strength of exclusion as
+    /// a linked Transfer, but an independent condition (see CONTEXT.md
+    /// "Hidden", ADR-0014). Settable manually or via a Categorization Rule's
+    /// hide action (issue #39).
+    pub hidden: bool,
+    /// The display name a Categorization Rule's rename action (issue #37)
+    /// or, later, Merchant-dictionary matching (issue #36/ADR-0012) assigns
+    /// to this Transaction. Never overwrites `description`, which must stay
+    /// stable for import-dedup fingerprinting (ADR-0002). `None` means no
+    /// rename/enrichment has applied -- display `description` instead.
+    pub merchant_name: Option<String>,
 }
 
 fn transaction_from_row(row: &rusqlite::Row) -> rusqlite::Result<Transaction> {
@@ -19,8 +31,13 @@ fn transaction_from_row(row: &rusqlite::Row) -> rusqlite::Result<Transaction> {
         amount_cents: row.get(3)?,
         description: row.get(4)?,
         category_id: row.get(5)?,
+        hidden: row.get(6)?,
+        merchant_name: row.get(7)?,
     })
 }
+
+const SELECT_COLUMNS: &str =
+    "id, account_id, date, amount_cents, description, category_id, hidden, merchant_name";
 
 pub fn create(
     conn: &Connection,
@@ -43,14 +60,33 @@ pub fn create(
         amount_cents,
         description: description.to_string(),
         category_id,
+        hidden: false,
+        merchant_name: None,
     })
 }
 
 pub fn list_for_account(conn: &Connection, account_id: i64) -> rusqlite::Result<Vec<Transaction>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions \
-         WHERE account_id = ?1 ORDER BY date, id",
-    )?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM transactions WHERE account_id = ?1 ORDER BY date, id"
+    ))?;
+    let rows = stmt.query_map([account_id], transaction_from_row)?;
+    rows.collect()
+}
+
+/// Like `list_for_account`, but for the default Transactions list view:
+/// excludes hidden Transactions unless `include_hidden` is set (the "show
+/// hidden" toggle -- issue #39).
+pub fn list_visible_for_account(
+    conn: &Connection,
+    account_id: i64,
+    include_hidden: bool,
+) -> rusqlite::Result<Vec<Transaction>> {
+    if include_hidden {
+        return list_for_account(conn, account_id);
+    }
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM transactions WHERE account_id = ?1 AND hidden = 0 ORDER BY date, id"
+    ))?;
     let rows = stmt.query_map([account_id], transaction_from_row)?;
     rows.collect()
 }
@@ -59,7 +95,7 @@ pub fn list_for_account(conn: &Connection, account_id: i64) -> rusqlite::Result<
 /// needs to fetch a Transaction's account and amount to validate a link.
 pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Transaction>> {
     conn.query_row(
-        "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions WHERE id = ?1",
+        &format!("SELECT {SELECT_COLUMNS} FROM transactions WHERE id = ?1"),
         [id],
         transaction_from_row,
     )
@@ -69,10 +105,9 @@ pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Transaction>> 
 /// All Transactions on Accounts other than `account_id`, for the transfers
 /// service's cross-account match search.
 pub fn list_excluding_account(conn: &Connection, account_id: i64) -> rusqlite::Result<Vec<Transaction>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions \
-         WHERE account_id != ?1 ORDER BY date, id",
-    )?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM transactions WHERE account_id != ?1 ORDER BY date, id"
+    ))?;
     let rows = stmt.query_map([account_id], transaction_from_row)?;
     rows.collect()
 }
@@ -93,20 +128,40 @@ pub fn update(
         return Err(rusqlite::Error::QueryReturnedNoRows);
     }
 
-    let account_id: i64 = conn.query_row(
-        "SELECT account_id FROM transactions WHERE id = ?1",
-        [id],
-        |row| row.get(0),
-    )?;
+    get(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
+}
 
-    Ok(Transaction {
-        id,
-        account_id,
-        date: date.to_string(),
-        amount_cents,
-        description: description.to_string(),
-        category_id,
-    })
+/// Sets or clears the `hidden` flag on a single Transaction. Always
+/// available regardless of how the Transaction came to be hidden (rule or
+/// manual) -- unhiding is a plain, independently reversible action (ADR-0014).
+pub fn set_hidden(conn: &Connection, id: i64, hidden: bool) -> rusqlite::Result<Transaction> {
+    let rows_affected = conn.execute(
+        "UPDATE transactions SET hidden = ?1, updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![hidden, id],
+    )?;
+    if rows_affected == 0 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    get(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
+}
+
+/// Sets (or clears, with `None`) the `merchant_name` display field. Never
+/// touches `description`. Used by the Categorization Rule rename action
+/// (issue #37) and available for a future Merchant-dictionary pass
+/// (issue #36) to share the same field.
+pub fn set_merchant_name(
+    conn: &Connection,
+    id: i64,
+    merchant_name: Option<&str>,
+) -> rusqlite::Result<Transaction> {
+    let rows_affected = conn.execute(
+        "UPDATE transactions SET merchant_name = ?1, updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![merchant_name, id],
+    )?;
+    if rows_affected == 0 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    get(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
 }
 
 pub fn delete(conn: &Connection, id: i64) -> rusqlite::Result<()> {
@@ -128,11 +183,14 @@ pub fn balance_cents(conn: &Connection, account_id: i64) -> rusqlite::Result<i64
 
 /// Sums income (positive amounts) and expense (negative amounts, reported as
 /// a positive magnitude) across Transactions, excluding any Transaction that
-/// is one half of a linked Transfer. A Transfer moves money between two of
-/// the user's own Accounts (e.g. a credit card payment) — no money entered
-/// or left the household, so it must not count as income or expense even
-/// though it still affects each Account's own balance (see `balance_cents`,
-/// which intentionally does NOT apply this exclusion).
+/// is one half of a linked Transfer, OR that is `hidden`. A Transfer moves
+/// money between two of the user's own Accounts (e.g. a credit card payment)
+/// — no money entered or left the household, so it must not count as income
+/// or expense even though it still affects each Account's own balance (see
+/// `balance_cents`, which intentionally does NOT apply this exclusion). A
+/// hidden Transaction (issue #39) is excluded for the same "don't count
+/// this" reason, but independently -- a Transaction can be hidden without
+/// being part of a Transfer, and vice versa (see ADR-0014).
 ///
 /// `account_id`: `Some(id)` scopes the totals to one Account; `None` totals
 /// across every Account.
@@ -144,7 +202,8 @@ pub fn income_expense_totals(
             COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0), \
             COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) \
         FROM transactions t \
-        WHERE t.id NOT IN ( \
+        WHERE t.hidden = 0 \
+        AND t.id NOT IN ( \
             SELECT from_transaction_id FROM transfers \
             UNION \
             SELECT to_transaction_id FROM transfers \
@@ -165,8 +224,9 @@ pub fn income_expense_totals(
 /// "YYYY-MM-DD"). Added rather than changing `income_expense_totals`'s
 /// signature, since other code (e.g. the Budget screen's lifetime totals)
 /// already calls that function without a date range. Reuses the same
-/// linked-Transfer exclusion so a month's cash flow doesn't count money
-/// moved between the user's own Accounts as income or expense.
+/// linked-Transfer and `hidden` exclusions so a month's cash flow doesn't
+/// count money moved between the user's own Accounts, or a hidden
+/// Transaction, as income or expense.
 pub fn income_expense_totals_for_range(
     conn: &Connection,
     account_id: Option<i64>,
@@ -178,6 +238,7 @@ pub fn income_expense_totals_for_range(
             COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) \
         FROM transactions t \
         WHERE t.date >= ?1 AND t.date <= ?2 \
+        AND t.hidden = 0 \
         AND t.id NOT IN ( \
             SELECT from_transaction_id FROM transfers \
             UNION \
@@ -420,6 +481,70 @@ mod tests {
 
         assert_eq!(income, 3_000);
         assert_eq!(expense, 2_500);
+    }
+
+    #[test]
+    fn income_expense_totals_excludes_a_hidden_transaction_but_includes_unhidden_ones() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+
+        let hidden = create(&conn, account_id, "2026-08-01", -5_000, "Hidden expense", None)
+            .expect("create transaction");
+        set_hidden(&conn, hidden.id, true).expect("set hidden");
+        create(&conn, account_id, "2026-08-02", -2_500, "Groceries", None).expect("create transaction");
+        create(&conn, account_id, "2026-08-03", 3_000, "Refund", None).expect("create transaction");
+
+        let (income, expense) = income_expense_totals(&conn, None).expect("compute totals");
+
+        assert_eq!(income, 3_000);
+        assert_eq!(expense, 2_500);
+    }
+
+    #[test]
+    fn set_hidden_can_be_reversed() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let created = create(&conn, account_id, "2026-08-01", -5_000, "Something", None)
+            .expect("create transaction");
+
+        set_hidden(&conn, created.id, true).expect("hide transaction");
+        assert!(get(&conn, created.id).unwrap().unwrap().hidden);
+
+        set_hidden(&conn, created.id, false).expect("unhide transaction");
+        assert!(!get(&conn, created.id).unwrap().unwrap().hidden);
+    }
+
+    #[test]
+    fn list_visible_for_account_excludes_hidden_unless_asked_for() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let visible = create(&conn, account_id, "2026-08-01", -1_000, "Visible", None)
+            .expect("create transaction");
+        let hidden = create(&conn, account_id, "2026-08-02", -2_000, "Hidden", None)
+            .expect("create transaction");
+        set_hidden(&conn, hidden.id, true).expect("hide transaction");
+
+        let default_view =
+            list_visible_for_account(&conn, account_id, false).expect("list visible transactions");
+        let with_hidden =
+            list_visible_for_account(&conn, account_id, true).expect("list all transactions");
+
+        assert_eq!(default_view.iter().map(|t| t.id).collect::<Vec<_>>(), vec![visible.id]);
+        assert_eq!(with_hidden.len(), 2);
+    }
+
+    #[test]
+    fn set_merchant_name_does_not_touch_description() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let created = create(&conn, account_id, "2026-08-01", -1_250, "WHOLEFDS #4521", None)
+            .expect("create transaction");
+
+        let updated =
+            set_merchant_name(&conn, created.id, Some("Whole Foods")).expect("set merchant name");
+
+        assert_eq!(updated.merchant_name, Some("Whole Foods".to_string()));
+        assert_eq!(updated.description, "WHOLEFDS #4521");
     }
 
     #[test]

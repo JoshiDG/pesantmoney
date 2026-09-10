@@ -85,11 +85,14 @@ fn assigned_cents_for_month(conn: &Connection, category_id: i64, month: &str) ->
 
 /// Sum of a Category's Transaction amounts whose date falls within `month`
 /// ("YYYY-MM"). Typically negative (spending); positive for refunds/income
-/// posted directly to the category.
+/// posted directly to the category. Excludes hidden Transactions (issue
+/// #39) -- a hidden Transaction is excluded from budget totals the same way
+/// it's excluded from income/expense totals (see
+/// `transactions::income_expense_totals`).
 pub fn category_activity_cents(conn: &Connection, category_id: i64, month: &str) -> rusqlite::Result<i64> {
     conn.query_row(
         "SELECT COALESCE(SUM(amount_cents), 0) FROM transactions \
-         WHERE category_id = ?1 AND substr(date, 1, 7) = ?2",
+         WHERE category_id = ?1 AND substr(date, 1, 7) = ?2 AND hidden = 0",
         rusqlite::params![category_id, month],
         |row| row.get(0),
     )
@@ -328,6 +331,30 @@ mod tests {
         let activity = category_activity_cents(&conn, category_id, "2026-03").expect("compute activity");
 
         assert_eq!(activity, -3_500);
+    }
+
+    #[test]
+    fn category_activity_cents_excludes_hidden_transactions() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn);
+        let account_id = create_test_account(&conn);
+
+        transactions::create(&conn, account_id, "2026-03-05", -2_000, "Groceries", Some(category_id))
+            .expect("create transaction");
+        let hidden = transactions::create(
+            &conn,
+            account_id,
+            "2026-03-06",
+            -9_000,
+            "Hidden expense",
+            Some(category_id),
+        )
+        .expect("create transaction");
+        transactions::set_hidden(&conn, hidden.id, true).expect("hide transaction");
+
+        let activity = category_activity_cents(&conn, category_id, "2026-03").expect("compute activity");
+
+        assert_eq!(activity, -2_000);
     }
 
     #[test]

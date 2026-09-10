@@ -7,7 +7,7 @@ use crate::services::accounts::{self, Account, AccountType};
 use crate::services::backup::{self, BackupStatus};
 use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
 use crate::services::categories::{self, Category, CategoryGroup};
-use crate::services::categorization_rules::{self, CategorizationRule, MatchType, RuleField};
+use crate::services::categorization_rules::{self, CategorizationRule, MatchType, RuleActions, RuleField};
 use crate::services::csv_export;
 use crate::services::goals::{self, Goal, GoalWithProgress};
 use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
@@ -15,6 +15,7 @@ use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::notifications;
 use crate::services::recurring_items::{self, Frequency, RecurringItem};
 use crate::services::settings::{self, Settings};
+use crate::services::tags::{self, Tag};
 use crate::services::transactions::{self, Transaction};
 use crate::services::transfers::{self, Transfer};
 use crate::AppState;
@@ -484,6 +485,12 @@ pub fn create_holding(
         .map_err(to_command_error)
 }
 
+/// Resolves `tag_names` (create-if-not-exists, per issue #38 -- there's no
+/// dedicated Tag management screen) into ids for a rule's tag action.
+fn resolve_tag_names(conn: &rusqlite::Connection, tag_names: &[String]) -> rusqlite::Result<Vec<i64>> {
+    tag_names.iter().map(|name| tags::get_or_create(conn, name).map(|tag| tag.id)).collect()
+}
+
 #[tauri::command(rename_all = "snake_case")]
 #[allow(clippy::too_many_arguments)]
 pub fn create_categorization_rule(
@@ -491,12 +498,28 @@ pub fn create_categorization_rule(
     field: RuleField,
     match_type: MatchType,
     match_value: String,
-    category_id: i64,
+    category_id: Option<i64>,
+    rename_value: Option<String>,
+    hide: bool,
+    tag_names: Vec<String>,
     priority: i64,
 ) -> CommandResult<CategorizationRule> {
     let conn = state.db.lock().map_err(to_command_error)?;
-    categorization_rules::create(&conn, field, match_type, &match_value, category_id, priority)
-        .map_err(to_command_error)
+    let tag_ids = resolve_tag_names(&conn, &tag_names).map_err(to_command_error)?;
+    categorization_rules::create(
+        &conn,
+        field,
+        match_type,
+        &match_value,
+        RuleActions {
+            category_id,
+            rename_value,
+            hide,
+            tag_ids,
+        },
+        priority,
+    )
+    .map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -563,12 +586,29 @@ pub fn update_categorization_rule(
     field: RuleField,
     match_type: MatchType,
     match_value: String,
-    category_id: i64,
+    category_id: Option<i64>,
+    rename_value: Option<String>,
+    hide: bool,
+    tag_names: Vec<String>,
     priority: i64,
 ) -> CommandResult<CategorizationRule> {
     let conn = state.db.lock().map_err(to_command_error)?;
-    categorization_rules::update(&conn, id, field, match_type, &match_value, category_id, priority)
-        .map_err(to_command_error)
+    let tag_ids = resolve_tag_names(&conn, &tag_names).map_err(to_command_error)?;
+    categorization_rules::update(
+        &conn,
+        id,
+        field,
+        match_type,
+        &match_value,
+        RuleActions {
+            category_id,
+            rename_value,
+            hide,
+            tag_ids,
+        },
+        priority,
+    )
+    .map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -584,6 +624,64 @@ pub fn apply_categorization_rules(
 ) -> CommandResult<usize> {
     let conn = state.db.lock().map_err(to_command_error)?;
     categorization_rules::apply_to_uncategorized(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_transaction_hidden(
+    state: tauri::State<AppState>,
+    id: i64,
+    hidden: bool,
+) -> CommandResult<Transaction> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::set_hidden(&conn, id, hidden).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_visible_transactions(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    include_hidden: bool,
+) -> CommandResult<Vec<Transaction>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::list_visible_for_account(&conn, account_id, include_hidden).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_tags(state: tauri::State<AppState>) -> CommandResult<Vec<Tag>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    tags::list_all(&conn).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_tags_for_transaction(state: tauri::State<AppState>, transaction_id: i64) -> CommandResult<Vec<Tag>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    tags::list_for_transaction(&conn, transaction_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_tag(state: tauri::State<AppState>, name: String) -> CommandResult<Tag> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    tags::get_or_create(&conn, &name).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn attach_tag_to_transaction(
+    state: tauri::State<AppState>,
+    transaction_id: i64,
+    tag_id: i64,
+) -> CommandResult<()> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    tags::attach(&conn, transaction_id, tag_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn detach_tag_from_transaction(
+    state: tauri::State<AppState>,
+    transaction_id: i64,
+    tag_id: i64,
+) -> CommandResult<()> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    tags::detach(&conn, transaction_id, tag_id).map_err(to_command_error)
 }
 
 #[derive(Debug, Clone, Serialize)]

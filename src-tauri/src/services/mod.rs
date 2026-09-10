@@ -11,5 +11,6 @@ pub mod import_profiles;
 pub mod notifications;
 pub mod recurring_items;
 pub mod settings;
+pub mod tags;
 pub mod transactions;
 pub mod transfers;
