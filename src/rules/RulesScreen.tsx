@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
+import { Tag } from "../tags/types";
 import { centsToDollarInput } from "../transactions/types";
 import { RuleForm } from "./RuleForm";
 import { MATCH_TYPE_LABELS, Rule, RuleFields, RULE_FIELD_LABELS } from "./types";
@@ -25,6 +26,7 @@ export function RulesScreen() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,14 +36,16 @@ export function RulesScreen() {
 
   async function refresh() {
     try {
-      const [ruleList, accountList, categoryList] = await Promise.all([
+      const [ruleList, accountList, categoryList, tagList] = await Promise.all([
         invoke<Rule[]>("list_categorization_rules"),
         invoke<Account[]>("list_accounts"),
         invoke<Category[]>("list_categories"),
+        invoke<Tag[]>("list_tags"),
       ]);
       setRules(ruleList);
       setAccounts(accountList);
       setCategories(categoryList);
+      setAllTags(tagList);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -52,8 +56,22 @@ export function RulesScreen() {
     refresh();
   }, []);
 
-  function categoryName(categoryId: number): string {
+  function categoryName(categoryId: number | null): string {
+    if (categoryId === null) return "no category";
     return categories.find((c) => c.id === categoryId)?.name ?? `Category #${categoryId}`;
+  }
+
+  function describeActions(rule: Rule): string {
+    const parts: string[] = [];
+    if (rule.rename_value) parts.push(`rename to "${rule.rename_value}"`);
+    if (rule.hide) parts.push("hide");
+    if (rule.tag_ids.length > 0) {
+      const names = rule.tag_ids
+        .map((id) => allTags.find((t) => t.id === id)?.name)
+        .filter((name): name is string => Boolean(name));
+      if (names.length > 0) parts.push(`tag: ${names.join(", ")}`);
+    }
+    return parts.join(", ");
   }
 
   async function handleCreate(fields: RuleFields) {
@@ -136,6 +154,7 @@ export function RulesScreen() {
               <RuleForm
                 accounts={accounts}
                 categories={categories}
+                allTags={allTags}
                 initial={rule}
                 onSubmit={(fields) => handleUpdate(rule.id, fields)}
                 onCancel={() => setEditingId(null)}
@@ -147,6 +166,7 @@ export function RulesScreen() {
                 {RULE_FIELD_LABELS[rule.field]}{" "}
                 {rule.field === "description" ? MATCH_TYPE_LABELS[rule.match_type].toLowerCase() : "is"}{" "}
                 &ldquo;{describeMatchValue(rule, accounts)}&rdquo; &rarr; {categoryName(rule.category_id)}
+                {describeActions(rule) && ` (${describeActions(rule)})`}
               </span>
               <span className="rule-row-priority">Priority {rule.priority}</span>
               <div className="row-actions">
@@ -166,6 +186,7 @@ export function RulesScreen() {
         <RuleForm
           accounts={accounts}
           categories={categories}
+          allTags={allTags}
           onSubmit={handleCreate}
           onCancel={() => setAdding(false)}
         />

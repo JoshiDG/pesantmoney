@@ -1011,7 +1011,7 @@ body {
 
 .goal-pace-insufficient_data {
   background: var(--paper-line);
-  color: rgba(28, 36, 48, 0.6);
+  color: var(--text-secondary);
 }
 
 .goal-payoff-calculator {
@@ -1026,7 +1026,7 @@ body {
 .goal-payoff-calculator-title {
   font-size: 0.82rem;
   font-weight: 600;
-  color: rgba(28, 36, 48, 0.7);
+  color: var(--text-secondary);
 }
 
 .goal-payoff-apr-form,
@@ -1043,7 +1043,7 @@ body {
   flex-direction: column;
   gap: 0.2rem;
   font-size: 0.78rem;
-  color: rgba(28, 36, 48, 0.7);
+  color: var(--text-secondary);
 }
 
 .goal-payoff-result {

@@ -32,6 +32,9 @@ describe("RulesScreen delete confirmation", () => {
               match_type: "contains",
               match_value: "Coffee",
               category_id: 10,
+              rename_value: null,
+              hide: false,
+              tag_ids: [],
               priority: 1,
             },
           ];
@@ -39,6 +42,8 @@ describe("RulesScreen delete confirmation", () => {
           return [];
         case "list_categories":
           return [{ id: 10, group_id: 1, name: "Food" }];
+        case "list_tags":
+          return [];
         case "delete_categorization_rule":
           return null;
         default:

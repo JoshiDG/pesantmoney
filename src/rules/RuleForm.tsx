@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
 import { centsToDollarInput, dollarInputToCents } from "../transactions/types";
+import { Tag } from "../tags/types";
 import {
   MATCH_TYPE_LABELS,
   MatchType,
@@ -14,6 +15,7 @@ import {
 interface RuleFormProps {
   accounts: Account[];
   categories: Category[];
+  allTags: Tag[];
   initial?: Rule;
   onSubmit: (fields: RuleFields) => void;
   onCancel?: () => void;
@@ -21,8 +23,17 @@ interface RuleFormProps {
 
 const RULE_FIELDS = Object.keys(RULE_FIELD_LABELS) as RuleField[];
 const MATCH_TYPES = Object.keys(MATCH_TYPE_LABELS) as MatchType[];
+const NO_CATEGORY = "__none__";
 
-export function RuleForm({ accounts, categories, initial, onSubmit, onCancel }: RuleFormProps) {
+function tagNamesFor(rule: Rule | undefined, allTags: Tag[]): string {
+  if (!rule) return "";
+  return rule.tag_ids
+    .map((id) => allTags.find((t) => t.id === id)?.name)
+    .filter((name): name is string => Boolean(name))
+    .join(", ");
+}
+
+export function RuleForm({ accounts, categories, allTags, initial, onSubmit, onCancel }: RuleFormProps) {
   const [field, setField] = useState<RuleField>(initial?.field ?? "description");
   const [matchType, setMatchType] = useState<MatchType>(initial?.match_type ?? "contains");
   const [descriptionValue, setDescriptionValue] = useState(
@@ -34,7 +45,12 @@ export function RuleForm({ accounts, categories, initial, onSubmit, onCancel }: 
   const [accountValue, setAccountValue] = useState(
     initial && initial.field === "account" ? initial.match_value : String(accounts[0]?.id ?? ""),
   );
-  const [categoryId, setCategoryId] = useState(initial?.category_id ?? categories[0]?.id ?? 0);
+  const [categoryId, setCategoryId] = useState(
+    initial ? initial.category_id ?? 0 : categories[0]?.id ?? 0,
+  );
+  const [renameValue, setRenameValue] = useState(initial?.rename_value ?? "");
+  const [hide, setHide] = useState(initial?.hide ?? false);
+  const [tagNames, setTagNames] = useState(tagNamesFor(initial, allTags));
   const [priority, setPriority] = useState(initial?.priority ?? 0);
 
   function matchValueFor(currentField: RuleField): string {
@@ -56,7 +72,13 @@ export function RuleForm({ accounts, categories, initial, onSubmit, onCancel }: 
       // type selector is only meaningful (and shown) for Description.
       match_type: field === "description" ? matchType : "equals",
       match_value: matchValueFor(field),
-      category_id: categoryId,
+      category_id: categoryId === 0 ? null : categoryId,
+      rename_value: renameValue.trim() === "" ? null : renameValue.trim(),
+      hide,
+      tag_names: tagNames
+        .split(",")
+        .map((name) => name.trim())
+        .filter((name) => name !== ""),
       priority,
     });
   }
@@ -127,15 +149,42 @@ export function RuleForm({ accounts, categories, initial, onSubmit, onCancel }: 
 
       <select
         aria-label="Category"
-        value={categoryId}
-        onChange={(e) => setCategoryId(Number(e.currentTarget.value))}
+        value={categoryId === 0 ? NO_CATEGORY : categoryId}
+        onChange={(e) =>
+          setCategoryId(e.currentTarget.value === NO_CATEGORY ? 0 : Number(e.currentTarget.value))
+        }
       >
+        <option value={NO_CATEGORY}>No category</option>
         {categories.map((category) => (
           <option key={category.id} value={category.id}>
             {category.name}
           </option>
         ))}
       </select>
+
+      <input
+        aria-label="Rename merchant to"
+        placeholder="Rename merchant to (optional)"
+        value={renameValue}
+        onChange={(e) => setRenameValue(e.currentTarget.value)}
+      />
+
+      <input
+        aria-label="Tags"
+        placeholder="Tags, comma-separated (optional)"
+        value={tagNames}
+        onChange={(e) => setTagNames(e.currentTarget.value)}
+      />
+
+      <label>
+        <input
+          aria-label="Hide matching transactions"
+          type="checkbox"
+          checked={hide}
+          onChange={(e) => setHide(e.currentTarget.checked)}
+        />
+        Hide matching transactions
+      </label>
 
       <input
         aria-label="Priority"
