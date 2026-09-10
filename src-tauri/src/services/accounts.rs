@@ -198,6 +198,29 @@ pub fn net_worth_by_account(conn: &Connection) -> rusqlite::Result<Vec<(Account,
         .collect()
 }
 
+/// Net worth as of an arbitrary past `date` ("YYYY-MM-DD"), computed by
+/// replaying each Account's Transactions backward from its current
+/// `balance_cents`: subtract every Transaction dated strictly after `date`
+/// from the current balance. No snapshot is ever persisted -- this is
+/// recomputed on demand every call, matching the on-demand-calculator
+/// precedent set by the debt payoff projection (ADR-0016) -- so a historical
+/// net-worth trend always reflects the live ledger, including edits made to
+/// past Transactions after the fact.
+pub fn net_worth_as_of(conn: &Connection, date: &str) -> rusqlite::Result<i64> {
+    let accounts = list(conn)?;
+    let mut total = 0i64;
+    for account in &accounts {
+        let current_balance = crate::services::transactions::balance_cents(conn, account.id)?;
+        let after_cents: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE account_id = ?1 AND date > ?2",
+            rusqlite::params![account.id, date],
+            |row| row.get(0),
+        )?;
+        total += current_balance - after_cents;
+    }
+    Ok(total)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,6 +410,73 @@ mod tests {
         let result = set_apr(&conn, 999, Some(2_000));
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn net_worth_as_of_matches_current_net_worth_when_date_is_today_or_later() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking = create(&conn, "Everyday Checking", AccountType::Checking, None)
+            .expect("create account");
+        crate::services::transactions::create(&conn, checking.id, "2026-08-01", 100_000, "Paycheck", None)
+            .expect("create transaction");
+
+        let as_of = net_worth_as_of(&conn, "2026-08-31").expect("compute net worth as of");
+
+        assert_eq!(as_of, net_worth_cents(&conn).expect("compute net worth"));
+    }
+
+    #[test]
+    fn net_worth_as_of_excludes_transactions_dated_after_the_given_date() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking = create(&conn, "Everyday Checking", AccountType::Checking, None)
+            .expect("create account");
+        crate::services::transactions::create(&conn, checking.id, "2026-08-01", 100_000, "Paycheck", None)
+            .expect("create transaction");
+        crate::services::transactions::create(&conn, checking.id, "2026-08-15", -20_000, "Rent", None)
+            .expect("create transaction");
+
+        let as_of_before_rent = net_worth_as_of(&conn, "2026-08-10").expect("compute net worth as of");
+        let as_of_after_rent = net_worth_as_of(&conn, "2026-08-20").expect("compute net worth as of");
+
+        assert_eq!(as_of_before_rent, 100_000);
+        assert_eq!(as_of_after_rent, 80_000);
+    }
+
+    #[test]
+    fn net_worth_as_of_includes_a_transaction_dated_exactly_on_the_given_date() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking = create(&conn, "Everyday Checking", AccountType::Checking, None)
+            .expect("create account");
+        crate::services::transactions::create(&conn, checking.id, "2026-08-01", 100_000, "Paycheck", None)
+            .expect("create transaction");
+
+        let as_of = net_worth_as_of(&conn, "2026-08-01").expect("compute net worth as of");
+
+        assert_eq!(as_of, 100_000);
+    }
+
+    #[test]
+    fn net_worth_as_of_replays_a_liability_account_without_sign_flipping() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let credit_card =
+            create(&conn, "Rewards Card", AccountType::CreditCard, None).expect("create account");
+        crate::services::transactions::create(&conn, credit_card.id, "2026-08-01", -15_000, "Groceries", None)
+            .expect("create transaction");
+        crate::services::transactions::create(&conn, credit_card.id, "2026-08-20", -5_000, "Dinner", None)
+            .expect("create transaction");
+
+        let as_of_mid_month = net_worth_as_of(&conn, "2026-08-10").expect("compute net worth as of");
+
+        assert_eq!(as_of_mid_month, -15_000);
+    }
+
+    #[test]
+    fn net_worth_as_of_is_zero_with_no_accounts() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+
+        let as_of = net_worth_as_of(&conn, "2026-08-01").expect("compute net worth as of");
+
+        assert_eq!(as_of, 0);
     }
 
     #[test]

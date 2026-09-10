@@ -156,6 +156,24 @@ pub fn get_cash_flow_for_range(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn get_net_worth_as_of(state: tauri::State<AppState>, date: String) -> CommandResult<i64> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    accounts::net_worth_as_of(&conn, &date).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_daily_cash_flow_for_range(
+    state: tauri::State<AppState>,
+    account_id: Option<i64>,
+    start_date: String,
+    end_date: String,
+) -> CommandResult<Vec<(String, i64, i64)>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::daily_income_expense_totals_for_range(&conn, account_id, &start_date, &end_date)
+        .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn create_category_group(state: tauri::State<AppState>, name: String) -> CommandResult<CategoryGroup> {
     let conn = state.db.lock().map_err(to_command_error)?;
     categories::create_group(&conn, &name).map_err(to_command_error)
@@ -498,6 +516,19 @@ pub fn upcoming_recurring_items(
     let conn = state.db.lock().map_err(to_command_error)?;
     let as_of = chrono::Local::now().format("%Y-%m-%d").to_string();
     recurring_items::upcoming(&conn, account_id, &as_of, within_days).map_err(to_command_error)
+}
+
+/// Dashboard-facing sibling of `upcoming_recurring_items`: spans every
+/// Account rather than one, for the Recurring widget's "upcoming across all
+/// accounts" view.
+#[tauri::command(rename_all = "snake_case")]
+pub fn upcoming_recurring_items_all(
+    state: tauri::State<AppState>,
+    within_days: i64,
+) -> CommandResult<Vec<RecurringItem>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    let as_of = chrono::Local::now().format("%Y-%m-%d").to_string();
+    recurring_items::upcoming_all(&conn, &as_of, within_days).map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]

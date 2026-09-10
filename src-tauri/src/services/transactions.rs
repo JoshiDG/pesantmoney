@@ -275,6 +275,91 @@ pub fn income_expense_totals_for_range(
     }
 }
 
+/// Like `income_expense_totals_for_range`, but bucketed by individual day
+/// rather than summed across the whole range: one `(date, income_cents,
+/// expense_cents)` row per calendar day from `start_date` to `end_date`
+/// (both inclusive), including days with no Transactions at all (zeros), so
+/// callers building a daily line chart don't need to separately track which
+/// dates fall in the range. Reuses the same linked-Transfer and `hidden`
+/// exclusions as `income_expense_totals_for_range`.
+pub fn daily_income_expense_totals_for_range(
+    conn: &Connection,
+    account_id: Option<i64>,
+    start_date: &str,
+    end_date: &str,
+) -> rusqlite::Result<Vec<(String, i64, i64)>> {
+    let base_sql = "SELECT t.date, \
+            COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0), \
+            COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) \
+        FROM transactions t \
+        WHERE t.date >= ?1 AND t.date <= ?2 \
+        AND t.hidden = 0 \
+        AND t.id NOT IN ( \
+            SELECT from_transaction_id FROM transfers \
+            UNION \
+            SELECT to_transaction_id FROM transfers \
+        ) \
+        GROUP BY t.date";
+
+    let mut by_date: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
+
+    let rows: Vec<(String, i64, i64)> = match account_id {
+        Some(id) => {
+            let sql = format!(
+                "SELECT t.date, \
+                    COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0), \
+                    COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) \
+                FROM transactions t \
+                WHERE t.date >= ?1 AND t.date <= ?2 \
+                AND t.hidden = 0 \
+                AND t.id NOT IN ( \
+                    SELECT from_transaction_id FROM transfers \
+                    UNION \
+                    SELECT to_transaction_id FROM transfers \
+                ) \
+                AND t.account_id = ?3 \
+                GROUP BY t.date"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(rusqlite::params![start_date, end_date, id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            rows
+        }
+        None => {
+            let mut stmt = conn.prepare(base_sql)?;
+            let rows = stmt
+                .query_map(rusqlite::params![start_date, end_date], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            rows
+        }
+    };
+
+    for (date, income, expense) in rows {
+        by_date.insert(date, (income, expense));
+    }
+
+    let parse_error = |field: &str| rusqlite::Error::InvalidParameterName(field.to_string());
+    let mut current = chrono::NaiveDate::parse_from_str(start_date, "%Y-%m-%d")
+        .map_err(|_| parse_error("start_date"))?;
+    let end = chrono::NaiveDate::parse_from_str(end_date, "%Y-%m-%d")
+        .map_err(|_| parse_error("end_date"))?;
+
+    let mut result = Vec::new();
+    while current <= end {
+        let date_str = current.format("%Y-%m-%d").to_string();
+        let (income, expense) = by_date.get(&date_str).copied().unwrap_or((0, 0));
+        result.push((date_str, income, expense));
+        current += chrono::Duration::days(1);
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -663,5 +748,91 @@ mod tests {
 
         assert_eq!(income, 0);
         assert_eq!(expense, 1_000);
+    }
+
+    #[test]
+    fn daily_income_expense_totals_for_range_returns_one_row_per_day_including_empty_days() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        create(&conn, account_id, "2026-08-01", 5_000, "Paycheck", None)
+            .expect("create transaction");
+
+        let days = daily_income_expense_totals_for_range(&conn, None, "2026-08-01", "2026-08-03")
+            .expect("compute daily totals");
+
+        assert_eq!(
+            days,
+            vec![
+                ("2026-08-01".to_string(), 5_000, 0),
+                ("2026-08-02".to_string(), 0, 0),
+                ("2026-08-03".to_string(), 0, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn daily_income_expense_totals_for_range_buckets_multiple_transactions_on_the_same_day() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        create(&conn, account_id, "2026-08-01", 5_000, "Paycheck", None)
+            .expect("create transaction");
+        create(&conn, account_id, "2026-08-01", -1_200, "Coffee", None)
+            .expect("create transaction");
+
+        let days = daily_income_expense_totals_for_range(&conn, None, "2026-08-01", "2026-08-01")
+            .expect("compute daily totals");
+
+        assert_eq!(days, vec![("2026-08-01".to_string(), 5_000, 1_200)]);
+    }
+
+    #[test]
+    fn daily_income_expense_totals_for_range_excludes_dates_outside_the_range() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        create(&conn, account_id, "2026-07-31", 10_000, "Before range", None)
+            .expect("create transaction");
+        create(&conn, account_id, "2026-08-01", 5_000, "In range", None)
+            .expect("create transaction");
+        create(&conn, account_id, "2026-08-02", 50_000, "After range", None)
+            .expect("create transaction");
+
+        let days = daily_income_expense_totals_for_range(&conn, None, "2026-08-01", "2026-08-01")
+            .expect("compute daily totals");
+
+        assert_eq!(days, vec![("2026-08-01".to_string(), 5_000, 0)]);
+    }
+
+    #[test]
+    fn daily_income_expense_totals_for_range_excludes_a_linked_transfer_pair() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let credit_card_id = create_test_account(&conn);
+        let out = create(&conn, checking_id, "2026-08-01", -50_000, "CC payment", None)
+            .expect("create transaction");
+        let in_ = create(&conn, credit_card_id, "2026-08-01", 50_000, "Payment received", None)
+            .expect("create transaction");
+        transfers::link(&conn, out.id, in_.id).expect("link transfer");
+
+        let days = daily_income_expense_totals_for_range(&conn, None, "2026-08-01", "2026-08-01")
+            .expect("compute daily totals");
+
+        assert_eq!(days, vec![("2026-08-01".to_string(), 0, 0)]);
+    }
+
+    #[test]
+    fn daily_income_expense_totals_for_range_can_scope_to_a_single_account() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let savings_id = create_test_account(&conn);
+        create(&conn, checking_id, "2026-08-01", -1_000, "Checking expense", None)
+            .expect("create transaction");
+        create(&conn, savings_id, "2026-08-01", 5_000, "Savings income", None)
+            .expect("create transaction");
+
+        let days =
+            daily_income_expense_totals_for_range(&conn, Some(checking_id), "2026-08-01", "2026-08-01")
+                .expect("compute daily totals");
+
+        assert_eq!(days, vec![("2026-08-01".to_string(), 0, 1_000)]);
     }
 }
