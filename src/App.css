@@ -285,6 +285,17 @@ body {
   font-size: 0.82rem;
 }
 
+.tag-chip {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--paper-line);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
 .amount {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

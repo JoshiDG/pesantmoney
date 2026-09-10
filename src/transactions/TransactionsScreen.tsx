@@ -4,6 +4,7 @@ import { Account, ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { Category } from "../categories/types";
 import { HoldingsScreen } from "../holdings/HoldingsScreen";
 import { RecurringItemsScreen } from "../recurring/RecurringItemsScreen";
+import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
 import { TransactionForm } from "./TransactionForm";
 import { TransactionsGrid } from "./TransactionsGrid";
@@ -25,6 +26,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [tagsByTransactionId, setTagsByTransactionId] = useState<Record<number, Tag[]>>({});
   const [balanceCents, setBalanceCents] = useState(0);
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,18 +45,21 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
 
   async function refresh() {
     try {
-      const [transactionList, balance, categoryList, accountList, transferList] = await Promise.all([
-        invoke<Transaction[]>("list_transactions", { account_id: account.id }),
-        invoke<number>("account_balance_cents", { account_id: account.id }),
-        invoke<Category[]>("list_categories"),
-        invoke<Account[]>("list_accounts"),
-        invoke<Transfer[]>("list_transfers"),
-      ]);
+      const [transactionList, balance, categoryList, accountList, transferList, tagsByTransaction] =
+        await Promise.all([
+          invoke<Transaction[]>("list_transactions", { account_id: account.id }),
+          invoke<number>("account_balance_cents", { account_id: account.id }),
+          invoke<Category[]>("list_categories"),
+          invoke<Account[]>("list_accounts"),
+          invoke<Transfer[]>("list_transfers"),
+          invoke<Record<number, Tag[]>>("list_tags_for_account", { account_id: account.id }),
+        ]);
       setTransactions(transactionList);
       setBalanceCents(balance);
       setCategories(categoryList);
       setAccounts(accountList);
       setTransfers(transferList);
+      setTagsByTransactionId(tagsByTransaction);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -222,6 +227,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
             transactions={transactions}
             categories={categories}
             accounts={accounts}
+            tagsByTransactionId={tagsByTransactionId}
             linkedTransactionIds={linkedTransactionIds}
             transferByTransactionId={transferByTransactionId}
             linkingId={linkingId}

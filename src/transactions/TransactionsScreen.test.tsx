@@ -45,6 +45,8 @@ describe("TransactionsScreen delete confirmation", () => {
           return [account];
         case "list_transfers":
           return [];
+        case "list_tags_for_account":
+          return {};
         case "delete_transaction":
           return null;
         default:
@@ -113,6 +115,8 @@ describe("TransactionsScreen CSV export", () => {
           return [account];
         case "list_transfers":
           return [];
+        case "list_tags_for_account":
+          return {};
         case "export_transactions_csv":
           return 5;
         default:
@@ -160,6 +164,8 @@ describe("TransactionsScreen CSV export", () => {
           return [account];
         case "list_transfers":
           return [];
+        case "list_tags_for_account":
+          return {};
         default:
           return null;
       }

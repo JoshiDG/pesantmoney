@@ -203,3 +203,18 @@ describe("TransactionsGrid merchant name display", () => {
     expect(screen.getByText("Coffee shop")).toBeInTheDocument();
   });
 });
+
+describe("TransactionsGrid tag chips", () => {
+  it("renders attached tags as chips next to the description", () => {
+    renderGrid({ tagsByTransactionId: { 1: [{ id: 5, name: "Reimbursable" }] } });
+
+    expect(screen.getByText("Reimbursable")).toBeInTheDocument();
+  });
+
+  it("renders no chip for a transaction absent from the tag map", () => {
+    renderGrid({ tagsByTransactionId: { 1: [{ id: 5, name: "Reimbursable" }] } });
+
+    const paycheckCell = screen.getByText("Paycheck").closest(".cell-description");
+    expect(paycheckCell?.querySelector(".tag-chip")).toBeNull();
+  });
+});

@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
+import { Tag } from "../tags/types";
 import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
 import { CellPos, ColumnKey, EDITABLE_COLUMNS, nextCellForKey } from "./grid-nav";
@@ -28,6 +29,7 @@ interface TransactionsGridProps {
   transactions: Transaction[];
   categories: Category[];
   accounts: Account[];
+  tagsByTransactionId?: Record<number, Tag[]>;
   linkedTransactionIds: Set<number>;
   transferByTransactionId: Map<number, Transfer>;
   linkingId: number | null;
@@ -57,6 +59,7 @@ export function TransactionsGrid({
   transactions,
   categories,
   accounts,
+  tagsByTransactionId = {},
   linkedTransactionIds,
   transferByTransactionId,
   linkingId,
@@ -269,6 +272,11 @@ export function TransactionsGrid({
               </span>
             )}
             {transaction.merchant_name ?? transaction.description}
+            {(tagsByTransactionId[transaction.id] ?? []).map((tag) => (
+              <span key={tag.id} className="tag-chip">
+                {tag.name}
+              </span>
+            ))}
           </div>
         );
       case "category":

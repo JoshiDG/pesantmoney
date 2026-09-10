@@ -3,6 +3,8 @@
 //! ad hoc -- wherever one is assigned, by name -- rather than through a
 //! dedicated management screen (out of scope for issue #38).
 
+use std::collections::HashMap;
+
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
@@ -88,6 +90,29 @@ pub fn list_for_transaction(conn: &Connection, transaction_id: i64) -> rusqlite:
     rows.collect()
 }
 
+/// Bulk variant of `list_for_transaction`, keyed by `transaction_id`, for
+/// rendering Tags across an entire Transactions grid without one query per
+/// row (issue #38's "visible in the Transactions grid" acceptance
+/// criterion). A Transaction absent from the map has no Tags.
+pub fn map_for_account(conn: &Connection, account_id: i64) -> rusqlite::Result<HashMap<i64, Vec<Tag>>> {
+    let mut stmt = conn.prepare(
+        "SELECT tt.transaction_id, t.id, t.name FROM tags t \
+         JOIN transaction_tags tt ON tt.tag_id = t.id \
+         JOIN transactions txn ON txn.id = tt.transaction_id \
+         WHERE txn.account_id = ?1 ORDER BY tt.transaction_id, t.name",
+    )?;
+    let rows = stmt.query_map([account_id], |row| {
+        Ok((row.get::<_, i64>(0)?, Tag { id: row.get(1)?, name: row.get(2)? }))
+    })?;
+
+    let mut map: HashMap<i64, Vec<Tag>> = HashMap::new();
+    for row in rows {
+        let (transaction_id, tag) = row?;
+        map.entry(transaction_id).or_default().push(tag);
+    }
+    Ok(map)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,6 +184,29 @@ mod tests {
         detach(&conn, transaction_id, tag.id).expect("detach tag");
 
         assert!(list_for_transaction(&conn, transaction_id).expect("list tags").is_empty());
+    }
+
+    #[test]
+    fn map_for_account_groups_tags_by_transaction_and_omits_untagged_ones() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = accounts::create(&conn, "Checking", AccountType::Checking, None)
+            .expect("create account")
+            .id;
+        let tagged = transactions::create(&conn, account_id, "2026-08-01", -500, "Coffee", None)
+            .expect("create transaction")
+            .id;
+        let untagged = transactions::create(&conn, account_id, "2026-08-02", -700, "Gas", None)
+            .expect("create transaction")
+            .id;
+        let reimbursable = get_or_create(&conn, "Reimbursable").expect("get or create tag");
+        let vacation = get_or_create(&conn, "Vacation").expect("get or create tag");
+        attach(&conn, tagged, reimbursable.id).expect("attach tag");
+        attach(&conn, tagged, vacation.id).expect("attach tag");
+
+        let map = map_for_account(&conn, account_id).expect("map tags for account");
+
+        assert_eq!(map.get(&tagged).map(|tags| tags.len()), Some(2));
+        assert_eq!(map.get(&untagged), None);
     }
 
     #[test]

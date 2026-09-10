@@ -720,6 +720,15 @@ pub fn list_tags_for_transaction(state: tauri::State<AppState>, transaction_id: 
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn list_tags_for_account(
+    state: tauri::State<AppState>,
+    account_id: i64,
+) -> CommandResult<std::collections::HashMap<i64, Vec<Tag>>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    tags::map_for_account(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn create_tag(state: tauri::State<AppState>, name: String) -> CommandResult<Tag> {
     let conn = state.db.lock().map_err(to_command_error)?;
     tags::get_or_create(&conn, &name).map_err(to_command_error)

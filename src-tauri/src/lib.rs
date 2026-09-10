@@ -121,6 +121,7 @@ pub fn run() {
             commands::list_visible_transactions,
             commands::list_tags,
             commands::list_tags_for_transaction,
+            commands::list_tags_for_account,
             commands::create_tag,
             commands::attach_tag_to_transaction,
             commands::detach_tag_from_transaction,
