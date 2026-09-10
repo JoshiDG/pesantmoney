@@ -494,3 +494,27 @@ describe("DashboardScreen goals widget", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("DashboardScreen placeholder widgets", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+  });
+
+  it("render explanatory copy for Investments, Credit Score, and Advice without invoking any command", async () => {
+    mockInvokeWithAccountBalances([]);
+
+    render(<DashboardScreen />);
+
+    expect(await screen.findByText("Investments")).toBeInTheDocument();
+    expect(screen.getByText("Credit Score")).toBeInTheDocument();
+    expect(screen.getByText("Advice")).toBeInTheDocument();
+    expect(screen.getByText(/Live investment sync isn't supported/)).toBeInTheDocument();
+    expect(screen.getByText(/doesn't connect to a credit bureau/)).toBeInTheDocument();
+    expect(screen.getByText(/no AI-driven advice engine/)).toBeInTheDocument();
+
+    const invokedCommands = mockedInvoke.mock.calls.map(([cmd]) => cmd);
+    expect(invokedCommands).not.toContain("investments");
+    expect(invokedCommands).not.toContain("credit_score");
+    expect(invokedCommands).not.toContain("advice");
+  });
+});
