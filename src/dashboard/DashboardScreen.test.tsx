@@ -47,6 +47,8 @@ function mockInvokeWithAccountBalances(balances: [Account, number][]) {
         return [];
       case "list_transactions":
         return [];
+      case "upcoming_recurring_items_all":
+        return [];
       default:
         return null;
     }
@@ -324,5 +326,93 @@ describe("DashboardScreen recent transactions widget", () => {
     // Most recent first: Paycheck (09-05) before Transfer in (09-03) before
     // Blue Bottle Coffee (09-01).
     expect(rows.map((el) => el.textContent)).toEqual(["Paycheck", "Transfer in", "Blue Bottle Coffee"]);
+  });
+});
+
+describe("DashboardScreen recurring widget", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+  });
+
+  it("shows the remaining-due total and lists upcoming items", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_net_worth":
+        case "get_net_worth_as_of":
+          return 0;
+        case "get_net_worth_by_account":
+          return [];
+        case "get_ready_to_assign":
+          return 0;
+        case "get_budget_for_month":
+          return [];
+        case "get_daily_cash_flow_for_range":
+          return [];
+        case "list_accounts":
+          return [];
+        case "list_categories":
+          return [];
+        case "list_transactions":
+          return [];
+        case "upcoming_recurring_items_all":
+          return [
+            {
+              id: 1,
+              account_id: 1,
+              description: "Rent",
+              amount_cents: -150_000,
+              frequency: "monthly",
+              next_expected_date: "2026-09-15",
+              category_id: null,
+              is_confirmed: true,
+            },
+            {
+              id: 2,
+              account_id: 1,
+              description: "Paycheck",
+              amount_cents: 300_000,
+              frequency: "biweekly",
+              next_expected_date: "2026-09-20",
+              category_id: null,
+              is_confirmed: true,
+            },
+          ];
+        default:
+          return null;
+      }
+    });
+
+    render(<DashboardScreen />);
+
+    await screen.findByText("Rent");
+    expect(screen.getByText("Paycheck")).toBeInTheDocument();
+    expect(screen.getByText("Still due this period")).toBeInTheDocument();
+    // Only the negative-amount (bill) item counts toward what's still due.
+    expect(screen.getByText("-$1,500.00")).toBeInTheDocument();
+  });
+
+  it("shows an empty state when nothing is upcoming", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_net_worth":
+        case "get_net_worth_as_of":
+        case "get_ready_to_assign":
+          return 0;
+        case "get_net_worth_by_account":
+        case "get_budget_for_month":
+        case "get_daily_cash_flow_for_range":
+        case "list_accounts":
+        case "list_categories":
+        case "list_transactions":
+        case "upcoming_recurring_items_all":
+          return [];
+        default:
+          return null;
+      }
+    });
+
+    render(<DashboardScreen />);
+
+    expect(await screen.findByText("Nothing upcoming.")).toBeInTheDocument();
   });
 });
