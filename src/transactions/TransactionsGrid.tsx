@@ -80,9 +80,17 @@ export function TransactionsGrid({
   const [editingCell, setEditingCell] = useState<CellPos | null>(null);
   const [draftValue, setDraftValue] = useState("");
   const [bulkCategoryId, setBulkCategoryId] = useState(BULK_PLACEHOLDER);
+  const [flashCell, setFlashCell] = useState<CellPos | null>(null);
 
   const editingRef = useRef<CellPos | null>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const flashFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (flashFrameRef.current != null) cancelAnimationFrame(flashFrameRef.current);
+    };
+  }, []);
 
   const rowCount = transactions.length;
   const colCount = EDITABLE_COLUMNS.length;
@@ -151,6 +159,19 @@ export function TransactionsGrid({
         break;
     }
     onUpdate(transaction.id, fields);
+
+    // Flash the cell to confirm the commit, then let it fade back to its
+    // resting state (see .grid-cell-flash / .ledger-editable .grid-cell in
+    // App.css). Setting the class and clearing it on the next frame forces
+    // the browser to paint the flashed state before the CSS transition
+    // starts fading it out.
+    if (flashFrameRef.current != null) cancelAnimationFrame(flashFrameRef.current);
+    setFlashCell({ row, col });
+    flashFrameRef.current = requestAnimationFrame(() => {
+      flashFrameRef.current = requestAnimationFrame(() => {
+        setFlashCell(null);
+      });
+    });
   }
 
   function handleBlur(row: number, col: number, value: string) {
@@ -219,13 +240,14 @@ export function TransactionsGrid({
 
   function renderDisplayCell(transaction: Transaction, row: number, col: number, column: ColumnKey) {
     const isFocused = focusedCell?.row === row && focusedCell?.col === col;
+    const isFlashed = flashCell?.row === row && flashCell?.col === col;
     const commonProps = {
       ref: (el: HTMLDivElement | null) => {
         cellRefs.current[`${row}-${col}`] = el;
       },
       tabIndex: 0,
       role: "gridcell",
-      className: `grid-cell${isFocused ? " grid-cell-focused" : ""}`,
+      className: `grid-cell${isFocused ? " grid-cell-focused" : ""}${isFlashed ? " grid-cell-flash" : ""}`,
       onClick: () => startEdit(row, col),
       onFocus: () => focusCell(row, col),
       onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => handleCellKeyDown(e, row, col),
