@@ -30,6 +30,7 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../../migrations/0016_categorization_rule_actions.sql"),
     ),
     ("0017_tags", include_str!("../../migrations/0017_tags.sql")),
+    ("0018_account_apr", include_str!("../../migrations/0018_account_apr.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<()> {

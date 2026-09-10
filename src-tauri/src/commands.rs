@@ -9,7 +9,7 @@ use crate::services::budgets::{self, BudgetAssignment, CategoryBudgetLine};
 use crate::services::categories::{self, Category, CategoryGroup};
 use crate::services::categorization_rules::{self, CategorizationRule, MatchType, RuleActions, RuleField};
 use crate::services::csv_export;
-use crate::services::goals::{self, Goal, GoalWithProgress};
+use crate::services::goals::{self, Goal, GoalWithProgress, PayoffProjection};
 use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
 use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::merchants::{self, Merchant};
@@ -67,6 +67,19 @@ pub fn update_account(
 pub fn delete_account(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
     let conn = state.db.lock().map_err(to_command_error)?;
     accounts::delete(&conn, id).map_err(to_command_error)
+}
+
+/// Sets (or clears, with `apr_bps: null`) a debt Account's APR -- the manual
+/// input the payoff projection calculator (`project_debt_payoff`) reads.
+/// Never fetched or inferred; see ADR-0003 / ADR-0016.
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_account_apr(
+    state: tauri::State<AppState>,
+    id: i64,
+    apr_bps: Option<i64>,
+) -> CommandResult<Account> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    accounts::set_apr(&conn, id, apr_bps).map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -460,6 +473,20 @@ pub fn update_goal(
 pub fn delete_goal(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
     let conn = state.db.lock().map_err(to_command_error)?;
     goals::delete(&conn, id).map_err(to_command_error)
+}
+
+/// Projects a debt-free date for `account_id` given a hypothetical
+/// `monthly_payment_cents` -- a recompute-on-demand what-if calculator (see
+/// the "Payoff Projection" term in CONTEXT.md / ADR-0016). Never persists
+/// the payment amount and never touches Goal progress.
+#[tauri::command(rename_all = "snake_case")]
+pub fn project_debt_payoff(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    monthly_payment_cents: i64,
+) -> CommandResult<PayoffProjection> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    goals::project_account_payoff(&conn, account_id, monthly_payment_cents).map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]

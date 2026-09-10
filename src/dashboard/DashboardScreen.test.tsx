@@ -12,7 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 const mockedInvoke = vi.mocked(invoke);
 
 function account(id: number, name: string, account_type: Account["account_type"] = "checking"): Account {
-  return { id, name, account_type, institution_name: null };
+  return { id, name, account_type, institution_name: null, apr_bps: null };
 }
 
 function mockInvokeWithAccountBalances(balances: [Account, number][]) {

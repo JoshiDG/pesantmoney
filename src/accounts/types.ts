@@ -14,6 +14,10 @@ export interface AccountFields {
 
 export interface Account extends AccountFields {
   id: number;
+  // Optional, manually-entered Annual Percentage Rate in basis points (1% =
+  // 100 bps). Only meaningful for debt-shaped accounts (credit_card, loan);
+  // powers the payoff-projection calculator, never Goal progress.
+  apr_bps: number | null;
 }
 
 export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {

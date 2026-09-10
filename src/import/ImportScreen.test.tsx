@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const mockedInvoke = vi.mocked(invoke);
 
-const account: Account = { id: 1, name: "Checking", account_type: "checking", institution_name: null };
+const account: Account = { id: 1, name: "Checking", account_type: "checking", institution_name: null, apr_bps: null };
 
 describe("ImportScreen CSV guidelines", () => {
   beforeEach(() => {

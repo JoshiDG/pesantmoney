@@ -1,6 +1,4 @@
-use rusqlite::Connection;
-#[cfg(test)]
-use rusqlite::OptionalExtension;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,6 +43,14 @@ pub struct Account {
     pub name: String,
     pub account_type: AccountType,
     pub institution_name: Option<String>,
+    /// Annual Percentage Rate, in basis points (1% = 100 bps) to avoid float
+    /// rounding issues -- a manually-entered, optional field, meaningful only
+    /// for debt-shaped Accounts (`CreditCard`, `Loan`) but not hard-blocked
+    /// for other AccountTypes at the DB layer. Never fetched or inferred; see
+    /// ADR-0003's no-live-data precedent for rate/price data. Powers the
+    /// payoff-projection what-if calculator in `services::goals`, and never
+    /// affects `Goal::progress_cents`.
+    pub apr_bps: Option<i64>,
 }
 
 fn account_from_row(row: &rusqlite::Row) -> rusqlite::Result<Account> {
@@ -58,8 +64,12 @@ fn account_from_row(row: &rusqlite::Row) -> rusqlite::Result<Account> {
         name: row.get(1)?,
         account_type,
         institution_name: row.get(3)?,
+        apr_bps: row.get(4)?,
     })
 }
+
+const SELECT_ACCOUNT: &str =
+    "SELECT id, name, account_type, institution_name, apr_bps FROM accounts";
 
 pub fn create(
     conn: &Connection,
@@ -78,29 +88,29 @@ pub fn create(
         name: name.to_string(),
         account_type,
         institution_name: institution_name.map(str::to_string),
+        apr_bps: None,
     })
 }
 
 pub fn list(conn: &Connection) -> rusqlite::Result<Vec<Account>> {
-    let mut stmt =
-        conn.prepare("SELECT id, name, account_type, institution_name FROM accounts ORDER BY id")?;
+    let mut stmt = conn.prepare(&format!("{SELECT_ACCOUNT} ORDER BY id"))?;
     let rows = stmt.query_map([], account_from_row)?;
     rows.collect()
 }
 
-/// Only exercised by tests today (verifying create/update/delete side effects);
-/// not yet exposed as a Tauri command since the Accounts screen works off the
-/// `list` result. Add a `get_account` command when a screen needs to fetch one.
-#[cfg(test)]
+/// Not yet exposed as a Tauri command directly (the Accounts screen works off
+/// the `list` result) but used internally by `update`/`set_apr` to return a
+/// fresh row, and by `services::goals::project_account_payoff` to read a debt
+/// Account's `apr_bps`.
 pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Account>> {
-    conn.query_row(
-        "SELECT id, name, account_type, institution_name FROM accounts WHERE id = ?1",
-        [id],
-        account_from_row,
-    )
-    .optional()
+    conn.query_row(&format!("{SELECT_ACCOUNT} WHERE id = ?1"), [id], account_from_row)
+        .optional()
 }
 
+/// Edits name/account_type/institution_name only -- deliberately does not
+/// touch `apr_bps` (use `set_apr` for that), so this stays a straightforward
+/// overwrite of the account's identity fields without needing to read the
+/// existing row first.
 pub fn update(
     conn: &Connection,
     id: i64,
@@ -116,12 +126,24 @@ pub fn update(
         return Err(rusqlite::Error::QueryReturnedNoRows);
     }
 
-    Ok(Account {
-        id,
-        name: name.to_string(),
-        account_type,
-        institution_name: institution_name.map(str::to_string),
-    })
+    get(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
+}
+
+/// Sets (or clears, with `None`) an Account's APR in basis points. Kept
+/// separate from `update` since APR is edited from a different surface (the
+/// debt payoff projection UI) than an Account's identity fields, and doing so
+/// avoids forcing every `update` caller to round-trip a value it doesn't
+/// otherwise touch.
+pub fn set_apr(conn: &Connection, id: i64, apr_bps: Option<i64>) -> rusqlite::Result<Account> {
+    let rows_affected = conn.execute(
+        "UPDATE accounts SET apr_bps = ?1, updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![apr_bps, id],
+    )?;
+    if rows_affected == 0 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+
+    get(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
 }
 
 pub fn delete(conn: &Connection, id: i64) -> rusqlite::Result<()> {
@@ -321,5 +343,62 @@ mod tests {
         assert_eq!(breakdown[0].1, 50_000);
         assert_eq!(breakdown[1].0.id, credit_card.id);
         assert_eq!(breakdown[1].1, -3_000);
+    }
+
+    #[test]
+    fn new_accounts_have_no_apr_by_default() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+
+        let created = create(&conn, "Rewards Card", AccountType::CreditCard, None)
+            .expect("create account");
+
+        assert_eq!(created.apr_bps, None);
+        assert_eq!(get(&conn, created.id).unwrap().unwrap().apr_bps, None);
+    }
+
+    #[test]
+    fn set_apr_stores_and_returns_the_new_rate() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let created = create(&conn, "Rewards Card", AccountType::CreditCard, None)
+            .expect("create account");
+
+        let updated = set_apr(&conn, created.id, Some(2_000)).expect("set apr");
+
+        assert_eq!(updated.apr_bps, Some(2_000));
+        assert_eq!(get(&conn, created.id).unwrap().unwrap().apr_bps, Some(2_000));
+    }
+
+    #[test]
+    fn set_apr_can_clear_a_previously_set_rate() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let created = create(&conn, "Rewards Card", AccountType::CreditCard, None)
+            .expect("create account");
+        set_apr(&conn, created.id, Some(2_000)).expect("set apr");
+
+        let cleared = set_apr(&conn, created.id, None).expect("clear apr");
+
+        assert_eq!(cleared.apr_bps, None);
+    }
+
+    #[test]
+    fn set_apr_fails_when_the_account_does_not_exist() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+
+        let result = set_apr(&conn, 999, Some(2_000));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn update_does_not_clear_a_previously_set_apr() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let created = create(&conn, "Rewards Card", AccountType::CreditCard, None)
+            .expect("create account");
+        set_apr(&conn, created.id, Some(2_000)).expect("set apr");
+
+        let updated = update(&conn, created.id, "Renamed Card", AccountType::CreditCard, None)
+            .expect("update account");
+
+        assert_eq!(updated.apr_bps, Some(2_000));
     }
 }

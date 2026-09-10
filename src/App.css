@@ -989,6 +989,73 @@ body {
   color: var(--text-secondary);
 }
 
+.goal-pace-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.goal-pace-ahead,
+.goal-pace-on_track {
+  background: rgba(46, 125, 50, 0.14);
+  color: #1b5e20;
+}
+
+.goal-pace-behind {
+  background: rgba(198, 40, 40, 0.12);
+  color: #b71c1c;
+}
+
+.goal-pace-insufficient_data {
+  background: var(--paper-line);
+  color: rgba(28, 36, 48, 0.6);
+}
+
+.goal-payoff-calculator {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--paper-line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.goal-payoff-calculator-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(28, 36, 48, 0.7);
+}
+
+.goal-payoff-apr-form,
+.goal-payoff-project-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.goal-payoff-apr-form label,
+.goal-payoff-project-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  color: rgba(28, 36, 48, 0.7);
+}
+
+.goal-payoff-result {
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.goal-payoff-result-negative {
+  color: #b71c1c;
+}
+
 .goal-form {
   display: flex;
   flex-direction: column;
