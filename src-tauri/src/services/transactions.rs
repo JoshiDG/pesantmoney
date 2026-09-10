@@ -305,8 +305,7 @@ pub fn daily_income_expense_totals_for_range(
 
     let rows: Vec<(String, i64, i64)> = match account_id {
         Some(id) => {
-            let sql = format!(
-                "SELECT t.date, \
+            let sql = "SELECT t.date, \
                     COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END), 0), \
                     COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) \
                 FROM transactions t \
@@ -318,9 +317,8 @@ pub fn daily_income_expense_totals_for_range(
                     SELECT to_transaction_id FROM transfers \
                 ) \
                 AND t.account_id = ?3 \
-                GROUP BY t.date"
-            );
-            let mut stmt = conn.prepare(&sql)?;
+                GROUP BY t.date";
+            let mut stmt = conn.prepare(sql)?;
             let rows = stmt
                 .query_map(rusqlite::params![start_date, end_date, id], |row| {
                     Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))

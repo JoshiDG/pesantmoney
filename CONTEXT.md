@@ -74,3 +74,15 @@ _Avoid_: On-track score, projection input (implies a user-supplied contribution 
 **Payoff Projection**:
 A hypothetical debt-free date computed for a single debt Account from its current balance, a manually-entered APR, and a manually-entered hypothetical monthly payment, using standard amortization math. Entirely local and recomputed on demand — never persisted as Transaction data, and never affects Goal progress, which stays derived solely from balance paydown per **Goal**. If the entered payment doesn't cover accruing interest, no finite payoff date exists and the app says so explicitly rather than showing a misleading number. See ADR-0016; multi-Account avalanche/snowball prioritization across debts is a separate, larger concept deferred to a follow-up.
 _Avoid_: Payoff Goal (a Payoff Projection is a what-if calculator, not a persisted Goal)
+
+**Breakpoint Tier**:
+One of three named viewport-width bands — Expanded (>=1280px), Compact (768-1279px), Mobile (<768px) — that drive both cosmetic CSS reflow and structural component swaps (see Nav Rail). Read via the `useBreakpoint()` hook, not ad hoc media query literals. See ADR-0018.
+_Avoid_: Breakpoint (ambiguous between the pixel value and the named tier — Breakpoint Tier is the tier, breakpoint is the cutoff number)
+
+**Nav Rail**:
+The app's primary navigation surface (Dashboard, Accounts, Transactions, Reports, Budget, Recurring, Goals, Investments, Settings — see ADR-0017), rendered as one of three structural states depending on Breakpoint Tier: an expanded rail (icons + labels), an icon rail (icons only), or a Bottom Tab Bar. See ADR-0018.
+_Avoid_: Sidebar (describes the Expanded/Icon states only, not the Bottom Tab Bar state the same navigation becomes at Mobile tier)
+
+**Bottom Tab Bar**:
+The Mobile-tier form of the Nav Rail: a fixed bottom bar showing Dashboard, Transactions, Budget, and Accounts, plus a "More" destination for the remaining Nav Rail items. See ADR-0018.
+_Avoid_: Tab bar (too generic — this is specifically the Nav Rail's Mobile-tier state, not an unrelated tabbed-content pattern)
