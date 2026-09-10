@@ -130,16 +130,18 @@ export function CategoriesScreen() {
             ) : (
               <div className="category-group-header">
                 <h3>{group.name}</h3>
-                <div className="row-actions">
+                <div className="category-group-actions">
                   <button type="button" onClick={() => setAddingCategoryForGroupId(group.id)}>
                     Add category
                   </button>
-                  <button type="button" onClick={() => setEditingGroupId(group.id)}>
-                    Edit
-                  </button>
-                  <button type="button" onClick={() => handleDeleteGroup(group)}>
-                    Delete
-                  </button>
+                  <div className="row-actions">
+                    <button type="button" onClick={() => setEditingGroupId(group.id)}>
+                      Edit
+                    </button>
+                    <button type="button" onClick={() => handleDeleteGroup(group)}>
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

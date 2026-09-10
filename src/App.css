@@ -262,6 +262,12 @@ body {
   gap: 0.5rem;
 }
 
+.category-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
 .transaction-form > * {
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--paper-line);
