@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 pub use csv_parser::{ColumnMapping, SignConvention};
 
 use crate::services::categorization_rules;
+use crate::services::merchants;
 use crate::services::transactions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -235,21 +236,32 @@ pub fn commit_import(
             skipped_count += 1;
             continue;
         }
+        // Identify a Merchant name (see services::merchants) once, at Import
+        // time; this never overwrites `row.description`, which stays intact
+        // for fingerprint-based dedup on future imports (issue #36).
+        let merchant_name = merchants::match_description(conn, &row.description).map_err(|e| e.to_string())?;
         // Respect an explicit category_id from the caller; only fall back to
-        // a matching Categorization Rule when none was given.
+        // a matching Categorization Rule when none was given. Rule matching
+        // prefers the identified Merchant name over the raw description
+        // when one was found.
         let category_id = match row.category_id {
             Some(category_id) => Some(category_id),
-            None => categorization_rules::apply_to_transaction(
+            None => categorization_rules::apply_to_transaction_with_merchant(
                 conn,
                 account_id,
                 &row.date,
                 row.amount_cents,
                 &row.description,
+                merchant_name.as_deref(),
             )
             .map_err(|e| e.to_string())?,
         };
-        transactions::create(conn, account_id, &row.date, row.amount_cents, &row.description, category_id)
-            .map_err(|e| e.to_string())?;
+        let created =
+            transactions::create(conn, account_id, &row.date, row.amount_cents, &row.description, category_id)
+                .map_err(|e| e.to_string())?;
+        if let Some(merchant_name) = &merchant_name {
+            transactions::set_merchant_name(conn, created.id, Some(merchant_name)).map_err(|e| e.to_string())?;
+        }
         seen_fingerprints.insert(fp);
         imported_count += 1;
     }
@@ -530,6 +542,81 @@ mod tests {
 
         assert_eq!(result.imported_count, 1);
         assert_eq!(result.skipped_count, 0);
+    }
+
+    #[test]
+    fn commit_identifies_a_merchant_name_without_altering_the_raw_description() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        crate::services::merchants::create(&conn, "zzz test coffee", "ZZZ Test Coffee")
+            .expect("create merchant");
+        let rows = vec![ParsedTransaction {
+            date: "2026-08-01".to_string(),
+            amount_cents: -1250,
+            description: "SQ *ZZZ TEST COFFEE COF 04/12 #4471".to_string(),
+            category_id: None,
+        }];
+
+        commit_import(&conn, account_id, rows).expect("commit import");
+
+        let stored = transactions::list_for_account(&conn, account_id).expect("list transactions");
+        assert_eq!(stored[0].description, "SQ *ZZZ TEST COFFEE COF 04/12 #4471");
+        assert_eq!(stored[0].merchant_name, Some("ZZZ Test Coffee".to_string()));
+    }
+
+    #[test]
+    fn commit_leaves_merchant_name_unset_when_no_keyword_matches() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        crate::services::merchants::create(&conn, "zzz test coffee", "ZZZ Test Coffee")
+            .expect("create merchant");
+        let rows = vec![ParsedTransaction {
+            date: "2026-08-01".to_string(),
+            amount_cents: -1250,
+            description: "Totally Unrelated Store".to_string(),
+            category_id: None,
+        }];
+
+        commit_import(&conn, account_id, rows).expect("commit import");
+
+        let stored = transactions::list_for_account(&conn, account_id).expect("list transactions");
+        assert_eq!(stored[0].merchant_name, None);
+    }
+
+    #[test]
+    fn commit_uses_the_identified_merchant_name_for_rule_matching() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        crate::services::merchants::create(&conn, "zzz test coffee", "ZZZ Test Coffee")
+            .expect("create merchant");
+        let group_id = crate::services::categories::create_group(&conn, "Food")
+            .expect("create category group")
+            .id;
+        let category_id = crate::services::categories::create(&conn, group_id, "Coffee")
+            .expect("create category")
+            .id;
+        // The rule only matches the clean merchant name, not the raw
+        // processor-prefixed description.
+        crate::services::categorization_rules::create(
+            &conn,
+            crate::services::categorization_rules::RuleField::Description,
+            crate::services::categorization_rules::MatchType::Equals,
+            "zzz test coffee",
+            category_id,
+            0,
+        )
+        .expect("create categorization rule");
+        let rows = vec![ParsedTransaction {
+            date: "2026-08-01".to_string(),
+            amount_cents: -1250,
+            description: "SQ *ZZZ TEST COFFEE COF 04/12".to_string(),
+            category_id: None,
+        }];
+
+        commit_import(&conn, account_id, rows).expect("commit import");
+
+        let stored = transactions::list_for_account(&conn, account_id).expect("list transactions");
+        assert_eq!(stored[0].category_id, Some(category_id));
     }
 
     #[test]

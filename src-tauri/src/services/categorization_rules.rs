@@ -194,17 +194,27 @@ fn rule_matches(rule: &CategorizationRule, account_id: i64, amount_cents: i64, d
 
 /// Returns the category_id of the first matching rule (by priority, lower
 /// runs first), or `None` if no rule matches this Transaction.
-pub fn apply_to_transaction(
+///
+/// A `Description`-field rule matches against the Transaction's identified
+/// Merchant name when one is present (see `services::merchants`, passed via
+/// `merchant_name`), falling back to the raw `description` when it isn't (or
+/// when the caller passes `None`, e.g. for a Transaction that predates
+/// Merchant identification or was entered manually) — so existing rules keep
+/// working unchanged for unidentified Transactions, and new rules can be
+/// written against clean merchant names (see issue #36).
+pub fn apply_to_transaction_with_merchant(
     conn: &Connection,
     account_id: i64,
     _date: &str,
     amount_cents: i64,
     description: &str,
+    merchant_name: Option<&str>,
 ) -> rusqlite::Result<Option<i64>> {
+    let description_for_matching = merchant_name.unwrap_or(description);
     let rules = list(conn)?;
     Ok(rules
         .iter()
-        .find(|rule| rule_matches(rule, account_id, amount_cents, description))
+        .find(|rule| rule_matches(rule, account_id, amount_cents, description_for_matching))
         .map(|rule| rule.category_id))
 }
 
@@ -218,15 +228,16 @@ pub fn apply_to_uncategorized(conn: &Connection, account_id: Option<i64>) -> rus
         date: String,
         amount_cents: i64,
         description: String,
+        merchant_name: Option<String>,
     }
 
     let mut stmt = match account_id {
         Some(_) => conn.prepare(
-            "SELECT id, account_id, date, amount_cents, description FROM transactions \
+            "SELECT id, account_id, date, amount_cents, description, merchant_name FROM transactions \
              WHERE category_id IS NULL AND account_id = ?1",
         )?,
         None => conn.prepare(
-            "SELECT id, account_id, date, amount_cents, description FROM transactions \
+            "SELECT id, account_id, date, amount_cents, description, merchant_name FROM transactions \
              WHERE category_id IS NULL",
         )?,
     };
@@ -238,6 +249,7 @@ pub fn apply_to_uncategorized(conn: &Connection, account_id: Option<i64>) -> rus
             date: row.get(2)?,
             amount_cents: row.get(3)?,
             description: row.get(4)?,
+            merchant_name: row.get(5)?,
         })
     };
 
@@ -248,9 +260,14 @@ pub fn apply_to_uncategorized(conn: &Connection, account_id: Option<i64>) -> rus
 
     let mut updated_count = 0;
     for txn in transactions {
-        if let Some(category_id) =
-            apply_to_transaction(conn, txn.account_id, &txn.date, txn.amount_cents, &txn.description)?
-        {
+        if let Some(category_id) = apply_to_transaction_with_merchant(
+            conn,
+            txn.account_id,
+            &txn.date,
+            txn.amount_cents,
+            &txn.description,
+            txn.merchant_name.as_deref(),
+        )? {
             conn.execute(
                 "UPDATE transactions SET category_id = ?1, updated_at = datetime('now') WHERE id = ?2",
                 rusqlite::params![category_id, txn.id],
@@ -383,7 +400,7 @@ mod tests {
         create(&conn, RuleField::Description, MatchType::Contains, "WHOLE FOODS", category_id, 0)
             .expect("create rule");
 
-        let result = apply_to_transaction(&conn, 1, "2026-08-01", -500, "Whole Foods Market #42")
+        let result = apply_to_transaction_with_merchant(&conn, 1, "2026-08-01", -500, "Whole Foods Market #42", None)
             .expect("apply rule");
 
         assert_eq!(result, Some(category_id));
@@ -396,8 +413,8 @@ mod tests {
         create(&conn, RuleField::Description, MatchType::Equals, "Rent", category_id, 0)
             .expect("create rule");
 
-        let no_match = apply_to_transaction(&conn, 1, "2026-08-01", -500, "Rent payment").expect("apply rule");
-        let exact_match = apply_to_transaction(&conn, 1, "2026-08-01", -500, "rent").expect("apply rule");
+        let no_match = apply_to_transaction_with_merchant(&conn, 1, "2026-08-01", -500, "Rent payment", None).expect("apply rule");
+        let exact_match = apply_to_transaction_with_merchant(&conn, 1, "2026-08-01", -500, "rent", None).expect("apply rule");
 
         assert_eq!(no_match, None);
         assert_eq!(exact_match, Some(category_id));
@@ -410,8 +427,8 @@ mod tests {
         create(&conn, RuleField::Amount, MatchType::Equals, "-1599", category_id, 0)
             .expect("create rule");
 
-        let matches = apply_to_transaction(&conn, 1, "2026-08-01", -1599, "Streaming Co").expect("apply rule");
-        let no_match = apply_to_transaction(&conn, 1, "2026-08-01", -1600, "Streaming Co").expect("apply rule");
+        let matches = apply_to_transaction_with_merchant(&conn, 1, "2026-08-01", -1599, "Streaming Co", None).expect("apply rule");
+        let no_match = apply_to_transaction_with_merchant(&conn, 1, "2026-08-01", -1600, "Streaming Co", None).expect("apply rule");
 
         assert_eq!(matches, Some(category_id));
         assert_eq!(no_match, None);
@@ -424,11 +441,43 @@ mod tests {
         create(&conn, RuleField::Account, MatchType::Equals, "7", category_id, 0)
             .expect("create rule");
 
-        let matches = apply_to_transaction(&conn, 7, "2026-08-01", -500, "Anything").expect("apply rule");
-        let no_match = apply_to_transaction(&conn, 8, "2026-08-01", -500, "Anything").expect("apply rule");
+        let matches = apply_to_transaction_with_merchant(&conn, 7, "2026-08-01", -500, "Anything", None).expect("apply rule");
+        let no_match = apply_to_transaction_with_merchant(&conn, 8, "2026-08-01", -500, "Anything", None).expect("apply rule");
 
         assert_eq!(matches, Some(category_id));
         assert_eq!(no_match, None);
+    }
+
+    #[test]
+    fn apply_to_transaction_with_merchant_prefers_merchant_name_over_raw_description() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let category_id = create_test_category(&conn, "Coffee");
+        create(&conn, RuleField::Description, MatchType::Equals, "blue bottle coffee", category_id, 0)
+            .expect("create rule");
+
+        // The rule only matches the clean merchant name, not the raw
+        // processor-prefixed description.
+        let via_merchant = apply_to_transaction_with_merchant(
+            &conn,
+            1,
+            "2026-08-01",
+            -500,
+            "SQ *BLUE BOTTLE COF 04/12",
+            Some("blue bottle coffee"),
+        )
+        .expect("apply rule");
+        let without_merchant = apply_to_transaction_with_merchant(
+            &conn,
+            1,
+            "2026-08-01",
+            -500,
+            "SQ *BLUE BOTTLE COF 04/12",
+            None,
+        )
+        .expect("apply rule");
+
+        assert_eq!(via_merchant, Some(category_id));
+        assert_eq!(without_merchant, None);
     }
 
     #[test]
@@ -438,7 +487,7 @@ mod tests {
         create(&conn, RuleField::Description, MatchType::Contains, "grocery", category_id, 0)
             .expect("create rule");
 
-        let result = apply_to_transaction(&conn, 1, "2026-08-01", -500, "Movie Theater").expect("apply rule");
+        let result = apply_to_transaction_with_merchant(&conn, 1, "2026-08-01", -500, "Movie Theater", None).expect("apply rule");
 
         assert_eq!(result, None);
     }
@@ -468,7 +517,7 @@ mod tests {
         )
         .expect("create rule");
 
-        let result = apply_to_transaction(&conn, 1, "2026-08-01", -500, "Coffee Shop").expect("apply rule");
+        let result = apply_to_transaction_with_merchant(&conn, 1, "2026-08-01", -500, "Coffee Shop", None).expect("apply rule");
 
         assert_eq!(result, Some(low_priority_category));
     }

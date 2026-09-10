@@ -8,6 +8,7 @@ pub mod goals;
 pub mod health;
 pub mod holdings;
 pub mod import_profiles;
+pub mod merchants;
 pub mod notifications;
 pub mod recurring_items;
 pub mod settings;
