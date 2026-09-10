@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { Account } from "../accounts/types";
+import { currentMonth } from "../budget/types";
 import { DashboardScreen } from "./DashboardScreen";
+import { monthStartDate } from "./types";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -25,6 +27,8 @@ function mockInvokeWithAccountBalances(balances: [Account, number][]) {
         return balances;
       case "get_net_worth_as_of":
         return balances.reduce((sum, [, balance]) => sum + balance, 0);
+      case "get_daily_cash_flow_for_range":
+        return [];
       default:
         return null;
     }
@@ -107,5 +111,39 @@ describe("DashboardScreen net worth widget", () => {
 
     await screen.findByText("First Checking");
     expect(screen.getByText("$400.00")).toBeInTheDocument();
+  });
+});
+
+describe("DashboardScreen spending widget", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+  });
+
+  it("renders spent-so-far and average-pace figures from daily cash flow data", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      switch (cmd) {
+        case "get_net_worth":
+        case "get_net_worth_as_of":
+          return 0;
+        case "get_net_worth_by_account":
+          return [];
+        case "get_daily_cash_flow_for_range": {
+          const startDate = String((args as { start_date?: string } | undefined)?.start_date ?? "");
+          // The current month's range gets a real day-1 expense; every
+          // trailing comparison month gets none, so "spent so far" should
+          // read as spending faster than the (zero) average.
+          const isCurrentMonth = startDate === monthStartDate(currentMonth());
+          return isCurrentMonth ? [[startDate, 0, 2_000]] : [[startDate, 0, 0]];
+        }
+        default:
+          return null;
+      }
+    });
+
+    render(<DashboardScreen />);
+
+    await screen.findByText("Spent so far this month");
+    expect(screen.getByText("Average pace")).toBeInTheDocument();
+    expect(screen.getByText("$20.00")).toBeInTheDocument();
   });
 });

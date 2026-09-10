@@ -1,4 +1,5 @@
 import { NetWorthWidget } from "./NetWorthWidget";
+import { SpendingWidget } from "./SpendingWidget";
 
 export function DashboardScreen() {
   return (
@@ -12,6 +13,7 @@ export function DashboardScreen() {
 
       <div className="dashboard-grid">
         <div className="dashboard-column">
+          <SpendingWidget />
           <NetWorthWidget />
         </div>
         <div className="dashboard-column" />
