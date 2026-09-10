@@ -12,6 +12,7 @@ use crate::services::csv_export;
 use crate::services::goals::{self, Goal, GoalWithProgress};
 use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
 use crate::services::import_profiles::{self, ImportProfile};
+use crate::services::merchants::{self, Merchant};
 use crate::services::notifications;
 use crate::services::recurring_items::{self, Frequency, RecurringItem};
 use crate::services::settings::{self, Settings};
@@ -584,6 +585,39 @@ pub fn apply_categorization_rules(
 ) -> CommandResult<usize> {
     let conn = state.db.lock().map_err(to_command_error)?;
     categorization_rules::apply_to_uncategorized(&conn, account_id).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_merchant(
+    state: tauri::State<AppState>,
+    keyword: String,
+    merchant_name: String,
+) -> CommandResult<Merchant> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    merchants::create(&conn, &keyword, &merchant_name)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_merchants(state: tauri::State<AppState>) -> CommandResult<Vec<Merchant>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    merchants::list(&conn).map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_merchant(
+    state: tauri::State<AppState>,
+    id: i64,
+    keyword: String,
+    merchant_name: String,
+) -> CommandResult<Merchant> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    merchants::update(&conn, id, &keyword, &merchant_name)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_merchant(state: tauri::State<AppState>, id: i64) -> CommandResult<()> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    merchants::delete(&conn, id).map_err(to_command_error)
 }
 
 #[derive(Debug, Clone, Serialize)]

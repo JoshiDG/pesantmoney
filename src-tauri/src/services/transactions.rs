@@ -9,6 +9,13 @@ pub struct Transaction {
     pub amount_cents: i64,
     pub description: String,
     pub category_id: Option<i64>,
+    /// The identified Merchant name (see `services::merchants`), populated
+    /// only at Import time from a Merchant keyword match. A derived display
+    /// field, never a substitute for `description`: it must never be used
+    /// for import-dedup fingerprinting, which depends on `description`
+    /// staying exactly as imported. `None` when no keyword matched, or for
+    /// manually-entered Transactions (matching only runs at Import time).
+    pub merchant_name: Option<String>,
 }
 
 fn transaction_from_row(row: &rusqlite::Row) -> rusqlite::Result<Transaction> {
@@ -19,6 +26,7 @@ fn transaction_from_row(row: &rusqlite::Row) -> rusqlite::Result<Transaction> {
         amount_cents: row.get(3)?,
         description: row.get(4)?,
         category_id: row.get(5)?,
+        merchant_name: row.get(6)?,
     })
 }
 
@@ -43,12 +51,28 @@ pub fn create(
         amount_cents,
         description: description.to_string(),
         category_id,
+        merchant_name: None,
     })
+}
+
+/// Sets the identified Merchant name on an existing Transaction (see
+/// `services::merchants::match_description`). Only called at Import time,
+/// right after `create` — never mutates `description`. Setting `None`
+/// clears it.
+pub fn set_merchant_name(conn: &Connection, id: i64, merchant_name: Option<&str>) -> rusqlite::Result<()> {
+    let rows_affected = conn.execute(
+        "UPDATE transactions SET merchant_name = ?1, updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![merchant_name, id],
+    )?;
+    if rows_affected == 0 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    Ok(())
 }
 
 pub fn list_for_account(conn: &Connection, account_id: i64) -> rusqlite::Result<Vec<Transaction>> {
     let mut stmt = conn.prepare(
-        "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions \
+        "SELECT id, account_id, date, amount_cents, description, category_id, merchant_name FROM transactions \
          WHERE account_id = ?1 ORDER BY date, id",
     )?;
     let rows = stmt.query_map([account_id], transaction_from_row)?;
@@ -59,7 +83,7 @@ pub fn list_for_account(conn: &Connection, account_id: i64) -> rusqlite::Result<
 /// needs to fetch a Transaction's account and amount to validate a link.
 pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Transaction>> {
     conn.query_row(
-        "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions WHERE id = ?1",
+        "SELECT id, account_id, date, amount_cents, description, category_id, merchant_name FROM transactions WHERE id = ?1",
         [id],
         transaction_from_row,
     )
@@ -70,7 +94,7 @@ pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Transaction>> 
 /// service's cross-account match search.
 pub fn list_excluding_account(conn: &Connection, account_id: i64) -> rusqlite::Result<Vec<Transaction>> {
     let mut stmt = conn.prepare(
-        "SELECT id, account_id, date, amount_cents, description, category_id FROM transactions \
+        "SELECT id, account_id, date, amount_cents, description, category_id, merchant_name FROM transactions \
          WHERE account_id != ?1 ORDER BY date, id",
     )?;
     let rows = stmt.query_map([account_id], transaction_from_row)?;
@@ -98,6 +122,15 @@ pub fn update(
         [id],
         |row| row.get(0),
     )?;
+    // `update` is only used for manual edits to date/amount/description/
+    // category, not merchant identification (which only runs at Import
+    // time) — read back whatever merchant_name is already stored rather
+    // than assuming it's unset.
+    let merchant_name: Option<String> = conn.query_row(
+        "SELECT merchant_name FROM transactions WHERE id = ?1",
+        [id],
+        |row| row.get(0),
+    )?;
 
     Ok(Transaction {
         id,
@@ -106,6 +139,7 @@ pub fn update(
         amount_cents,
         description: description.to_string(),
         category_id,
+        merchant_name,
     })
 }
 
@@ -274,6 +308,21 @@ mod tests {
         let result = update(&conn, 999, "2026-08-01", -100, "Nope", None);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn set_merchant_name_stores_it_without_changing_description() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let created = create(&conn, account_id, "2026-08-01", -1250, "SQ *BLUE BOTTLE COF", None)
+            .expect("create transaction");
+        assert_eq!(created.merchant_name, None);
+
+        set_merchant_name(&conn, created.id, Some("Blue Bottle Coffee")).expect("set merchant name");
+
+        let stored = get(&conn, created.id).unwrap().unwrap();
+        assert_eq!(stored.merchant_name, Some("Blue Bottle Coffee".to_string()));
+        assert_eq!(stored.description, "SQ *BLUE BOTTLE COF");
     }
 
     #[test]
