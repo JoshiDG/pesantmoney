@@ -28,8 +28,12 @@ _Avoid_: Template, format (too generic)
 A user-facing label for what a Transaction was for (e.g. Groceries, Rent), assigned manually or by a Categorization Rule. Belongs to a Category Group.
 
 **Categorization Rule**:
-A user-defined condition (matching on description, amount, or Account) that assigns a Category to matching Transactions automatically on Import. Entirely local; no cloud merchant lookup.
+A user-defined condition (matching on description, amount, or Account) that assigns a Category to matching Transactions automatically on Import. Entirely local; no cloud merchant lookup. Description matching prefers a Transaction's Merchant name when one was identified, falling back to the raw imported description otherwise.
 _Avoid_: Auto-categorization (describes the behavior, not the entity)
+
+**Merchant**:
+A user-maintained keyword-to-name mapping (e.g. `"SQ *BLUE BOTTLE"` → "Blue Bottle Coffee") used to identify a clean, human-readable name from a Transaction's raw imported description. Matched by substring at Import time only; seeded with a small local dictionary and freely editable/extendable by the user. Never a cloud lookup or ML model — see ADR-0011.
+_Avoid_: Merchant enrichment (describes the behavior, not the entity)
 
 **Budget**:
 A zero-based monthly plan: all available income must be Assigned to Categories before it can be spent. Distinct from Monarch's model of independent per-category targets that need not sum to income — see ADR-0004.
