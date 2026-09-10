@@ -21,6 +21,7 @@ interface MonthlyCashFlow {
 }
 
 const TREND_MONTHS = 6;
+const VISIBLE_ACCOUNT_COUNT = 4;
 
 export function DashboardScreen() {
   const [netWorthCents, setNetWorthCents] = useState(0);
@@ -28,6 +29,7 @@ export function DashboardScreen() {
   const [thisMonth, setThisMonth] = useState<CashFlow>([0, 0]);
   const [trend, setTrend] = useState<MonthlyCashFlow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showAllAccounts, setShowAllAccounts] = useState(false);
 
   async function refresh() {
     try {
@@ -81,6 +83,10 @@ export function DashboardScreen() {
     ...trend.map((m) => Math.max(m.income, m.expense)),
   );
 
+  const hasHiddenAccounts = breakdown.length > VISIBLE_ACCOUNT_COUNT;
+  const visibleBreakdown =
+    hasHiddenAccounts && !showAllAccounts ? breakdown.slice(0, VISIBLE_ACCOUNT_COUNT) : breakdown;
+
   return (
     <section>
       <div className="content-header">
@@ -102,7 +108,7 @@ export function DashboardScreen() {
       <div className="dashboard-section">
         <h3 className="dashboard-section-title">Accounts</h3>
         <div className="net-worth-breakdown">
-          {breakdown.map(([account, balance]) => (
+          {visibleBreakdown.map(([account, balance]) => (
             <div key={account.id} className="net-worth-row">
               <div>
                 <div className="net-worth-row-name">{account.name}</div>
@@ -116,6 +122,11 @@ export function DashboardScreen() {
           ))}
           {breakdown.length === 0 && <p className="empty-state">No accounts yet.</p>}
         </div>
+        {hasHiddenAccounts && (
+          <button type="button" onClick={() => setShowAllAccounts((shown) => !shown)}>
+            {showAllAccounts ? "Show fewer" : `See all ${breakdown.length} accounts`}
+          </button>
+        )}
       </div>
 
       <div className="dashboard-section">
