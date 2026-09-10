@@ -1348,6 +1348,63 @@ button.danger:hover,
   font-weight: 600;
 }
 
+/* ---------- motion: functional/confirmatory only, never decorative ---------- */
+/* All transitions/animations below are inert unless the user has not asked
+   for reduced motion. Nothing here should be a "moment of charm" -- each
+   one exists to confirm a state change the user just caused. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .confirmation-overlay {
+    animation: confirmation-overlay-in 150ms ease-out;
+  }
+
+  .confirmation-panel {
+    animation: confirmation-panel-in 180ms ease-out;
+  }
+
+  .ledger-editable .grid-cell {
+    transition:
+      box-shadow 0.4s ease-out,
+      background-color 0.4s ease-out;
+  }
+
+  .budget-row .cell-assigned,
+  .assigned-cell-button,
+  .net-worth-amount {
+    transition:
+      color 0.2s ease,
+      background-color 0.2s ease;
+  }
+}
+
+@keyframes confirmation-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes confirmation-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Transient "just committed" state for an inline-edited ledger cell. Applied
+   briefly after a commit, then removed -- the fade-out is handled by the
+   grid-cell transition above, so this class needs no transition of its own. */
+.ledger-editable .grid-cell-flash {
+  box-shadow: inset 0 0 0 2px var(--focus);
+  background-color: rgba(63, 124, 172, 0.08);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #1a1d22;
