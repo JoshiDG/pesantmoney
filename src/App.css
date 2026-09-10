@@ -11,9 +11,25 @@
   --debit-soft: rgba(162, 59, 46, 0.12);
   --focus: #3f7cac;
 
+  /* Secondary text: readable content that is intentionally de-emphasized
+     (descriptions, results, values, interactive labels) — needs to stay legible. */
+  --text-secondary: rgba(28, 36, 48, 0.65);
+  /* Tertiary text: structural chrome (column headers, small-caps captions,
+     meta labels) — the most muted tier, decorative rather than content. */
+  --text-tertiary: rgba(28, 36, 48, 0.5);
+
   --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --font-sans: -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
   --font-mono: "SF Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+
+  /* Hero-number display treatment: the single most important figure per screen
+     (net worth on Dashboard, account balance on the ledger, ready-to-assign on
+     Budget, total value on Holdings). Serif at real display size — mono
+     already owns tabular ledger rows (.amount) well; a giant mono figure reads
+     more like a terminal than "architecture". Tracking ratio mirrors Copilot's
+     112px/-2.24px headline (-0.02em) rather than importing the pixel value. */
+  --display-size: 2.5rem;
+  --display-tracking: -0.02em;
 
   font-family: var(--font-sans);
   font-size: 16px;
@@ -143,7 +159,7 @@ body {
 }
 
 .empty-state {
-  color: rgba(28, 36, 48, 0.5);
+  color: var(--text-tertiary);
   font-size: 0.95rem;
   padding-top: 1rem;
 }
@@ -153,7 +169,7 @@ body {
   border: none;
   box-shadow: none;
   padding: 0;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-secondary);
   font-size: 0.82rem;
   cursor: pointer;
   margin-bottom: 1rem;
@@ -182,13 +198,26 @@ body {
 
 .account-title-meta {
   font-size: 0.85rem;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-tertiary);
+}
+
+/* Hero-number display treatment (issue #43): the single most important figure
+   per screen — .balance (ledger), .ready-to-assign-amount (Budget),
+   .net-worth-amount (Dashboard), .holdings-total-value (Holdings) — all share
+   one deliberate serif display size/tracking instead of four ad-hoc mono
+   sizes. font-variant-numeric: lining-nums keeps digits uniform-height in the
+   serif stack (which defaults to old-style figures otherwise). */
+.balance,
+.ready-to-assign-amount,
+.net-worth-amount,
+.holdings-total-value {
+  font-family: var(--font-serif);
+  font-variant-numeric: lining-nums tabular-nums;
+  font-size: var(--display-size);
+  letter-spacing: var(--display-tracking);
 }
 
 .balance {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 1.7rem;
   text-align: right;
   white-space: nowrap;
 }
@@ -197,7 +226,7 @@ body {
   display: block;
   font-family: var(--font-sans);
   font-size: 0.72rem;
-  color: rgba(28, 36, 48, 0.5);
+  color: var(--text-tertiary);
   font-weight: 400;
 }
 
@@ -217,7 +246,7 @@ body {
 
 .ledger-head > span {
   font-size: 0.76rem;
-  color: rgba(28, 36, 48, 0.5);
+  color: var(--text-tertiary);
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--paper-line);
 }
@@ -239,7 +268,7 @@ body {
 }
 
 .ledger-row .cell-category {
-  color: rgba(28, 36, 48, 0.6);
+  color: var(--text-secondary);
   font-size: 0.82rem;
 }
 
@@ -334,7 +363,7 @@ body {
 
 .ledger-row.is-transfer .cell-description,
 .ledger-row.is-transfer .amount {
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-secondary);
 }
 
 .transfer-badge {
@@ -376,7 +405,7 @@ body {
 
 .transfer-candidate-group-label {
   font-size: 0.72rem;
-  color: rgba(28, 36, 48, 0.5);
+  color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -405,7 +434,7 @@ body {
 
 .transfer-candidate-date,
 .transfer-candidate-description {
-  color: rgba(28, 36, 48, 0.7);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -422,7 +451,7 @@ body {
 .ledger-view-toggle button {
   background: none;
   border-color: transparent;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-secondary);
 }
 
 .ledger-view-toggle button.active {
@@ -457,7 +486,7 @@ body {
 
 .recurring-head > span {
   font-size: 0.76rem;
-  color: rgba(28, 36, 48, 0.5);
+  color: var(--text-tertiary);
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--paper-line);
 }
@@ -492,16 +521,13 @@ body {
 
 .holdings-total-label {
   font-size: 0.76rem;
-  color: rgba(28, 36, 48, 0.5);
+  color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
-.holdings-total-value {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 1.3rem;
-}
+/* font-family/size/tracking for .holdings-total-value come from the shared
+   hero-number rule above (src/App.css:~213). */
 
 .holdings-unpriced-note {
   font-size: 0.78rem;
@@ -522,7 +548,7 @@ body {
 
 .holdings-head > span {
   font-size: 0.76rem;
-  color: rgba(28, 36, 48, 0.5);
+  color: var(--text-tertiary);
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--paper-line);
 }
@@ -548,7 +574,7 @@ body {
 
 .price-as-of {
   font-size: 0.74rem;
-  color: rgba(28, 36, 48, 0.5);
+  color: var(--text-tertiary);
 }
 
 .price-missing {
@@ -658,7 +684,7 @@ body {
 
 .rule-row-priority {
   font-size: 0.8rem;
-  color: rgba(28, 36, 48, 0.6);
+  color: var(--text-tertiary);
 }
 
 .rule-form {
@@ -671,7 +697,7 @@ body {
 
 .rule-run-result {
   font-size: 0.85rem;
-  color: rgba(28, 36, 48, 0.7);
+  color: var(--text-secondary);
   margin: 0 0 1rem;
 }
 
@@ -705,7 +731,7 @@ body {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.8rem;
-  color: rgba(28, 36, 48, 0.6);
+  color: var(--text-secondary);
 }
 
 .import-csv-guidelines {
@@ -715,7 +741,7 @@ body {
   border: 1px solid var(--paper-line);
   border-radius: 6px;
   font-size: 0.82rem;
-  color: rgba(28, 36, 48, 0.65);
+  color: var(--text-secondary);
 }
 
 .import-csv-guidelines-heading {
@@ -745,7 +771,7 @@ body {
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.82rem;
-  color: rgba(28, 36, 48, 0.65);
+  color: var(--text-secondary);
 }
 
 .import-field-row {
@@ -780,7 +806,7 @@ body {
 
 .import-status-label {
   font-size: 0.78rem;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-tertiary);
 }
 
 .import-status-needs_review .import-status-label {
@@ -826,11 +852,8 @@ body {
   background: rgba(31, 111, 92, 0.05);
 }
 
-.ready-to-assign-amount {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 2rem;
-}
+/* font-family/size/tracking for .ready-to-assign-amount come from the shared
+   hero-number rule (src/App.css:~213). */
 
 .ready-to-assign-amount.credit {
   color: var(--credit);
@@ -854,7 +877,7 @@ body {
 
 .budget-head > span {
   font-size: 0.76rem;
-  color: rgba(28, 36, 48, 0.5);
+  color: var(--text-tertiary);
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--paper-line);
 }
@@ -937,7 +960,7 @@ body {
 
 .goal-card-meta {
   font-size: 0.82rem;
-  color: rgba(28, 36, 48, 0.6);
+  color: var(--text-tertiary);
   margin-top: 0.15rem;
 }
 
@@ -963,7 +986,7 @@ body {
   margin-top: 0.4rem;
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
-  color: rgba(28, 36, 48, 0.7);
+  color: var(--text-secondary);
 }
 
 .goal-form {
@@ -1095,14 +1118,11 @@ button.danger:hover,
 
 .net-worth-label {
   font-size: 0.78rem;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-tertiary);
 }
 
-.net-worth-amount {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 2.5rem;
-}
+/* font-family/size/tracking for .net-worth-amount come from the shared
+   hero-number rule (src/App.css:~213). */
 
 .net-worth-amount.credit {
   color: var(--credit);
@@ -1142,7 +1162,7 @@ button.danger:hover,
 
 .net-worth-row-meta {
   font-size: 0.78rem;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-tertiary);
 }
 
 .cash-flow-summary {
@@ -1158,7 +1178,7 @@ button.danger:hover,
 
 .cash-flow-stat-label {
   font-size: 0.78rem;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-tertiary);
 }
 
 .cash-flow-stat .amount {
@@ -1209,7 +1229,7 @@ button.danger:hover,
 .trend-chart-label {
   margin-top: 0.5rem;
   font-size: 0.72rem;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-tertiary);
 }
 
 .trend-chart-legend {
@@ -1217,7 +1237,7 @@ button.danger:hover,
   gap: 1.25rem;
   margin-top: 0.6rem;
   font-size: 0.78rem;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-tertiary);
 }
 
 .trend-chart-legend span {
@@ -1267,7 +1287,7 @@ button.danger:hover,
 
 .settings-row-meta {
   font-size: 0.82rem;
-  color: rgba(28, 36, 48, 0.55);
+  color: var(--text-tertiary);
 }
 
 .settings-sub-action {
@@ -1296,7 +1316,7 @@ button.danger:hover,
 .settings-note {
   font-size: 0.82rem;
   line-height: 1.6;
-  color: rgba(28, 36, 48, 0.6);
+  color: var(--text-secondary);
   padding-top: 0.5rem;
   border-top: 1px solid var(--paper-line);
 }
@@ -1407,11 +1427,22 @@ button.danger:hover,
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #1a1d22;
-    --paper-line: #333a42;
+    /* Warm near-black canvas (not pure black), consistent with the paper/ledger
+       identity rather than a neutral-cool dark gray. */
+    --paper: #1c1a17;
+    --paper-line: #38352f;
+    /* ~90%-opacity-equivalent body text (not pure white) — eases eye strain
+       during extended data-review sessions. */
     --paper-text: #e9e6df;
     --ink: #101317;
     --ink-line: #2a323b;
+
+    /* Secondary/tertiary text tokens (see base :root, introduced for #47)
+       retuned against the dark canvas above: --text-secondary clears WCAG AA
+       (~5.7:1) for readable secondary content, --text-tertiary clears AA
+       (~4.7:1) with a smaller margin appropriate to purely decorative labels. */
+    --text-secondary: rgba(233, 230, 223, 0.6);
+    --text-tertiary: rgba(233, 230, 223, 0.52);
   }
 
   input,
@@ -1426,46 +1457,12 @@ button.danger:hover,
     color: var(--paper-text);
   }
 
-  .empty-state,
-  .account-title-meta,
-  .balance-label,
-  .back-link,
-  .net-worth-label,
-  .net-worth-row-meta,
-  .cash-flow-stat-label,
-  .trend-chart-label,
-  .trend-chart-legend,
-  .settings-row-meta,
-  .settings-note {
-    color: rgba(233, 230, 223, 0.55);
-  }
-
-  .import-field,
-  .import-format-toggle,
-  .import-status-label {
-    color: rgba(233, 230, 223, 0.55);
-  }
-
-  .ledger-row.is-transfer .cell-description,
-  .ledger-row.is-transfer .amount {
-    color: rgba(233, 230, 223, 0.55);
-  }
-
   .transfer-picker {
     background: rgba(63, 124, 172, 0.1);
   }
 
   .transfer-candidate {
     background: #22262c;
-  }
-
-  .transfer-candidate-group-label {
-    color: rgba(233, 230, 223, 0.5);
-  }
-
-  .transfer-candidate-date,
-  .transfer-candidate-description {
-    color: rgba(233, 230, 223, 0.7);
   }
 
   .confirmation-overlay {
