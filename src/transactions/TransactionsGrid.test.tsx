@@ -2,7 +2,7 @@ import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { Category } from "../categories/types";
+import { Category, CategoryGroup } from "../categories/types";
 import { withBreakpoint } from "../ui/withBreakpoint";
 import type { BreakpointTier } from "../ui/breakpoints";
 import { TransactionsGrid } from "./TransactionsGrid";
@@ -35,7 +35,12 @@ function makeTransactions(): Transaction[] {
 
 const categories: Category[] = [
   { id: 10, group_id: 1, name: "Food" },
-  { id: 11, group_id: 1, name: "Income" },
+  { id: 11, group_id: 2, name: "Income" },
+];
+
+const categoryGroups: CategoryGroup[] = [
+  { id: 1, name: "Everyday" },
+  { id: 2, name: "Big Ticket" },
 ];
 
 function renderGrid(
@@ -45,6 +50,7 @@ function renderGrid(
   const props = {
     transactions: makeTransactions(),
     categories,
+    categoryGroups,
     accounts: [],
     linkedTransactionIds: new Set<number>(),
     transferByTransactionId: new Map(),
@@ -66,6 +72,7 @@ function renderGrid(
     merchants: [],
     onSetPayee: vi.fn(),
     onCreateMerchant: vi.fn(),
+    onCreateCategory: vi.fn(),
     ...overrides,
   };
   render(<TransactionsGrid {...props} />, { wrapper: withBreakpoint(tier) });
@@ -121,12 +128,14 @@ describe("TransactionsGrid inline editing", () => {
     expect(memoCell("Coffee shop")).toBeInTheDocument();
   });
 
-  it("editing the category cell shows a select of categories and commits on change", () => {
+  it("editing the category cell renders a SuggestionCombobox and commits a matched Category via the existing update path", async () => {
+    const user = userEvent.setup();
     const props = renderGrid();
 
     fireEvent.click(screen.getAllByText("Uncategorized")[0]);
-    const select = screen.getByLabelText("Category for Coffee shop") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "10" } });
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await user.type(input, "Food");
+    fireEvent.keyDown(input, { key: "Enter" });
 
     expect(props.onUpdate).toHaveBeenCalledWith(1, {
       date: "2026-08-01",
@@ -414,6 +423,122 @@ describe("TransactionsGrid Payee editing (#72)", () => {
 
     expect(props.onSetPayee).toHaveBeenCalledWith(1, "My Local Cafe");
     expect(props.onCreateMerchant).not.toHaveBeenCalled();
+  });
+});
+
+// Shallow integration checks only (#67/#73 Testing Decisions): full
+// ghost-text/commit-key behavior is covered in SuggestionCombobox.test.tsx.
+// This suite covers the Category-specific wiring: seeding from
+// `categories`, the matched-existing-Category commit path (same
+// onUpdate/category_id path as before #73), and the create-new dialog's
+// Group-picker confirm/decline paths (see CONTEXT.md's Category entry --
+// a Category can never exist without a Group).
+describe("TransactionsGrid Category editing (#73)", () => {
+  it("clicking the Category cell renders a SuggestionCombobox seeded with the known Category names", () => {
+    renderGrid();
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+
+    expect(screen.getByLabelText("Category for Coffee shop")).toBeInTheDocument();
+  });
+
+  it("committing a value matching an existing Category assigns it via the existing onUpdate path, with no dialog and no creation", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid();
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await user.type(input, "Food");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(props.onUpdate).toHaveBeenCalledWith(1, {
+      date: "2026-08-01",
+      amount_cents: -1250,
+      description: "Coffee shop",
+      category_id: 10,
+    });
+    expect(props.onCreateCategory).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("committing an unmatched value opens a confirmation dialog with a Group dropdown, without assigning or creating anything yet", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid();
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await user.type(input, "Subscriptions");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByText('Create category "Subscriptions" in Group:')).toBeInTheDocument();
+    expect(screen.getByLabelText("Group")).toBeInTheDocument();
+    expect(props.onUpdate).not.toHaveBeenCalled();
+    expect(props.onCreateCategory).not.toHaveBeenCalled();
+  });
+
+  it("defaults the Group dropdown to the first available Group when nothing has been assigned yet this session", async () => {
+    const user = userEvent.setup();
+    renderGrid();
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await user.type(input, "Subscriptions");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect((screen.getByLabelText("Group") as HTMLSelectElement).value).toBe("1");
+  });
+
+  it("confirming calls onCreateCategory with the chosen name and selected Group", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid();
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await user.type(input, "Subscriptions");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await user.selectOptions(screen.getByLabelText("Group"), "2");
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+
+    expect(props.onCreateCategory).toHaveBeenCalledWith(1, "Subscriptions", 2);
+    expect(props.onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("declining leaves the Category unchanged and creates nothing", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid();
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await user.type(input, "Subscriptions");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await user.click(screen.getByRole("button", { name: "No" }));
+
+    expect(props.onCreateCategory).not.toHaveBeenCalled();
+    expect(props.onUpdate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getAllByText("Uncategorized")[0]).toBeInTheDocument();
+  });
+
+  it("defaults the Group dropdown to the most-recently-assigned Category's Group within the session", async () => {
+    const user = userEvent.setup();
+    renderGrid();
+
+    // Assign the Paycheck row's Category to "Income" (Group 2) first.
+    fireEvent.click(screen.getAllByText("Uncategorized")[1]);
+    const paycheckInput = screen.getByLabelText("Category for Paycheck");
+    await user.type(paycheckInput, "Income");
+    fireEvent.keyDown(paycheckInput, { key: "Enter" });
+
+    // Opening the create-new flow on a different row should now default to
+    // Income's Group (2), not the first Group (1).
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const coffeeInput = screen.getByLabelText("Category for Coffee shop");
+    await user.type(coffeeInput, "Subscriptions");
+    fireEvent.keyDown(coffeeInput, { key: "Enter" });
+
+    expect((screen.getByLabelText("Group") as HTMLSelectElement).value).toBe("2");
   });
 });
 

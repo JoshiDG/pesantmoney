@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account, ACCOUNT_TYPE_LABELS } from "../accounts/types";
-import { Category } from "../categories/types";
+import { Category, CategoryGroup } from "../categories/types";
 import { Merchant } from "../merchants/types";
 import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
@@ -25,6 +25,7 @@ type LedgerView = "transactions";
 export function TransactionsScreen({ account, onBack, onImport }: TransactionsScreenProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [tagsByTransactionId, setTagsByTransactionId] = useState<Record<number, Tag[]>>({});
@@ -56,6 +57,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
         transactionList,
         balance,
         categoryList,
+        categoryGroupList,
         accountList,
         transferList,
         tagsByTransaction,
@@ -68,6 +70,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
         }),
         invoke<number>("account_balance_cents", { account_id: account.id }),
         invoke<Category[]>("list_categories"),
+        invoke<CategoryGroup[]>("list_category_groups"),
         invoke<Account[]>("list_accounts"),
         invoke<Transfer[]>("list_transfers"),
         invoke<Record<number, Tag[]>>("list_tags_for_account", { account_id: account.id }),
@@ -77,6 +80,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
       setTransactions(transactionList);
       setBalanceCents(balance);
       setCategories(categoryList);
+      setCategoryGroups(categoryGroupList ?? []);
       setAccounts(accountList);
       setTransfers(transferList);
       setTagsByTransactionId(tagsByTransaction);
@@ -284,6 +288,30 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
     await handleSetPayee(transactionId, payeeName);
   }
 
+  // Category combobox creation (#73): creates the Category via the existing
+  // `create_category` command (a Category can never exist without a Group --
+  // see CONTEXT.md), then assigns it to the edited Transaction via the same
+  // `update_transaction` path plain Category edits and bulk assignment
+  // already use above.
+  async function handleCreateCategory(transactionId: number, name: string, groupId: number) {
+    try {
+      const category = await invoke<Category>("create_category", { group_id: groupId, name });
+      const transaction = transactions.find((t) => t.id === transactionId);
+      if (transaction) {
+        await invoke("update_transaction", {
+          id: transactionId,
+          date: transaction.date,
+          amount_cents: transaction.amount_cents,
+          description: transaction.description,
+          category_id: category.id,
+        });
+      }
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   return (
     <section>
       <button type="button" className="back-link" onClick={onBack}>
@@ -366,6 +394,8 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
             merchants={allMerchants}
             onSetPayee={handleSetPayee}
             onCreateMerchant={handleCreateMerchant}
+            categoryGroups={categoryGroups}
+            onCreateCategory={handleCreateCategory}
           />
 
           <div className="ledger new-transaction-row">

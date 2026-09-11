@@ -434,6 +434,117 @@ describe("AllTransactionsScreen Tag editing wiring (#71)", () => {
   });
 });
 
+describe("AllTransactionsScreen Category combobox editing + inline creation (#73)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_all_transactions":
+          return allTransactions;
+        case "list_categories":
+          return [{ id: 10, group_id: 1, name: "Food" }];
+        case "list_category_groups":
+          return [
+            { id: 1, name: "Everyday" },
+            { id: 2, name: "Big Ticket" },
+          ];
+        case "list_accounts":
+          return [checking, savings];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "list_tags":
+          return [];
+        case "list_merchants":
+          return [];
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "update_transaction_column_visibility":
+          return null;
+        case "update_transaction":
+          return null;
+        case "create_category":
+          return { id: 20, group_id: 2, name: "Subscriptions" };
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("fetches list_category_groups and seeds the create-new dialog's Group dropdown", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_category_groups"));
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await userEvent.type(input, "Subscriptions");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByLabelText("Group")).toBeInTheDocument();
+  });
+
+  it("committing a value matching an existing Category calls update_transaction with the matched category_id, no create_category", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_categories"));
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await userEvent.type(input, "Food");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "update_transaction",
+        expect.objectContaining({ id: 1, category_id: 10 }),
+      ),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("create_category", expect.anything());
+  });
+
+  it("confirming an unmatched value calls create_category with the chosen Group, then assigns it via update_transaction", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_category_groups"));
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await userEvent.type(input, "Subscriptions");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await userEvent.selectOptions(screen.getByLabelText("Group"), "2");
+    await userEvent.click(screen.getByRole("button", { name: "Yes" }));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("create_category", { group_id: 2, name: "Subscriptions" }),
+    );
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "update_transaction",
+        expect.objectContaining({ id: 1, category_id: 20 }),
+      ),
+    );
+  });
+
+  it("declining leaves the Category unchanged, calling neither create_category nor update_transaction", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_category_groups"));
+
+    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    const input = screen.getByLabelText("Category for Coffee shop");
+    await userEvent.type(input, "Subscriptions");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await userEvent.click(screen.getByRole("button", { name: "No" }));
+
+    expect(mockedInvoke).not.toHaveBeenCalledWith("create_category", expect.anything());
+    expect(mockedInvoke).not.toHaveBeenCalledWith("update_transaction", expect.anything());
+  });
+});
+
 describe("AllTransactionsScreen Payee editing wiring (#72)", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();

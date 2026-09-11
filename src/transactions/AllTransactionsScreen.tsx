@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account } from "../accounts/types";
-import { Category } from "../categories/types";
+import { Category, CategoryGroup } from "../categories/types";
 import { Merchant } from "../merchants/types";
 import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
@@ -31,6 +31,7 @@ interface AllTransactionsScreenProps {
 export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScreenProps) {
   const [transactions, setTransactions] = useState<TransactionWithAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [tagsByTransactionId, setTagsByTransactionId] = useState<Record<number, Tag[]>>({});
@@ -61,14 +62,16 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
 
   async function refresh() {
     try {
-      const [transactionList, categoryList, accountList, transferList] = await Promise.all([
+      const [transactionList, categoryList, categoryGroupList, accountList, transferList] = await Promise.all([
         invoke<TransactionWithAccount[]>("list_all_transactions"),
         invoke<Category[]>("list_categories"),
+        invoke<CategoryGroup[]>("list_category_groups"),
         invoke<Account[]>("list_accounts"),
         invoke<Transfer[]>("list_transfers"),
       ]);
       setTransactions(transactionList);
       setCategories(categoryList);
+      setCategoryGroups(categoryGroupList ?? []);
       setAccounts(accountList);
       setTransfers(transferList);
 
@@ -265,6 +268,30 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
     await handleSetPayee(transactionId, payeeName);
   }
 
+  // Category combobox creation (#73) -- same approach as TransactionsScreen:
+  // `create_category` (a Category can never exist without a Group), then
+  // assign it via the same `update_transaction` path plain Category edits
+  // and bulk assignment already use above. Not scoped to a single Account,
+  // so it needs no account_id.
+  async function handleCreateCategory(transactionId: number, name: string, groupId: number) {
+    try {
+      const category = await invoke<Category>("create_category", { group_id: groupId, name });
+      const transaction = transactions.find((t) => t.id === transactionId);
+      if (transaction) {
+        await invoke("update_transaction", {
+          id: transactionId,
+          date: transaction.date,
+          amount_cents: transaction.amount_cents,
+          description: transaction.description,
+          category_id: category.id,
+        });
+      }
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   const linkedTransactionIds = new Set(
     transfers.flatMap((transfer) => [transfer.from_transaction_id, transfer.to_transaction_id]),
   );
@@ -342,6 +369,8 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
           merchants={allMerchants}
           onSetPayee={handleSetPayee}
           onCreateMerchant={handleCreateMerchant}
+          categoryGroups={categoryGroups}
+          onCreateCategory={handleCreateCategory}
         />
       </div>
     </section>

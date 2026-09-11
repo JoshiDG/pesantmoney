@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { Account } from "../accounts/types";
-import { Category } from "../categories/types";
+import { Category, CategoryGroup } from "../categories/types";
 import { Merchant } from "../merchants/types";
 import { Tag } from "../tags/types";
 import { useBreakpoint } from "../ui/BreakpointProvider";
@@ -121,6 +121,20 @@ interface TransactionsGridProps {
   merchants?: Merchant[];
   onSetPayee?: (transactionId: number, payeeName: string) => void;
   onCreateMerchant?: (transactionId: number, description: string, payeeName: string) => void;
+  // Category combobox editing + inline creation (#73): `categoryGroups` is
+  // the full list of Category Groups (from `list_category_groups`), seeding
+  // the create-new confirmation dialog's Group dropdown (a Category can
+  // never exist without a Group -- see CONTEXT.md's Category entry).
+  // Committing a value matching a known Category name fires `onUpdate`
+  // directly via the same category_id path plain Category edits have always
+  // used (see `commitEdit`'s "category" case, unchanged since before #73);
+  // an unmatched value opens a confirm dialog (owned by this component, same
+  // pattern as Payee's `payeeConfirm`) collecting the Group before calling
+  // `onCreateCategory`, which the caller wires to `create_category` followed
+  // by the same category-assignment path. The grid never calls `invoke`
+  // itself, same as onSetPayee/onAddTag/onSetHidden.
+  categoryGroups?: CategoryGroup[];
+  onCreateCategory?: (transactionId: number, name: string, groupId: number) => void;
 }
 
 // Only these four columns are backed by EDITABLE_COLUMNS (see grid-nav.ts);
@@ -166,12 +180,15 @@ export function TransactionsGrid({
   merchants = [],
   onSetPayee,
   onCreateMerchant,
+  categoryGroups = [],
+  onCreateCategory,
 }: TransactionsGridProps) {
   const knownTagNames = useMemo(() => tags.map((tag) => tag.name), [tags]);
   const knownMerchantNames = useMemo(
     () => merchants.map((merchant) => merchant.merchant_name),
     [merchants],
   );
+  const knownCategoryNames = useMemo(() => categories.map((category) => category.name), [categories]);
   const categoryNameById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
@@ -213,6 +230,20 @@ export function TransactionsGrid({
     description: string;
     name: string;
   } | null>(null);
+  // Category create-new confirmation (#73): mirrors `payeeConfirm` above,
+  // plus a Group id since a Category can never exist without one.
+  // `lastUsedCategoryGroupId` tracks the Group of the most-recently-assigned
+  // Category *this session* (updated on every successful Category
+  // assignment made through this grid, matched or newly-created) -- #73
+  // leaves exact recency scope (session vs. overall) as a developer call;
+  // this is the simplest defensible choice. Falls back to the first
+  // available Group when nothing has been assigned yet this session.
+  const [categoryConfirm, setCategoryConfirm] = useState<{
+    transactionId: number;
+    name: string;
+    groupId: number;
+  } | null>(null);
+  const [lastUsedCategoryGroupId, setLastUsedCategoryGroupId] = useState<number | null>(null);
 
   const editingRef = useRef<CellPos | null>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -455,11 +486,6 @@ export function TransactionsGrid({
       commitEdit(row, col, value);
       setFocusedCell(next);
     }
-  }
-
-  function handleCategoryChange(e: ChangeEvent<HTMLSelectElement>, row: number, col: number) {
-    commitEdit(row, col, e.currentTarget.value);
-    setFocusedCell({ row, col });
   }
 
   function toggleSelectRow(transactionId: number, shiftKey: boolean) {
@@ -724,21 +750,35 @@ export function TransactionsGrid({
         );
       case "category":
         return (
-          <select
-            aria-label={`Category for ${transaction.description}`}
+          <SuggestionCombobox
+            mode="single"
+            knownValues={knownCategoryNames}
+            values={
+              transaction.category_id != null
+                ? [categoryNameById.get(transaction.category_id) ?? ""]
+                : []
+            }
+            ariaLabel={`Category for ${transaction.description}`}
+            onCommit={(name) => {
+              const category = categories.find((c) => c.name === name);
+              if (!category) return;
+              commitEdit(row, col, String(category.id));
+              setLastUsedCategoryGroupId(category.group_id);
+            }}
+            onCreateNew={(name) => {
+              cancelEdit();
+              setCategoryConfirm({
+                transactionId: transaction.id,
+                name,
+                groupId: lastUsedCategoryGroupId ?? categoryGroups[0]?.id ?? 0,
+              });
+            }}
+            onCancel={cancelEdit}
+            onAdvance={() =>
+              setFocusedCell(nextCellForKey({ row, col }, "Enter", rowCount, colCount, false))
+            }
             autoFocus
-            value={draftValue}
-            onChange={(e) => handleCategoryChange(e, row, col)}
-            onBlur={(e) => handleBlur(row, col, e.currentTarget.value)}
-            onKeyDown={(e) => handleEditKeyDown(e, row, col)}
-          >
-            <option value={UNCATEGORIZED}>Uncategorized</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
+          />
         );
       case "amount":
         return (
@@ -964,6 +1004,26 @@ export function TransactionsGrid({
             onSetPayee?.(payeeConfirm.transactionId, payeeConfirm.name);
             setPayeeConfirm(null);
           }}
+        />
+      )}
+
+      {categoryConfirm && (
+        <ConfirmCreateDialog
+          title="Create category?"
+          message={`Create category "${categoryConfirm.name}" in Group:`}
+          extraField={{
+            label: "Group",
+            value: String(categoryConfirm.groupId),
+            options: categoryGroups.map((group) => ({ value: String(group.id), label: group.name })),
+            onChange: (value) =>
+              setCategoryConfirm((prev) => (prev ? { ...prev, groupId: Number(value) } : prev)),
+          }}
+          onConfirm={() => {
+            onCreateCategory?.(categoryConfirm.transactionId, categoryConfirm.name, categoryConfirm.groupId);
+            setLastUsedCategoryGroupId(categoryConfirm.groupId);
+            setCategoryConfirm(null);
+          }}
+          onCancel={() => setCategoryConfirm(null)}
         />
       )}
 
