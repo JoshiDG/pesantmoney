@@ -1,6 +1,9 @@
-// Pure keyboard-navigation logic for the inline-editable transactions grid.
-// Kept free of React/DOM so it can be unit tested directly and reused by any
-// future grid-shaped view.
+// Column definitions for the inline-editable transactions grid. The
+// screen-agnostic keyboard-navigation math (arrow keys, Tab/Shift+Tab,
+// Enter/Shift+Enter) has moved to `src/ui/grid-nav.ts` so it can be reused
+// by other tabular screens (see ADR-0020 and issue #76) -- this module now
+// only holds TransactionsGrid's own column vocabulary, which that shared
+// primitive knows nothing about.
 
 // The old single "description" column has split into a read-only Payee
 // column (derived: merchant_name || description) and an editable Memo
@@ -44,64 +47,6 @@ export const COLUMN_SET: ColumnKey[] = [
  */
 export const EDITABLE_COLUMNS: ColumnKey[] = ["date", "memo", "category", "amount"];
 
-export interface CellPos {
-  row: number;
-  col: number;
-}
-
-/**
- * Given a focused cell and a key event's `key` (plus whether Shift was
- * held), returns the cell that should become focused next. Movement is
- * clamped to the grid's bounds rather than wrapping past the first/last
- * row, so repeated presses at an edge are no-ops. Tab/Shift+Tab wrap
- * within a row (last column -> first column of next row, and back).
- * Unrecognized keys leave the position unchanged.
- */
-export function nextCellForKey(
-  pos: CellPos,
-  key: string,
-  rowCount: number,
-  colCount: number,
-  shiftKey = false,
-): CellPos {
-  const { row, col } = pos;
-
-  switch (key) {
-    case "ArrowUp":
-      return { row: Math.max(0, row - 1), col };
-    case "ArrowDown":
-      return { row: Math.min(rowCount - 1, row + 1), col };
-    case "ArrowLeft":
-      return { row, col: Math.max(0, col - 1) };
-    case "ArrowRight":
-      return { row, col: Math.min(colCount - 1, col + 1) };
-    case "Tab":
-      return shiftKey ? previousCell(pos, colCount) : nextCell(pos, rowCount, colCount);
-    case "Enter":
-      return shiftKey
-        ? { row: Math.max(0, row - 1), col }
-        : { row: Math.min(rowCount - 1, row + 1), col };
-    default:
-      return pos;
-  }
-}
-
-function nextCell(pos: CellPos, rowCount: number, colCount: number): CellPos {
-  if (pos.col + 1 < colCount) {
-    return { row: pos.row, col: pos.col + 1 };
-  }
-  if (pos.row + 1 < rowCount) {
-    return { row: pos.row + 1, col: 0 };
-  }
-  return pos;
-}
-
-function previousCell(pos: CellPos, colCount: number): CellPos {
-  if (pos.col - 1 >= 0) {
-    return { row: pos.row, col: pos.col - 1 };
-  }
-  if (pos.row - 1 >= 0) {
-    return { row: pos.row - 1, col: colCount - 1 };
-  }
-  return pos;
-}
+// Re-exported for existing consumers -- the type itself is generic and now
+// lives in `src/ui/grid-nav.ts` alongside the nav math that operates on it.
+export type { CellPos } from "../ui/grid-nav";
