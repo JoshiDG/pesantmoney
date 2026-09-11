@@ -6,7 +6,7 @@ import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
 import { TransactionForm } from "./TransactionForm";
 import { TransactionsGrid } from "./TransactionsGrid";
-import { formatCents, Transaction, TransactionFields } from "./types";
+import { ColumnVisibility, DEFAULT_COLUMN_VISIBILITY, formatCents, Transaction, TransactionFields } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 import { useCsvExport } from "../ui/useCsvExport";
 
@@ -31,6 +31,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ledgerView, setLedgerView] = useState<LedgerView>("transactions");
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(DEFAULT_COLUMN_VISIBILITY);
   const { confirm } = useConfirmation();
   const { exportCsv, exporting: exportingCsv, result: csvExportResult, error: csvExportError } = useCsvExport();
 
@@ -71,6 +72,26 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
     setLedgerView("transactions");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id]);
+
+  // Column Management (#68): one global config for the whole app, so it's
+  // loaded once on mount rather than per-Account like the rest of this
+  // screen's data.
+  useEffect(() => {
+    invoke<{ transaction_column_visibility: ColumnVisibility }>("get_settings")
+      .then((settings) => setColumnVisibility(settings.transaction_column_visibility))
+      .catch((err) => setError(String(err)));
+  }, []);
+
+  async function handleColumnVisibilityChange(next: ColumnVisibility) {
+    setColumnVisibility(next);
+    try {
+      await invoke("update_transaction_column_visibility", {
+        transaction_column_visibility: next,
+      });
+    } catch (err) {
+      setError(String(err));
+    }
+  }
 
   async function handleCreate(fields: TransactionFields) {
     try {
@@ -211,6 +232,8 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
             linkedTransactionIds={linkedTransactionIds}
             transferByTransactionId={transferByTransactionId}
             linkingId={linkingId}
+            columnVisibility={columnVisibility}
+            onColumnVisibilityChange={handleColumnVisibilityChange}
             onStartLink={setLinkingId}
             onCancelLink={() => setLinkingId(null)}
             onLink={handleLink}

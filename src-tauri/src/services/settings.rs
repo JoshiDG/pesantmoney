@@ -18,6 +18,14 @@ pub struct Settings {
     /// for the current Budget month. See `services::notifications`.
     #[serde(default = "default_true")]
     pub overspend_notifications_enabled: bool,
+    /// Column Management (#68): which columns of the Transactions grid's
+    /// Column Set are visible. One global config for the whole app, not
+    /// per-view/per-Account. `#[serde(default)]` so a settings.json written
+    /// before this field existed still loads (falling back to every column
+    /// visible, matching the pre-#68 fixed 4-column grid plus the badges/
+    /// chips it always showed).
+    #[serde(default)]
+    pub transaction_column_visibility: TransactionColumnVisibility,
 }
 
 fn default_true() -> bool {
@@ -30,6 +38,49 @@ impl Default for Settings {
             update_checks_enabled: true,
             bill_notifications_enabled: true,
             overspend_notifications_enabled: true,
+            transaction_column_visibility: TransactionColumnVisibility::default(),
+        }
+    }
+}
+
+/// Column Management (#68) visibility flags for the Transactions grid's
+/// Column Set (see CONTEXT.md's "Column Set" / "Column Management" entries).
+/// The Account column is additionally force-hidden client-side whenever the
+/// current view resolves to a single distinct Account, regardless of this
+/// stored choice -- that suppression rule isn't persisted here since it's
+/// derived per-view, not a user preference.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct TransactionColumnVisibility {
+    #[serde(default = "default_true")]
+    pub date: bool,
+    #[serde(default = "default_true")]
+    pub account: bool,
+    #[serde(default = "default_true")]
+    pub payee: bool,
+    #[serde(default = "default_true")]
+    pub memo: bool,
+    #[serde(default = "default_true")]
+    pub category: bool,
+    #[serde(default = "default_true")]
+    pub tags: bool,
+    #[serde(default = "default_true")]
+    pub amount: bool,
+    #[serde(default = "default_true")]
+    pub running_balance: bool,
+}
+
+impl Default for TransactionColumnVisibility {
+    fn default() -> Self {
+        TransactionColumnVisibility {
+            date: true,
+            account: true,
+            payee: true,
+            memo: true,
+            category: true,
+            tags: true,
+            amount: true,
+            running_balance: true,
         }
     }
 }
@@ -80,6 +131,7 @@ mod tests {
             update_checks_enabled: false,
             bill_notifications_enabled: false,
             overspend_notifications_enabled: true,
+            transaction_column_visibility: TransactionColumnVisibility::default(),
         };
 
         save(dir.path(), &settings).expect("save settings");
@@ -119,11 +171,54 @@ mod tests {
             update_checks_enabled: false,
             bill_notifications_enabled: false,
             overspend_notifications_enabled: false,
+            transaction_column_visibility: TransactionColumnVisibility::default(),
         };
 
         save(&nested, &settings).expect("save settings into missing directory");
         let loaded = load(&nested);
 
         assert_eq!(loaded, settings);
+    }
+
+    #[test]
+    fn transaction_column_visibility_defaults_to_every_column_visible() {
+        let settings = Settings::default();
+
+        assert_eq!(settings.transaction_column_visibility, TransactionColumnVisibility::default());
+        assert!(settings.transaction_column_visibility.date);
+        assert!(settings.transaction_column_visibility.account);
+        assert!(settings.transaction_column_visibility.payee);
+        assert!(settings.transaction_column_visibility.memo);
+        assert!(settings.transaction_column_visibility.category);
+        assert!(settings.transaction_column_visibility.tags);
+        assert!(settings.transaction_column_visibility.amount);
+        assert!(settings.transaction_column_visibility.running_balance);
+    }
+
+    #[test]
+    fn save_then_load_round_trips_a_custom_column_visibility_choice() {
+        let dir = tempfile::tempdir().expect("create tempdir");
+        let mut settings = Settings::default();
+        settings.transaction_column_visibility.tags = false;
+        settings.transaction_column_visibility.running_balance = false;
+
+        save(dir.path(), &settings).expect("save settings");
+        let loaded = load(dir.path());
+
+        assert_eq!(loaded, settings);
+        assert!(!loaded.transaction_column_visibility.tags);
+        assert!(!loaded.transaction_column_visibility.running_balance);
+        assert!(loaded.transaction_column_visibility.date);
+    }
+
+    #[test]
+    fn load_defaults_column_visibility_to_all_visible_for_a_settings_file_predating_it() {
+        let dir = tempfile::tempdir().expect("create tempdir");
+        std::fs::write(settings_path(dir.path()), r#"{"update_checks_enabled":false}"#)
+            .expect("write old-shape settings file");
+
+        let settings = load(dir.path());
+
+        assert_eq!(settings.transaction_column_visibility, TransactionColumnVisibility::default());
     }
 }

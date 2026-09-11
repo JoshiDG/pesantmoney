@@ -11,11 +11,13 @@ import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
 import { Tag } from "../tags/types";
 import { useBreakpoint } from "../ui/BreakpointProvider";
+import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
-import { CellPos, ColumnKey, EDITABLE_COLUMNS, nextCellForKey } from "./grid-nav";
+import { COLUMN_SET, CellPos, ColumnKey, EDITABLE_COLUMNS, nextCellForKey } from "./grid-nav";
 import { selectRowRange, toggleRowSelection } from "./selection";
 import {
+  ColumnVisibility,
   centsToDollarInput,
   dollarInputToCents,
   formatCents,
@@ -25,15 +27,34 @@ import {
 
 const UNCATEGORIZED = "";
 const BULK_PLACEHOLDER = "__bulk_placeholder__";
+const NO_BALANCE = "—";
 
-// Field labels for the Mobile-tier stacked-card layout (ADR-0018) -- the
-// grid's column headers don't apply to cards, so each field is labeled
-// inline instead.
+// Field labels for the Column Management checklist and the Mobile-tier
+// stacked-card layout (ADR-0018) -- the grid's column headers don't apply
+// to cards, so each field is labeled inline instead.
 const COLUMN_LABELS: Record<ColumnKey, string> = {
   date: "Date",
-  description: "Payee / Description",
+  account: "Account",
+  payee: "Payee",
+  memo: "Memo",
   category: "Category",
+  tags: "Tags",
   amount: "Amount",
+  running_balance: "Running Balance",
+};
+
+// Column widths for the grid's CSS Grid layout (see `.ledger`/`.ledger-editable`
+// in App.css). Computed here rather than in CSS because the set of visible
+// columns is dynamic (Column Management show/hide, Account auto-suppression).
+const COLUMN_WIDTHS: Record<ColumnKey, string> = {
+  date: "112px",
+  account: "120px",
+  payee: "1fr",
+  memo: "1fr",
+  category: "150px",
+  tags: "140px",
+  amount: "130px",
+  running_balance: "130px",
 };
 
 interface TransactionsGridProps {
@@ -44,6 +65,8 @@ interface TransactionsGridProps {
   linkedTransactionIds: Set<number>;
   transferByTransactionId: Map<number, Transfer>;
   linkingId: number | null;
+  columnVisibility: ColumnVisibility;
+  onColumnVisibilityChange: (next: ColumnVisibility) => void;
   onStartLink: (transactionId: number) => void;
   onCancelLink: () => void;
   onLink: (fromTransactionId: number, toTransactionId: number) => void;
@@ -53,16 +76,21 @@ interface TransactionsGridProps {
   onDelete: (transaction: Transaction) => void;
 }
 
+// Only these four columns are backed by EDITABLE_COLUMNS (see grid-nav.ts);
+// everything else in cellValue/commitEdit's switches is unreachable but
+// exhaustively handled to keep TypeScript honest about ColumnKey.
 function cellValue(transaction: Transaction, column: ColumnKey): string {
   switch (column) {
     case "date":
       return transaction.date;
-    case "description":
+    case "memo":
       return transaction.description;
     case "category":
       return transaction.category_id != null ? String(transaction.category_id) : UNCATEGORIZED;
     case "amount":
       return centsToDollarInput(transaction.amount_cents);
+    default:
+      return "";
   }
 }
 
@@ -74,6 +102,8 @@ export function TransactionsGrid({
   linkedTransactionIds,
   transferByTransactionId,
   linkingId,
+  columnVisibility,
+  onColumnVisibilityChange,
   onStartLink,
   onCancelLink,
   onLink,
@@ -86,6 +116,10 @@ export function TransactionsGrid({
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
   );
+  const accountNameById = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account.name])),
+    [accounts],
+  );
   const orderedIds = useMemo(() => transactions.map((t) => t.id), [transactions]);
   const tier = useBreakpoint();
   const isMobile = tier === "mobile";
@@ -97,6 +131,7 @@ export function TransactionsGrid({
   const [draftValue, setDraftValue] = useState("");
   const [bulkCategoryId, setBulkCategoryId] = useState(BULK_PLACEHOLDER);
   const [flashCell, setFlashCell] = useState<CellPos | null>(null);
+  const [columnMenu, setColumnMenu] = useState<{ x: number; y: number } | null>(null);
 
   const editingRef = useRef<CellPos | null>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -107,6 +142,45 @@ export function TransactionsGrid({
       if (flashFrameRef.current != null) cancelAnimationFrame(flashFrameRef.current);
     };
   }, []);
+
+  // The Account column is force-hidden whenever the current view resolves
+  // to a single distinct Account, regardless of the user's stored
+  // visibility choice (generalizes the logic `AllTransactionsScreen`'s
+  // `showAccountBadge` used to implement locally). Running Balance uses the
+  // same single-Account signal, but doesn't hide -- it stays in the Column
+  // Set and renders blank per-row instead (see `runningBalanceByTransactionId`).
+  const distinctAccountCount = useMemo(
+    () => new Set(transactions.map((t) => t.account_id)).size,
+    [transactions],
+  );
+  const isSingleAccount = distinctAccountCount <= 1;
+
+  const visibleColumns = useMemo(
+    () =>
+      COLUMN_SET.filter((column) =>
+        column === "account" ? columnVisibility.account && !isSingleAccount : columnVisibility[column],
+      ),
+    [columnVisibility, isSingleAccount],
+  );
+
+  const runningBalanceByTransactionId = useMemo(() => {
+    const map = new Map<number, number>();
+    if (!isSingleAccount) return map;
+    const dateOrdered = [...transactions].sort(
+      (a, b) => a.date.localeCompare(b.date) || a.id - b.id,
+    );
+    let running = 0;
+    for (const transaction of dateOrdered) {
+      running += transaction.amount_cents;
+      map.set(transaction.id, running);
+    }
+    return map;
+  }, [transactions, isSingleAccount]);
+
+  const gridTemplateColumns = useMemo(
+    () => ["28px", ...visibleColumns.map((column) => COLUMN_WIDTHS[column]), "112px"].join(" "),
+    [visibleColumns],
+  );
 
   const rowCount = transactions.length;
   const colCount = EDITABLE_COLUMNS.length;
@@ -149,7 +223,7 @@ export function TransactionsGrid({
     if (!transaction) return;
 
     const column = EDITABLE_COLUMNS[col];
-    if ((column === "date" || column === "description") && value.trim() === "") {
+    if ((column === "date" || column === "memo") && value.trim() === "") {
       // Required fields: silently revert rather than saving an empty value.
       return;
     }
@@ -164,7 +238,7 @@ export function TransactionsGrid({
       case "date":
         fields.date = value;
         break;
-      case "description":
+      case "memo":
         fields.description = value;
         break;
       case "category":
@@ -172,6 +246,8 @@ export function TransactionsGrid({
         break;
       case "amount":
         fields.amount_cents = dollarInputToCents(value || "0");
+        break;
+      default:
         break;
     }
     onUpdate(transaction.id, fields);
@@ -254,6 +330,71 @@ export function TransactionsGrid({
     setBulkCategoryId(BULK_PLACEHOLDER);
   }
 
+  function handleHeaderContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    setColumnMenu({ x: e.clientX, y: e.clientY });
+  }
+
+  function columnMenuItems(): ContextMenuItem[] {
+    return COLUMN_SET.map((column) => ({
+      label: COLUMN_LABELS[column],
+      checked: columnVisibility[column],
+      // Multiple columns can be toggled in one right-click interaction --
+      // the menu only closes via Escape or an outside click.
+      closeOnClick: false,
+      onClick: () =>
+        onColumnVisibilityChange({ ...columnVisibility, [column]: !columnVisibility[column] }),
+    }));
+  }
+
+  // Read-only columns (Account, Payee, Tags, Running Balance) render as
+  // plain display cells -- they take no part in the focus/edit keyboard
+  // grid navigation, which is scoped to EDITABLE_COLUMNS only (see
+  // grid-nav.ts).
+  function renderReadOnlyCell(transaction: Transaction, column: ColumnKey) {
+    switch (column) {
+      case "account": {
+        const name = transaction.account_name ?? accountNameById.get(transaction.account_id) ?? "";
+        return <div className="grid-cell cell-account">{name}</div>;
+      }
+      case "payee": {
+        const payee = transaction.merchant_name || transaction.description;
+        return (
+          <div className="grid-cell cell-payee">
+            {linkedTransactionIds.has(transaction.id) && (
+              <span className="transfer-badge" title="Part of a transfer">
+                ⇄
+              </span>
+            )}
+            <span className="passbook-payee-name">{payee}</span>
+          </div>
+        );
+      }
+      case "tags": {
+        const tags = tagsByTransactionId[transaction.id] ?? [];
+        return (
+          <div className="grid-cell cell-tags">
+            {tags.map((tag) => (
+              <span key={tag.id} className="tag-chip">
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        );
+      }
+      case "running_balance": {
+        const balance = runningBalanceByTransactionId.get(transaction.id);
+        return (
+          <div className="grid-cell amount cell-running-balance">
+            {balance != null ? formatCents(balance) : NO_BALANCE}
+          </div>
+        );
+      }
+      default:
+        return null;
+    }
+  }
+
   function renderDisplayCell(transaction: Transaction, row: number, col: number, column: ColumnKey) {
     const isFocused = focusedCell?.row === row && focusedCell?.col === col;
     const isFlashed = flashCell?.row === row && flashCell?.col === col;
@@ -272,39 +413,12 @@ export function TransactionsGrid({
     switch (column) {
       case "date":
         return <div {...commonProps} className={`${commonProps.className} cell-date`}>{transaction.date}</div>;
-      case "description": {
-        const payee = transaction.merchant_name || transaction.description;
-        const showMemo = Boolean(
-          transaction.merchant_name && transaction.merchant_name !== transaction.description,
-        );
+      case "memo":
         return (
-          <div
-            {...commonProps}
-            className={`${commonProps.className} cell-description`}
-            title={transaction.merchant_name ? `Original Memo: ${transaction.description}` : undefined}
-          >
-            <div className="passbook-payee-wrapper">
-              <div className="passbook-payee-main">
-                {linkedTransactionIds.has(transaction.id) && (
-                  <span className="transfer-badge" title="Part of a transfer">
-                    ⇄
-                  </span>
-                )}
-                {transaction.account_name && (
-                  <span className="account-badge">{transaction.account_name}</span>
-                )}
-                <span className="passbook-payee-name">{payee}</span>
-                {(tagsByTransactionId[transaction.id] ?? []).map((tag) => (
-                  <span key={tag.id} className="tag-chip">
-                    {tag.name}
-                  </span>
-                ))}
-              </div>
-              {showMemo && <div className="passbook-memo">{transaction.description}</div>}
-            </div>
+          <div {...commonProps} className={`${commonProps.className} cell-memo`}>
+            {transaction.description}
           </div>
         );
-      }
       case "category":
         return (
           <div {...commonProps} className={`${commonProps.className} cell-category`}>
@@ -322,6 +436,8 @@ export function TransactionsGrid({
             {formatCents(transaction.amount_cents)}
           </div>
         );
+      default:
+        return null;
     }
   }
 
@@ -339,10 +455,10 @@ export function TransactionsGrid({
             onKeyDown={(e) => handleEditKeyDown(e, row, col)}
           />
         );
-      case "description":
+      case "memo":
         return (
           <input
-            aria-label={`Description for ${transaction.description}`}
+            aria-label={`Memo for ${transaction.description}`}
             autoFocus
             value={draftValue}
             onChange={(e) => setDraftValue(e.currentTarget.value)}
@@ -381,14 +497,28 @@ export function TransactionsGrid({
             onKeyDown={(e) => handleEditKeyDown(e, row, col)}
           />
         );
+      default:
+        return null;
     }
+  }
+
+  function renderColumn(transaction: Transaction, row: number, column: ColumnKey) {
+    if (EDITABLE_COLUMNS.includes(column)) {
+      const col = EDITABLE_COLUMNS.indexOf(column);
+      return editingCell?.row === row && editingCell?.col === col ? (
+        <Fragment key={column}>{renderEditingCell(transaction, row, col, column)}</Fragment>
+      ) : (
+        <Fragment key={column}>{renderDisplayCell(transaction, row, col, column)}</Fragment>
+      );
+    }
+    return <Fragment key={column}>{renderReadOnlyCell(transaction, column)}</Fragment>;
   }
 
   // Mobile tier (<768px, ADR-0018): one card per Transaction instead of a
   // grid row -- column headers don't apply to cards, so each field carries
-  // its own label. Reuses renderDisplayCell/renderEditingCell so inline
-  // edit, categorize, and every other per-Transaction interaction stay
-  // identical to the grid layout; only the surrounding markup differs.
+  // its own label. Reuses renderDisplayCell/renderReadOnlyCell/renderEditingCell
+  // so inline edit, categorize, and every other per-Transaction interaction
+  // stay identical to the grid layout; only the surrounding markup differs.
   function renderCard(transaction: Transaction, row: number) {
     const isLinked = linkedTransactionIds.has(transaction.id);
     return (
@@ -406,12 +536,10 @@ export function TransactionsGrid({
               onChange={() => {}}
             />
           </div>
-          {EDITABLE_COLUMNS.map((column, col) => (
+          {visibleColumns.map((column) => (
             <div className={`ledger-card-field ledger-card-field-${column}`} key={column}>
               <span className="ledger-card-label">{COLUMN_LABELS[column]}</span>
-              {editingCell?.row === row && editingCell?.col === col
-                ? renderEditingCell(transaction, row, col, column)
-                : renderDisplayCell(transaction, row, col, column)}
+              {renderColumn(transaction, row, column)}
             </div>
           ))}
           <div className="ledger-card-actions">
@@ -469,13 +597,7 @@ export function TransactionsGrid({
               onChange={() => {}}
             />
           </span>
-          {EDITABLE_COLUMNS.map((column, col) =>
-            editingCell?.row === row && editingCell?.col === col ? (
-              <Fragment key={column}>{renderEditingCell(transaction, row, col, column)}</Fragment>
-            ) : (
-              <Fragment key={column}>{renderDisplayCell(transaction, row, col, column)}</Fragment>
-            ),
-          )}
+          {visibleColumns.map((column) => renderColumn(transaction, row, column))}
           <span className="row-actions">
             {linkedTransactionIds.has(transaction.id) ? (
               <button
@@ -516,9 +638,12 @@ export function TransactionsGrid({
   }
 
   return (
-    <div className={`ledger ledger-editable${isMobile ? " ledger-cards" : ""}`}>
+    <div
+      className={`ledger ledger-editable${isMobile ? " ledger-cards" : ""}`}
+      style={{ gridTemplateColumns }}
+    >
       {!isMobile && (
-        <div className="ledger-head">
+        <div className="ledger-head" onContextMenu={handleHeaderContextMenu}>
           <span className="cell-select">
             <input
               type="checkbox"
@@ -527,12 +652,20 @@ export function TransactionsGrid({
               onChange={toggleSelectAll}
             />
           </span>
-          <span>Date</span>
-          <span>Payee / Description</span>
-          <span>Category</span>
-          <span>Amount</span>
+          {visibleColumns.map((column) => (
+            <span key={column}>{COLUMN_LABELS[column]}</span>
+          ))}
           <span></span>
         </div>
+      )}
+
+      {columnMenu && (
+        <ContextMenu
+          x={columnMenu.x}
+          y={columnMenu.y}
+          items={columnMenuItems()}
+          onClose={() => setColumnMenu(null)}
+        />
       )}
 
       {selected.size > 0 && (

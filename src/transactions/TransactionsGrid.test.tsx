@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -5,7 +6,7 @@ import { Category } from "../categories/types";
 import { withBreakpoint } from "../ui/withBreakpoint";
 import type { BreakpointTier } from "../ui/breakpoints";
 import { TransactionsGrid } from "./TransactionsGrid";
-import { formatCents, Transaction } from "./types";
+import { DEFAULT_COLUMN_VISIBILITY, formatCents, Transaction } from "./types";
 
 function makeTransactions(): Transaction[] {
   return [
@@ -48,6 +49,8 @@ function renderGrid(
     linkedTransactionIds: new Set<number>(),
     transferByTransactionId: new Map(),
     linkingId: null,
+    columnVisibility: DEFAULT_COLUMN_VISIBILITY,
+    onColumnVisibilityChange: vi.fn(),
     onStartLink: vi.fn(),
     onCancelLink: vi.fn(),
     onLink: vi.fn(),
@@ -61,13 +64,21 @@ function renderGrid(
   return props;
 }
 
+function memoCell(text: string) {
+  return screen.getByText(text, { selector: ".cell-memo" });
+}
+
+function payeeName(text: string) {
+  return screen.getByText(text, { selector: ".passbook-payee-name" });
+}
+
 describe("TransactionsGrid inline editing", () => {
-  it("clicking the description cell opens an inline text input pre-filled with the current value, no modal", () => {
+  it("clicking the memo cell opens an inline text input pre-filled with the current value, no modal", () => {
     renderGrid();
 
-    fireEvent.click(screen.getByText("Coffee shop"));
+    fireEvent.click(memoCell("Coffee shop"));
 
-    const input = screen.getByLabelText("Description for Coffee shop") as HTMLInputElement;
+    const input = screen.getByLabelText("Memo for Coffee shop") as HTMLInputElement;
     expect(input).toBeInTheDocument();
     expect(input.value).toBe("Coffee shop");
   });
@@ -76,8 +87,8 @@ describe("TransactionsGrid inline editing", () => {
     const user = userEvent.setup();
     const props = renderGrid();
 
-    fireEvent.click(screen.getByText("Coffee shop"));
-    const input = screen.getByLabelText("Description for Coffee shop") as HTMLInputElement;
+    fireEvent.click(memoCell("Coffee shop"));
+    const input = screen.getByLabelText("Memo for Coffee shop") as HTMLInputElement;
     await user.clear(input);
     await user.type(input, "Espresso bar");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -93,13 +104,13 @@ describe("TransactionsGrid inline editing", () => {
   it("Escape cancels the edit without calling onUpdate", () => {
     const props = renderGrid();
 
-    fireEvent.click(screen.getByText("Coffee shop"));
-    const input = screen.getByLabelText("Description for Coffee shop") as HTMLInputElement;
+    fireEvent.click(memoCell("Coffee shop"));
+    const input = screen.getByLabelText("Memo for Coffee shop") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Should not save" } });
     fireEvent.keyDown(input, { key: "Escape" });
 
     expect(props.onUpdate).not.toHaveBeenCalled();
-    expect(screen.getByText("Coffee shop")).toBeInTheDocument();
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
   });
 
   it("editing the category cell shows a select of categories and commits on change", () => {
@@ -119,14 +130,14 @@ describe("TransactionsGrid inline editing", () => {
 });
 
 describe("TransactionsGrid keyboard navigation", () => {
-  it("ArrowRight moves focus from the date cell to the description cell", () => {
+  it("ArrowRight moves focus from the date cell to the memo cell", () => {
     renderGrid();
 
     const dateCell = screen.getByText("2026-08-01");
     dateCell.focus();
     fireEvent.keyDown(dateCell, { key: "ArrowRight" });
 
-    expect(screen.getByText("Coffee shop").closest('[role="gridcell"]')).toHaveFocus();
+    expect(memoCell("Coffee shop").closest('[role="gridcell"]')).toHaveFocus();
   });
 
   it("Enter on a focused (non-editing) cell opens it for editing", () => {
@@ -182,8 +193,8 @@ describe("TransactionsGrid multi-row selection and bulk category assignment", ()
   });
 });
 
-describe("TransactionsGrid merchant name display", () => {
-  it("shows the identified merchant name in place of the raw description when present", () => {
+describe("TransactionsGrid Payee/Memo split", () => {
+  it("shows the identified merchant name as Payee, and the raw description as Memo", () => {
     const transactions: Transaction[] = [
       {
         id: 1,
@@ -198,29 +209,262 @@ describe("TransactionsGrid merchant name display", () => {
     ];
     renderGrid({ transactions });
 
-    expect(screen.getByText("Blue Bottle Coffee")).toBeInTheDocument();
-    expect(screen.getByText("SQ *BLUE BOTTLE COF 04/12")).toBeInTheDocument();
+    expect(payeeName("Blue Bottle Coffee")).toBeInTheDocument();
+    expect(memoCell("SQ *BLUE BOTTLE COF 04/12")).toBeInTheDocument();
   });
 
-  it("falls back to the raw description when no merchant is identified", () => {
+  it("Payee falls back to the raw description when no merchant is identified", () => {
     renderGrid();
 
-    expect(screen.getByText("Coffee shop")).toBeInTheDocument();
+    expect(payeeName("Coffee shop")).toBeInTheDocument();
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
+  });
+
+  it("Payee is read-only: clicking it does not open an inline editor", () => {
+    renderGrid();
+
+    fireEvent.click(payeeName("Coffee shop"));
+
+    expect(screen.queryByLabelText("Payee for Coffee shop")).toBeNull();
+  });
+
+  it("Memo edits go through the same onUpdate path Payee never touches (merchant_name untouched)", () => {
+    const transactions: Transaction[] = [
+      {
+        id: 1,
+        account_id: 1,
+        date: "2026-08-01",
+        amount_cents: -1250,
+        description: "SQ *BLUE BOTTLE COF 04/12",
+        category_id: null,
+        merchant_name: "Blue Bottle Coffee",
+        hidden: false,
+      },
+    ];
+    const props = renderGrid({ transactions });
+
+    fireEvent.click(memoCell("SQ *BLUE BOTTLE COF 04/12"));
+    const input = screen.getByLabelText(
+      "Memo for SQ *BLUE BOTTLE COF 04/12",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Corrected memo" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(props.onUpdate).toHaveBeenCalledWith(1, {
+      date: "2026-08-01",
+      amount_cents: -1250,
+      description: "Corrected memo",
+      category_id: null,
+    });
   });
 });
 
-describe("TransactionsGrid tag chips", () => {
-  it("renders attached tags as chips next to the description", () => {
+describe("TransactionsGrid Tags column", () => {
+  it("renders attached tags as chips in the Tags column", () => {
     renderGrid({ tagsByTransactionId: { 1: [{ id: 5, name: "Reimbursable" }] } });
 
-    expect(screen.getByText("Reimbursable")).toBeInTheDocument();
+    const row = memoCell("Coffee shop").closest(".ledger-row") as HTMLElement;
+    expect(within(row).getByText("Reimbursable")).toBeInTheDocument();
+    expect(row.querySelector(".cell-tags")).toBeInTheDocument();
   });
 
   it("renders no chip for a transaction absent from the tag map", () => {
     renderGrid({ tagsByTransactionId: { 1: [{ id: 5, name: "Reimbursable" }] } });
 
-    const paycheckCell = screen.getByText("Paycheck").closest(".cell-description");
-    expect(paycheckCell?.querySelector(".tag-chip")).toBeNull();
+    const paycheckRow = memoCell("Paycheck").closest(".ledger-row") as HTMLElement;
+    expect(paycheckRow.querySelector(".tag-chip")).toBeNull();
+  });
+});
+
+describe("TransactionsGrid full Column Set rendering", () => {
+  it("renders a header for every visible column in the Column Set (Account suppressed on single-Account data)", () => {
+    renderGrid();
+
+    const headers = Array.from(document.querySelectorAll(".ledger-head > span")).map(
+      (el) => el.textContent,
+    );
+    expect(headers).toEqual([
+      "", // select-all checkbox column
+      "Date",
+      "Payee",
+      "Memo",
+      "Category",
+      "Tags",
+      "Amount",
+      "Running Balance",
+      "", // row-actions column
+    ]);
+  });
+
+  it("respects columnVisibility by omitting hidden columns from the header row", () => {
+    renderGrid({ columnVisibility: { ...DEFAULT_COLUMN_VISIBILITY, tags: false, memo: false } });
+
+    const headers = Array.from(document.querySelectorAll(".ledger-head > span")).map(
+      (el) => el.textContent,
+    );
+    expect(headers).not.toContain("Tags");
+    expect(headers).not.toContain("Memo");
+    expect(headers).toContain("Payee");
+  });
+});
+
+describe("TransactionsGrid Account column auto-suppression", () => {
+  function multiAccountTransactions(): Transaction[] {
+    return [
+      {
+        id: 1,
+        account_id: 1,
+        account_name: "Checking",
+        date: "2026-08-01",
+        amount_cents: -1250,
+        description: "Coffee shop",
+        category_id: null,
+        merchant_name: null,
+        hidden: false,
+      },
+      {
+        id: 2,
+        account_id: 2,
+        account_name: "Savings",
+        date: "2026-08-02",
+        amount_cents: 300000,
+        description: "Paycheck",
+        category_id: null,
+        merchant_name: null,
+        hidden: false,
+      },
+    ];
+  }
+
+  it("hides the Account column when every transaction belongs to the same Account, even though visibility is on", () => {
+    renderGrid();
+
+    expect(screen.queryByText("Account")).toBeNull();
+  });
+
+  it("shows the Account column, with per-row Account names, once more than one Account is represented", () => {
+    renderGrid({ transactions: multiAccountTransactions() });
+
+    expect(screen.getByText("Account")).toBeInTheDocument();
+    const coffeeRow = memoCell("Coffee shop").closest(".ledger-row") as HTMLElement;
+    const paycheckRow = memoCell("Paycheck").closest(".ledger-row") as HTMLElement;
+    expect(within(coffeeRow).getByText("Checking")).toBeInTheDocument();
+    expect(within(paycheckRow).getByText("Savings")).toBeInTheDocument();
+  });
+
+  it("keeps the Account column hidden even when the user's stored visibility choice is true, for single-Account data", () => {
+    renderGrid({ columnVisibility: { ...DEFAULT_COLUMN_VISIBILITY, account: true } });
+
+    expect(screen.queryByText("Account")).toBeNull();
+  });
+});
+
+describe("TransactionsGrid Running Balance", () => {
+  it("renders a cumulative running total, in date order, when the view is scoped to a single Account", () => {
+    renderGrid();
+
+    const balances = Array.from(document.querySelectorAll(".cell-running-balance")).map(
+      (el) => el.textContent,
+    );
+    expect(balances).toEqual([formatCents(-1250), formatCents(298750)]);
+  });
+
+  it("renders blank for every row when the view spans more than one Account", () => {
+    const transactions: Transaction[] = [
+      {
+        id: 1,
+        account_id: 1,
+        date: "2026-08-01",
+        amount_cents: -1250,
+        description: "Coffee shop",
+        category_id: null,
+        merchant_name: null,
+        hidden: false,
+      },
+      {
+        id: 2,
+        account_id: 2,
+        date: "2026-08-02",
+        amount_cents: 300000,
+        description: "Paycheck",
+        category_id: null,
+        merchant_name: null,
+        hidden: false,
+      },
+    ];
+    renderGrid({ transactions });
+
+    const balances = Array.from(document.querySelectorAll(".cell-running-balance")).map(
+      (el) => el.textContent,
+    );
+    expect(balances).toEqual(["—", "—"]);
+  });
+});
+
+describe("TransactionsGrid Column Management", () => {
+  it("right-clicking a column header opens a checklist reflecting current visibility", () => {
+    renderGrid();
+
+    fireEvent.contextMenu(document.querySelector(".ledger-head") as HTMLElement);
+
+    const menu = screen.getByRole("menu");
+    const items = within(menu).getAllByRole("menuitemcheckbox");
+    expect(items).toHaveLength(8);
+    for (const item of items) {
+      expect(item).toHaveAttribute("aria-checked", "true");
+    }
+    expect(within(menu).getByText("Running Balance")).toBeInTheDocument();
+  });
+
+  it("toggling a column checkbox calls onColumnVisibilityChange and does not close the menu", () => {
+    const props = renderGrid();
+
+    fireEvent.contextMenu(document.querySelector(".ledger-head") as HTMLElement);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Tags" }));
+
+    expect(props.onColumnVisibilityChange).toHaveBeenCalledWith({
+      ...DEFAULT_COLUMN_VISIBILITY,
+      tags: false,
+    });
+    // Menu stays open -- multiple columns can be toggled in one interaction.
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
+  it("hiding a column via the checklist removes it from the rendered grid once the caller applies the new visibility", () => {
+    function Harness() {
+      const [visibility, setVisibility] = useState(DEFAULT_COLUMN_VISIBILITY);
+      return (
+        <TransactionsGrid
+          transactions={makeTransactions()}
+          categories={categories}
+          accounts={[]}
+          linkedTransactionIds={new Set()}
+          transferByTransactionId={new Map()}
+          linkingId={null}
+          columnVisibility={visibility}
+          onColumnVisibilityChange={setVisibility}
+          onStartLink={vi.fn()}
+          onCancelLink={vi.fn()}
+          onLink={vi.fn()}
+          onUnlink={vi.fn()}
+          onUpdate={vi.fn()}
+          onBulkAssignCategory={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      );
+    }
+    render(<Harness />, { wrapper: withBreakpoint("expanded") });
+
+    expect(screen.getByText("Tags", { selector: ".ledger-head span" })).toBeInTheDocument();
+    fireEvent.contextMenu(document.querySelector(".ledger-head") as HTMLElement);
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Tags" }));
+
+    expect(screen.queryByText("Tags", { selector: ".ledger-head span" })).toBeNull();
+    // The menu is still open, now reflecting the updated visibility.
+    expect(screen.getByRole("menuitemcheckbox", { name: "Tags" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
   });
 });
 
@@ -228,25 +472,24 @@ describe("TransactionsGrid layout across Breakpoint Tiers", () => {
   it("renders the grid/table row layout at Expanded tier", () => {
     renderGrid({}, "expanded");
 
-    const row = screen.getByText("Coffee shop").closest(".ledger-row");
+    const row = memoCell("Coffee shop").closest(".ledger-row");
     expect(row).toBeInTheDocument();
-    expect(screen.getByText("Coffee shop").closest(".ledger-card")).toBeNull();
+    expect(memoCell("Coffee shop").closest(".ledger-card")).toBeNull();
   });
 
   it("renders the grid/table row layout at Compact tier (cosmetic reflow only)", () => {
     renderGrid({}, "compact");
 
-    const row = screen.getByText("Coffee shop").closest(".ledger-row");
+    const row = memoCell("Coffee shop").closest(".ledger-row");
     expect(row).toBeInTheDocument();
-    expect(screen.getByText("Coffee shop").closest(".ledger-card")).toBeNull();
+    expect(memoCell("Coffee shop").closest(".ledger-card")).toBeNull();
   });
 
-  it("renders each transaction as a stacked card at Mobile tier, showing merchant/amount/date/category/account", () => {
+  it("renders each transaction as a stacked card at Mobile tier, showing merchant/amount/date/category", () => {
     const transactions: Transaction[] = [
       {
         id: 1,
         account_id: 1,
-        account_name: "Checking",
         date: "2026-08-01",
         amount_cents: -1250,
         description: "Coffee shop",
@@ -257,15 +500,18 @@ describe("TransactionsGrid layout across Breakpoint Tiers", () => {
     ];
     renderGrid({ transactions }, "mobile");
 
-    const card = screen.getByText("Blue Bottle Coffee").closest(".ledger-card");
+    const card = payeeName("Blue Bottle Coffee").closest(".ledger-card");
     expect(card).toBeInTheDocument();
     expect(screen.queryByText("Blue Bottle Coffee")?.closest(".ledger-row")).toBeNull();
 
     expect(within(card as HTMLElement).getByText("Blue Bottle Coffee")).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByText(formatCents(-1250))).toBeInTheDocument();
+    expect(
+      within(card as HTMLElement).getByText(formatCents(-1250), {
+        selector: ".ledger-card-field-amount .amount",
+      }),
+    ).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("2026-08-01")).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("Food")).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByText("Checking")).toBeInTheDocument();
   });
 
   it("does not render the column header row at Mobile tier", () => {
@@ -277,8 +523,8 @@ describe("TransactionsGrid layout across Breakpoint Tiers", () => {
   it("inline edit still works on a card at Mobile tier", () => {
     const props = renderGrid({}, "mobile");
 
-    fireEvent.click(screen.getByText("Coffee shop"));
-    const input = screen.getByLabelText("Description for Coffee shop") as HTMLInputElement;
+    fireEvent.click(memoCell("Coffee shop"));
+    const input = screen.getByLabelText("Memo for Coffee shop") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Espresso bar" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -293,7 +539,7 @@ describe("TransactionsGrid layout across Breakpoint Tiers", () => {
   it("delete still works on a card at Mobile tier", () => {
     const props = renderGrid({}, "mobile");
 
-    const card = screen.getByText("Coffee shop").closest(".ledger-card") as HTMLElement;
+    const card = memoCell("Coffee shop").closest(".ledger-card") as HTMLElement;
     fireEvent.click(within(card).getByRole("button", { name: "Delete" }));
 
     expect(props.onDelete).toHaveBeenCalledWith(
@@ -316,7 +562,7 @@ describe("TransactionsGrid layout across Breakpoint Tiers", () => {
   it("link transfer still works on a card at Mobile tier", () => {
     const props = renderGrid({}, "mobile");
 
-    const card = screen.getByText("Coffee shop").closest(".ledger-card") as HTMLElement;
+    const card = memoCell("Coffee shop").closest(".ledger-card") as HTMLElement;
     fireEvent.click(within(card).getByRole("button", { name: "Link transfer" }));
 
     expect(props.onStartLink).toHaveBeenCalledWith(1);

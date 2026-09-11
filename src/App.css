@@ -749,6 +749,14 @@ body {
   width: 16px;
 }
 
+.context-menu-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  font-size: 0.85rem;
+}
+
 .account-actions {
   display: flex;
   justify-content: flex-end;

@@ -7,6 +7,7 @@ import { withBreakpoint } from "../ui/withBreakpoint";
 import type { BreakpointTier } from "../ui/breakpoints";
 import { AllTransactionsScreen } from "./AllTransactionsScreen";
 import { Account } from "../accounts/types";
+import { DEFAULT_COLUMN_VISIBILITY } from "./types";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -64,6 +65,10 @@ function mockInvokeDefaults() {
         return [];
       case "list_tags_for_account":
         return {};
+      case "get_settings":
+        return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+      case "update_transaction_column_visibility":
+        return null;
       case "delete_transaction":
         return null;
       case "update_transaction":
@@ -72,6 +77,14 @@ function mockInvokeDefaults() {
         return null;
     }
   });
+}
+
+function memoCell(text: string) {
+  return screen.getByText(text, { selector: ".cell-memo" });
+}
+
+function findMemoCell(text: string) {
+  return screen.findByText(text, { selector: ".cell-memo" });
 }
 
 describe("AllTransactionsScreen", () => {
@@ -83,34 +96,37 @@ describe("AllTransactionsScreen", () => {
   it("defaults to showing every Account's transactions", async () => {
     renderScreen();
 
-    await screen.findByText("Coffee shop");
-    expect(screen.getByText("Interest")).toBeInTheDocument();
+    await findMemoCell("Coffee shop");
+    expect(memoCell("Interest")).toBeInTheDocument();
   });
 
-  it("shows an Account badge for each row when more than one Account is represented", async () => {
+  it("shows an Account column for each row when more than one Account is represented", async () => {
     renderScreen();
 
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
-    const badges = document.querySelectorAll(".account-badge");
-    expect(Array.from(badges).map((b) => b.textContent)).toEqual(["Checking", "Savings"]);
+    expect(screen.getByText("Account", { selector: ".ledger-head span" })).toBeInTheDocument();
+    const coffeeRow = memoCell("Coffee shop").closest(".ledger-row") as HTMLElement;
+    const interestRow = memoCell("Interest").closest(".ledger-row") as HTMLElement;
+    expect(within(coffeeRow).getByText("Checking")).toBeInTheDocument();
+    expect(within(interestRow).getByText("Savings")).toBeInTheDocument();
   });
 
-  it("narrows to a single Account via the filter, hiding the badge once only one Account remains", async () => {
+  it("narrows to a single Account via the filter, hiding the Account column once only one Account remains", async () => {
     renderScreen();
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
     await userEvent.selectOptions(screen.getByLabelText("Filter by account"), "1");
 
     await waitFor(() => expect(screen.queryByText("Interest")).not.toBeInTheDocument());
-    expect(screen.getByText("Coffee shop")).toBeInTheDocument();
-    // Only one Account remains in view, so the badge is no longer needed.
-    expect(document.querySelector(".account-badge")).not.toBeInTheDocument();
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
+    // Only one Account remains in view, so the column is no longer needed.
+    expect(screen.queryByText("Account", { selector: ".ledger-head span" })).toBeNull();
   });
 
   it("pre-filters to the given Account when opened from the Accounts screen", async () => {
     renderScreen(2);
-    await screen.findByText("Interest");
+    await findMemoCell("Interest");
 
     expect(screen.queryByText("Coffee shop")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Filter by account")).toHaveValue("2");
@@ -118,19 +134,19 @@ describe("AllTransactionsScreen", () => {
 
   it("can switch back to all Accounts after narrowing", async () => {
     renderScreen(2);
-    await screen.findByText("Interest");
+    await findMemoCell("Interest");
 
     await userEvent.selectOptions(screen.getByLabelText("Filter by account"), "all");
 
-    await waitFor(() => expect(screen.getByText("Coffee shop")).toBeInTheDocument());
-    expect(screen.getByText("Interest")).toBeInTheDocument();
+    await waitFor(() => expect(memoCell("Coffee shop")).toBeInTheDocument());
+    expect(memoCell("Interest")).toBeInTheDocument();
   });
 
   it("still supports deleting a transaction (existing per-Transaction interaction) in all-Accounts mode", async () => {
     renderScreen();
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
-    const row = screen.getByText("Coffee shop").closest(".ledger-row") as HTMLElement;
+    const row = memoCell("Coffee shop").closest(".ledger-row") as HTMLElement;
     await userEvent.click(within(row).getByRole("button", { name: "Delete" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete Transaction" }));
 
@@ -150,6 +166,10 @@ describe("AllTransactionsScreen", () => {
           return [];
         case "list_tags_for_account":
           return {};
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "update_transaction_column_visibility":
+          return null;
         case "update_transaction":
           return null;
         default:
@@ -157,7 +177,7 @@ describe("AllTransactionsScreen", () => {
       }
     });
     renderScreen();
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
     await userEvent.click(screen.getByRole("checkbox", { name: "Select all transactions" }));
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Assign category to selection" }), "10");
@@ -176,31 +196,31 @@ describe("AllTransactionsScreen", () => {
 
   it("renders the grid/table row layout at Expanded tier", async () => {
     renderScreen(null, "expanded");
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
-    expect(screen.getByText("Coffee shop").closest(".ledger-row")).toBeInTheDocument();
-    expect(screen.getByText("Coffee shop").closest(".ledger-card")).toBeNull();
+    expect(memoCell("Coffee shop").closest(".ledger-row")).toBeInTheDocument();
+    expect(memoCell("Coffee shop").closest(".ledger-card")).toBeNull();
   });
 
   it("renders each Transaction as a stacked card at Mobile tier, with the Account filter still working", async () => {
     renderScreen(null, "mobile");
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
-    const card = screen.getByText("Coffee shop").closest(".ledger-card");
+    const card = memoCell("Coffee shop").closest(".ledger-card");
     expect(card).toBeInTheDocument();
-    expect(screen.getByText("Coffee shop").closest(".ledger-row")).toBeNull();
+    expect(memoCell("Coffee shop").closest(".ledger-row")).toBeNull();
 
     await userEvent.selectOptions(screen.getByLabelText("Filter by account"), "1");
 
     await waitFor(() => expect(screen.queryByText("Interest")).not.toBeInTheDocument());
-    expect(screen.getByText("Coffee shop")).toBeInTheDocument();
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
   });
 
   it("still supports deleting a transaction in card view at Mobile tier", async () => {
     renderScreen(null, "mobile");
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
-    const card = screen.getByText("Coffee shop").closest(".ledger-card") as HTMLElement;
+    const card = memoCell("Coffee shop").closest(".ledger-card") as HTMLElement;
     await userEvent.click(within(card).getByRole("button", { name: "Delete" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete Transaction" }));
 

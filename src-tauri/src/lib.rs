@@ -142,6 +142,7 @@ pub fn run() {
             commands::detach_tag_from_transaction,
             commands::get_settings,
             commands::update_settings,
+            commands::update_transaction_column_visibility,
             commands::check_for_update,
             commands::get_backup_status,
             commands::export_data,

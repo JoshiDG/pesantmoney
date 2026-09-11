@@ -2,10 +2,47 @@
 // Kept free of React/DOM so it can be unit tested directly and reused by any
 // future grid-shaped view.
 
-export type ColumnKey = "date" | "description" | "category" | "amount";
+// The old single "description" column has split into a read-only Payee
+// column (derived: merchant_name || description) and an editable Memo
+// column (the raw description field) -- see issue #68 / ADR-0019. Account,
+// Tags, and Running Balance are new, also read-only in this slice.
+export type ColumnKey =
+  | "date"
+  | "account"
+  | "payee"
+  | "memo"
+  | "category"
+  | "tags"
+  | "amount"
+  | "running_balance";
 
-/** Column order as rendered left-to-right in the grid. */
-export const EDITABLE_COLUMNS: ColumnKey[] = ["date", "description", "category", "amount"];
+/**
+ * The full Column Set, in default left-to-right display order (see
+ * CONTEXT.md's "Column Set" glossary entry). Which of these actually render
+ * for a given view is filtered by the user's Column Management visibility
+ * choices plus the Account-column/Running-Balance suppression rules --
+ * see `TransactionsGrid`'s `visibleColumns`.
+ */
+export const COLUMN_SET: ColumnKey[] = [
+  "date",
+  "account",
+  "payee",
+  "memo",
+  "category",
+  "tags",
+  "amount",
+  "running_balance",
+];
+
+/**
+ * Columns that support inline keyboard edit/nav. Payee, Account, Tags, and
+ * Running Balance are read-only in this slice (Payee/Tags editing lands in
+ * later issues; Account and Running Balance are always derived/computed),
+ * so they're rendered as plain display cells and take no part in the
+ * focus/edit grid navigation below -- only these four columns occupy a
+ * `col` index in `CellPos`.
+ */
+export const EDITABLE_COLUMNS: ColumnKey[] = ["date", "memo", "category", "amount"];
 
 export interface CellPos {
   row: number;

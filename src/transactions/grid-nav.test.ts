@@ -3,7 +3,7 @@ import { EDITABLE_COLUMNS, nextCellForKey } from "./grid-nav";
 
 describe("nextCellForKey", () => {
   const rowCount = 3;
-  const colCount = EDITABLE_COLUMNS.length; // date, description, category, amount = 4
+  const colCount = EDITABLE_COLUMNS.length; // date, memo, category, amount = 4
 
   it("moves down on ArrowDown, clamped at the last row", () => {
     expect(nextCellForKey({ row: 0, col: 1 }, "ArrowDown", rowCount, colCount)).toEqual({

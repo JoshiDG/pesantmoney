@@ -871,11 +871,31 @@ pub fn update_settings(
     bill_notifications_enabled: bool,
     overspend_notifications_enabled: bool,
 ) -> CommandResult<Settings> {
-    let new_settings = Settings {
-        update_checks_enabled,
-        bill_notifications_enabled,
-        overspend_notifications_enabled,
-    };
+    // Preserves `transaction_column_visibility` (set via the separate
+    // `update_transaction_column_visibility` command below) rather than
+    // resetting it to defaults every time the Settings screen saves one of
+    // these three toggles.
+    let mut new_settings = settings::load(&state.app_data_dir);
+    new_settings.update_checks_enabled = update_checks_enabled;
+    new_settings.bill_notifications_enabled = bill_notifications_enabled;
+    new_settings.overspend_notifications_enabled = overspend_notifications_enabled;
+    settings::save(&state.app_data_dir, &new_settings).map_err(to_command_error)?;
+    Ok(new_settings)
+}
+
+/// Column Management (#68): persists the Transactions grid's Column Set
+/// visibility choices. A separate command from `update_settings` (rather
+/// than adding a parameter there) because it's set from the Transactions
+/// grid's header context menu, not the Settings screen -- same
+/// load-mutate-save pattern as `update_settings`, just merging one field
+/// into the currently-saved `Settings` instead of requiring every field.
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_transaction_column_visibility(
+    state: tauri::State<AppState>,
+    transaction_column_visibility: settings::TransactionColumnVisibility,
+) -> CommandResult<Settings> {
+    let mut new_settings = settings::load(&state.app_data_dir);
+    new_settings.transaction_column_visibility = transaction_column_visibility;
     settings::save(&state.app_data_dir, &new_settings).map_err(to_command_error)?;
     Ok(new_settings)
 }

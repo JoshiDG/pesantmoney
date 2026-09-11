@@ -5,7 +5,13 @@ import { Category } from "../categories/types";
 import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
 import { TransactionsGrid } from "./TransactionsGrid";
-import { Transaction, TransactionFields, TransactionWithAccount } from "./types";
+import {
+  ColumnVisibility,
+  DEFAULT_COLUMN_VISIBILITY,
+  Transaction,
+  TransactionFields,
+  TransactionWithAccount,
+} from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 import { CustomSelect } from "../ui/Dropdown";
 
@@ -30,6 +36,7 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
   const [accountFilter, setAccountFilter] = useState<number | null>(initialAccountId);
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(DEFAULT_COLUMN_VISIBILITY);
   const { confirm } = useConfirmation();
 
   // Keeps the filter in sync with the Account the caller pre-selected, even
@@ -72,6 +79,25 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Column Management (#68): one global config for the whole app, so it's
+  // loaded once on mount, independent of the Account filter.
+  useEffect(() => {
+    invoke<{ transaction_column_visibility: ColumnVisibility }>("get_settings")
+      .then((settings) => setColumnVisibility(settings.transaction_column_visibility))
+      .catch((err) => setError(String(err)));
+  }, []);
+
+  async function handleColumnVisibilityChange(next: ColumnVisibility) {
+    setColumnVisibility(next);
+    try {
+      await invoke("update_transaction_column_visibility", {
+        transaction_column_visibility: next,
+      });
+    } catch (err) {
+      setError(String(err));
+    }
+  }
 
   async function handleUpdate(id: number, fields: TransactionFields) {
     try {
@@ -154,18 +180,13 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
     transferByTransactionId.set(transfer.to_transaction_id, transfer);
   }
 
-  const filteredTransactions =
+  const filteredTransactions: Transaction[] =
     accountFilter == null ? transactions : transactions.filter((t) => t.account_id === accountFilter);
 
-  // Only show the Account badge once more than one Account is actually
-  // represented in the current view (per #51's acceptance criteria) --
-  // narrowing to a single Account should read exactly like today's
-  // per-Account ledger, badge-free.
-  const distinctAccountCount = new Set(filteredTransactions.map((t) => t.account_id)).size;
-  const showAccountBadge = distinctAccountCount > 1;
-  const gridTransactions: Transaction[] = showAccountBadge
-    ? filteredTransactions
-    : filteredTransactions.map(({ account_name: _accountName, ...rest }) => rest);
+  // TransactionsGrid now owns Account-column suppression itself (#68):
+  // it force-hides the Account column whenever the transactions it's given
+  // resolve to a single distinct Account, generalizing what this screen
+  // used to compute locally as `showAccountBadge`.
 
   return (
     <section>
@@ -194,13 +215,15 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
 
       <div className="ledger-container">
         <TransactionsGrid
-          transactions={gridTransactions}
+          transactions={filteredTransactions}
           categories={categories}
           accounts={accounts}
           tagsByTransactionId={tagsByTransactionId}
           linkedTransactionIds={linkedTransactionIds}
           transferByTransactionId={transferByTransactionId}
           linkingId={linkingId}
+          columnVisibility={columnVisibility}
+          onColumnVisibilityChange={handleColumnVisibilityChange}
           onStartLink={setLinkingId}
           onCancelLink={() => setLinkingId(null)}
           onLink={handleLink}

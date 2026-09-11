@@ -7,6 +7,7 @@ import { ConfirmationProvider } from "../ui/ConfirmationProvider";
 import { withBreakpoint } from "../ui/withBreakpoint";
 import { TransactionsScreen } from "./TransactionsScreen";
 import { Account } from "../accounts/types";
+import { DEFAULT_COLUMN_VISIBILITY } from "./types";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -30,6 +31,14 @@ function renderScreen() {
   );
 }
 
+function memoCell(text: string) {
+  return screen.getByText(text, { selector: ".cell-memo" });
+}
+
+function findMemoCell(text: string) {
+  return screen.findByText(text, { selector: ".cell-memo" });
+}
+
 describe("TransactionsScreen delete confirmation", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();
@@ -49,6 +58,10 @@ describe("TransactionsScreen delete confirmation", () => {
           return [];
         case "list_tags_for_account":
           return {};
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "update_transaction_column_visibility":
+          return null;
         case "delete_transaction":
           return null;
         default:
@@ -59,7 +72,7 @@ describe("TransactionsScreen delete confirmation", () => {
 
   it("clicking Delete opens a confirmation panel with a verb-phrase label, not a generic one", async () => {
     renderScreen();
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
 
@@ -70,18 +83,18 @@ describe("TransactionsScreen delete confirmation", () => {
 
   it("Cancel dismisses the panel without deleting", async () => {
     renderScreen();
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(mockedInvoke).not.toHaveBeenCalledWith("delete_transaction", expect.anything());
-    expect(screen.getByText("Coffee shop")).toBeInTheDocument();
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
   });
 
   it("Enter never triggers the destructive action", async () => {
     renderScreen();
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Enter" });
@@ -92,7 +105,7 @@ describe("TransactionsScreen delete confirmation", () => {
 
   it("clicking the destructive button deletes the transaction and refreshes the list", async () => {
     renderScreen();
-    await screen.findByText("Coffee shop");
+    await findMemoCell("Coffee shop");
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete Transaction" }));
@@ -119,6 +132,10 @@ describe("TransactionsScreen CSV export", () => {
           return [];
         case "list_tags_for_account":
           return {};
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "update_transaction_column_visibility":
+          return null;
         case "export_transactions_csv":
           return 5;
         default:
@@ -168,6 +185,10 @@ describe("TransactionsScreen CSV export", () => {
           return [];
         case "list_tags_for_account":
           return {};
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "update_transaction_column_visibility":
+          return null;
         default:
           return null;
       }

@@ -1,3 +1,29 @@
+// Column visibility for the Transactions grid's Column Set (see
+// CONTEXT.md's "Column Management" glossary entry). One global config for
+// the whole app -- not per-view, not per-Account -- persisted on the
+// backend `Settings` struct (see `update_transaction_column_visibility`).
+export interface ColumnVisibility {
+  date: boolean;
+  account: boolean;
+  payee: boolean;
+  memo: boolean;
+  category: boolean;
+  tags: boolean;
+  amount: boolean;
+  running_balance: boolean;
+}
+
+export const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
+  date: true,
+  account: true,
+  payee: true,
+  memo: true,
+  category: true,
+  tags: true,
+  amount: true,
+  running_balance: true,
+};
+
 export interface TransactionFields {
   date: string;
   amount_cents: number;

@@ -1,7 +1,10 @@
+import { ColumnVisibility } from "../transactions/types";
+
 export interface Settings {
   update_checks_enabled: boolean;
   bill_notifications_enabled: boolean;
   overspend_notifications_enabled: boolean;
+  transaction_column_visibility: ColumnVisibility;
 }
 
 export interface UpdateCheckResult {
