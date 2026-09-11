@@ -10,6 +10,7 @@ describe("NavRail", () => {
         active="dashboard"
         onOpenDashboard={() => {}}
         onOpenAccounts={() => {}}
+        onOpenReports={() => {}}
         onOpenBudget={() => {}}
         onOpenGoals={() => {}}
         onOpenSettings={() => {}}
@@ -18,6 +19,7 @@ describe("NavRail", () => {
 
     expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Accounts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reports" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Budget" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Goals" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
@@ -32,6 +34,7 @@ describe("NavRail", () => {
         active="accounts"
         onOpenDashboard={() => {}}
         onOpenAccounts={() => {}}
+        onOpenReports={() => {}}
         onOpenBudget={() => {}}
         onOpenGoals={() => {}}
         onOpenSettings={() => {}}
@@ -49,6 +52,7 @@ describe("NavRail", () => {
         active="dashboard"
         onOpenDashboard={() => {}}
         onOpenAccounts={() => {}}
+        onOpenReports={() => {}}
         onOpenBudget={onOpenBudget}
         onOpenGoals={() => {}}
         onOpenSettings={() => {}}

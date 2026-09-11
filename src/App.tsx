@@ -10,6 +10,7 @@ import { GoalsScreen } from "./goals/GoalsScreen";
 import { ImportScreen } from "./import/ImportScreen";
 import { MerchantsScreen } from "./merchants/MerchantsScreen";
 import { NavRail } from "./ui/NavRail";
+import { ReportsScreen } from "./reports/ReportsScreen";
 import { RulesScreen } from "./rules/RulesScreen";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { TransactionsScreen } from "./transactions/TransactionsScreen";
@@ -29,6 +30,7 @@ const NOTIFICATION_CHECK_INTERVAL_MS = 60_000;
 type ContentView =
   | { type: "dashboard" }
   | { type: "accounts" }
+  | { type: "reports" }
   | { type: "categories" }
   | { type: "budget" }
   | { type: "goals" }
@@ -62,6 +64,7 @@ function App() {
           active={view.type}
           onOpenDashboard={() => setView({ type: "dashboard" })}
           onOpenAccounts={() => setView({ type: "accounts" })}
+          onOpenReports={() => setView({ type: "reports" })}
           onOpenBudget={() => setView({ type: "budget" })}
           onOpenGoals={() => setView({ type: "goals" })}
           onOpenSettings={() => setView({ type: "settings" })}
@@ -88,6 +91,7 @@ function App() {
               }
             />
           )}
+          {view.type === "reports" && <ReportsScreen />}
           {view.type === "categories" && <CategoriesScreen />}
           {view.type === "budget" && <BudgetScreen />}
           {view.type === "goals" && <GoalsScreen />}
