@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { addMonths, currentMonth } from "../budget/types";
+import { monthEndDate, monthStartDate } from "../dashboard/types";
 import { formatCents } from "../transactions/types";
 import {
   CASH_FLOW_RANGE_LABELS,
   CASH_FLOW_RANGE_OPTIONS,
   CashFlowRange,
+  CategoryIncome,
   CategorySpending,
   MonthlyCashFlow,
 } from "./types";
@@ -69,7 +71,7 @@ export function ReportsScreen() {
         aria-labelledby="reports-tab-income"
         hidden={activeTab !== "income"}
       >
-        {activeTab === "income" && <p className="empty-state">Income by Category is coming soon.</p>}
+        {activeTab === "income" && <IncomeTab />}
       </div>
     </section>
   );
@@ -280,5 +282,97 @@ function SpendingTab() {
         ))}
       </ul>
     </div>
+  );
+}
+
+function IncomeTab() {
+  const [range, setRange] = useState<CashFlowRange>(3);
+  const [categories, setCategories] = useState<CategoryIncome[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh() {
+      try {
+        const endMonth = currentMonth();
+        const startMonth = addMonths(endMonth, -(range - 1));
+        const result = await invoke<CategoryIncome[]>("get_income_by_category_for_range", {
+          start_date: monthStartDate(startMonth),
+          end_date: monthEndDate(endMonth),
+        });
+        if (!cancelled) {
+          setCategories(result);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) setError(String(err));
+      }
+    }
+
+    refresh();
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
+
+  const totalIncomeCents = categories.reduce((sum, c) => sum + c.income_cents, 0);
+
+  return (
+    <div className="dashboard-widget reports-income-tab">
+      <div className="dashboard-widget-header">
+        <h3 className="dashboard-section-title">Income</h3>
+        <select
+          className="dashboard-widget-period"
+          aria-label="Income date range"
+          value={range}
+          onChange={(e) => setRange(Number(e.target.value) as CashFlowRange)}
+        >
+          {CASH_FLOW_RANGE_OPTIONS.map((r) => (
+            <option key={r} value={r}>
+              {CASH_FLOW_RANGE_LABELS[r]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {error && <p role="alert">{error}</p>}
+
+      <div className="cash-flow-summary">
+        <div className="cash-flow-stat">
+          <span className="cash-flow-stat-label">Total Income</span>
+          <span className="amount credit">{formatCents(totalIncomeCents)}</span>
+        </div>
+      </div>
+
+      <IncomeByCategoryChart categories={categories} />
+    </div>
+  );
+}
+
+function IncomeByCategoryChart({ categories }: { categories: CategoryIncome[] }) {
+  if (categories.length === 0) {
+    return <p className="empty-state">No income in this range yet.</p>;
+  }
+
+  const max = Math.max(1, ...categories.map((c) => c.income_cents));
+
+  return (
+    <ul className="income-category-list">
+      {categories.map((category) => (
+        <li key={category.category_name} className="income-category-row">
+          <div className="income-category-row-header">
+            <span className="income-category-name">{category.category_name}</span>
+            <span className="amount credit">{formatCents(category.income_cents)}</span>
+          </div>
+          <div className="income-category-bar">
+            <div
+              className="income-category-fill"
+              style={{ width: `${(category.income_cents / max) * 100}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

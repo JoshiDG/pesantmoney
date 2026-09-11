@@ -32,3 +32,12 @@ export interface CategorySpending {
   category_name: string;
   amount_cents: number;
 }
+
+/** One Category's total income across every Account for the selected range,
+ * as returned by `get_income_by_category_for_range` (see
+ * `services::reports::CategoryIncome` on the Rust side). `category_name` is
+ * `"Uncategorized"` for income Transactions with no Category assigned. */
+export interface CategoryIncome {
+  category_name: string;
+  income_cents: number;
+}
