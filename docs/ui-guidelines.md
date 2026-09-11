@@ -2,9 +2,9 @@
 
 Decision record: `docs/adr/0010-legacy-ui-guidelines-synthesis.md`. Sourcing, direct quotes, and confidence levels for every rule below: `docs/research/legacy-ui-guidelines.md`. This document is the living, prescriptive half — it changes as the redesign proceeds; the ADR does not.
 
-These rules apply going forward to all 11 screens (`AccountsScreen`, `BudgetScreen`, `CategoriesScreen`, `DashboardScreen`, `GoalsScreen`, `HoldingsScreen`, `ImportScreen`, `RecurringItemsScreen`, `RulesScreen`, `SettingsScreen`, `TransactionsScreen`) as they're touched, not as a one-time rewrite. Existing App.css tokens (`--ink`, `--paper`, `--credit`, `--debit`, `--focus`, the serif/sans/mono font stacks) and the dense CSS-grid ledger layout are not superseded by this document — they're the visual layer; what follows is mostly the *interaction and structural* layer that was previously undocumented. Where a rule below does touch visual style, it's noted explicitly.
+These rules apply going forward to all 11 screens (`AccountsScreen`, `BudgetScreen`, `CategoriesScreen`, `DashboardScreen`, `GoalsScreen`, `HoldingsScreen`, `ImportScreen`, `RecurringItemsScreen`, `RulesScreen`, `SettingsScreen`, `TransactionsScreen`) as they're touched, not as a one-time rewrite. The dense CSS-grid ledger layout is not superseded by this document — it's the interaction/structural layer, and what follows is mostly that layer plus keyboard architecture. The visual token layer itself (`--ink`, `--paper`, `--credit`, `--debit`, `--focus`, the serif/sans/mono font stacks), however, **is** superseded by ADR-0020's dark-only, fully-monospace, multi-accent terminal identity — see that ADR for the visual-design decision; this document stays the source for interaction/structural rules. Where a rule below does touch visual style, it's noted explicitly.
 
-Modern dark-mode support (App.css already does this via `prefers-color-scheme`) and accessibility expectations always win over anything below — none of the source systems address either, since all predate them by decades.
+Per ADR-0020 the app is now dark-only — `prefers-color-scheme` light support is removed, not merely deprioritized. Accessibility expectations always win over anything below — none of the source systems address them, since all predate modern accessibility norms by decades.
 
 ## Confirmation and destructive actions
 
@@ -53,9 +53,21 @@ Three of Apple's ten 1987 principles are worth stating as ongoing house rules, s
 
 None of the six source systems yields a portable, prescriptive spacing grid or typography rule strict enough to import wholesale (see `docs/research/legacy-ui-guidelines.md` — this absence is confirmed, not an unresearched gap, for CUA's graphical rendering, QNX Photon, NeXTSTEP, and BeOS alike; only BB10's 0.69mm "design unit" is genuinely that precise, and it's a touch-density unit that doesn't transfer to a desktop pointer app). **Conclusion: don't manufacture a grid rule from these sources.** Keep evaluating spacing/typography changes case-by-case against the existing App.css token system and against Apple's Aesthetic Integrity / Perceived Stability principles (don't change spacing/type "randomly" between screens) rather than against an imported numeric rule.
 
-### Resolved case: hero numbers (issue #43)
+### Superseded case: hero numbers (issue #43)
 
-The single most important figure per screen — net worth (Dashboard), ready-to-assign (Budget), account balance (ledger/account view) — uses a shared display treatment rather than three unrelated one-off sizes: `--display-family` (`var(--font-serif)`, not mono — mono stays correct for dense tabular ledger rows), `--display-weight: 500`, `--display-tracking: -0.02em`, and a per-context size (`--display-size-1: 3rem` for net worth, `--display-size-2: 2.5rem` for ready-to-assign, `--display-size-3: 2rem` for balance). Scoped to exactly these three contexts — other large figures (e.g. Holdings' total value) keep their own standalone mono treatment.
+~~The single most important figure per screen — net worth (Dashboard), ready-to-assign (Budget), account balance (ledger/account view) — uses a shared display treatment... `--display-family` (`var(--font-serif)`)...~~ Superseded by ADR-0020: the redesign is fully monospace, no serif anywhere. Hero numbers keep a shared display treatment (`--display-weight`, `--display-tracking`, the same per-context `--display-size-1/2/3` scale) but `--display-family` now resolves to the mono stack, matching dense tabular rows — hierarchy for these figures comes from scale and weight alone, not typeface family.
+
+## Density
+
+Per ADR-0020, density is a fixed characteristic of the whole app, not a per-user setting: no comfortable/compact toggle. Every screen is designed dense by default — this is a deliberate scope narrowing to the power-user audience, not an oversight to revisit per-screen.
+
+## Reserved Shortcut Set and command palette
+
+Per ADR-0020, the app now has a defined keyboard architecture, resolving the gap this document previously flagged ("PesantMoney doesn't have a defined reserved set yet"):
+
+- **Command Palette** (Cmd+K) is the primary keyboard interaction model — a global fuzzy search over actions, navigation, and records. New actions/screens should register with it rather than only getting a bespoke shortcut.
+- **Reserved Shortcut Set**: a closed, app-wide vocabulary of macOS-native modifier shortcuts (Cmd+N, Cmd+F, Cmd+,, etc.) for the highest-frequency actions. The existing rule stands unchanged — a screen may never repurpose a reserved combination for something else.
+- **Grid-scoped single-letter shortcuts** (e.g. `j`/`k` to move rows), active only while a grid/list has keyboard focus, layer on top for in-grid editing speed (Superhuman/Bloomberg-Terminal-style). These are never global and must never intercept a focused text input — they are not part of the Reserved Shortcut Set and don't need the same collision-avoidance treatment app-wide, only within the grid that defines them.
 
 ## Explicitly not adopted
 
