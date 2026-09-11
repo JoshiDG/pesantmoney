@@ -15,6 +15,7 @@ use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::merchants::{self, Merchant};
 use crate::services::notifications;
 use crate::services::recurring_items::{self, Frequency, RecurringItem};
+use crate::services::reports::{self, MonthlyCashFlow};
 use crate::services::settings::{self, Settings};
 use crate::services::tags::{self, Tag};
 use crate::services::transactions::{self, Transaction};
@@ -171,6 +172,16 @@ pub fn get_daily_cash_flow_for_range(
     let conn = state.db.lock().map_err(to_command_error)?;
     transactions::daily_income_expense_totals_for_range(&conn, account_id, &start_date, &end_date)
         .map_err(to_command_error)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_monthly_cash_flow_for_range(
+    state: tauri::State<AppState>,
+    start_month: String,
+    end_month: String,
+) -> CommandResult<Vec<MonthlyCashFlow>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    reports::monthly_cash_flow_for_range(&conn, &start_month, &end_month).map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]

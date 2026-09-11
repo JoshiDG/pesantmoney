@@ -1,0 +1,192 @@
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { addMonths, currentMonth } from "../budget/types";
+import { formatCents } from "../transactions/types";
+import { CASH_FLOW_RANGE_LABELS, CASH_FLOW_RANGE_OPTIONS, CashFlowRange, MonthlyCashFlow } from "./types";
+
+type ReportsTab = "cash-flow" | "spending" | "income";
+
+const TABS: { key: ReportsTab; label: string }[] = [
+  { key: "cash-flow", label: "Cash Flow" },
+  { key: "spending", label: "Spending" },
+  { key: "income", label: "Income" },
+];
+
+export function ReportsScreen() {
+  const [activeTab, setActiveTab] = useState<ReportsTab>("cash-flow");
+
+  return (
+    <section className="reports-screen">
+      <div className="content-header">
+        <div>
+          <h2 className="account-title">Reports</h2>
+          <div className="account-title-meta">Cash flow, spending, and income across every Account</div>
+        </div>
+      </div>
+
+      <div className="tab-strip" role="tablist" aria-label="Reports">
+        {TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            id={`reports-tab-${key}`}
+            aria-selected={activeTab === key}
+            aria-controls={`reports-panel-${key}`}
+            className={`tab-strip-item${activeTab === key ? " selected" : ""}`}
+            onClick={() => setActiveTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        role="tabpanel"
+        id="reports-panel-cash-flow"
+        aria-labelledby="reports-tab-cash-flow"
+        hidden={activeTab !== "cash-flow"}
+      >
+        {activeTab === "cash-flow" && <CashFlowTab />}
+      </div>
+      <div
+        role="tabpanel"
+        id="reports-panel-spending"
+        aria-labelledby="reports-tab-spending"
+        hidden={activeTab !== "spending"}
+      >
+        {activeTab === "spending" && (
+          <p className="empty-state">Spending by Category is coming soon.</p>
+        )}
+      </div>
+      <div
+        role="tabpanel"
+        id="reports-panel-income"
+        aria-labelledby="reports-tab-income"
+        hidden={activeTab !== "income"}
+      >
+        {activeTab === "income" && <p className="empty-state">Income by Category is coming soon.</p>}
+      </div>
+    </section>
+  );
+}
+
+function CashFlowTab() {
+  const [range, setRange] = useState<CashFlowRange>(3);
+  const [months, setMonths] = useState<MonthlyCashFlow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh() {
+      try {
+        const endMonth = currentMonth();
+        const startMonth = addMonths(endMonth, -(range - 1));
+        const result = await invoke<MonthlyCashFlow[]>("get_monthly_cash_flow_for_range", {
+          start_month: startMonth,
+          end_month: endMonth,
+        });
+        if (!cancelled) {
+          setMonths(result);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) setError(String(err));
+      }
+    }
+
+    refresh();
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
+
+  const totalIncomeCents = months.reduce((sum, m) => sum + m.income_cents, 0);
+  const totalExpenseCents = months.reduce((sum, m) => sum + m.expense_cents, 0);
+  const totalNetCents = totalIncomeCents - totalExpenseCents;
+
+  return (
+    <div className="dashboard-widget reports-cash-flow-tab">
+      <div className="dashboard-widget-header">
+        <h3 className="dashboard-section-title">Cash Flow</h3>
+        <select
+          className="dashboard-widget-period"
+          aria-label="Cash flow date range"
+          value={range}
+          onChange={(e) => setRange(Number(e.target.value) as CashFlowRange)}
+        >
+          {CASH_FLOW_RANGE_OPTIONS.map((r) => (
+            <option key={r} value={r}>
+              {CASH_FLOW_RANGE_LABELS[r]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {error && <p role="alert">{error}</p>}
+
+      <div className="cash-flow-summary">
+        <div className="cash-flow-stat">
+          <span className="cash-flow-stat-label">Income</span>
+          <span className="amount credit">{formatCents(totalIncomeCents)}</span>
+        </div>
+        <div className="cash-flow-stat">
+          <span className="cash-flow-stat-label">Expenses</span>
+          <span className="amount debit">{formatCents(-totalExpenseCents)}</span>
+        </div>
+        <div className="cash-flow-stat">
+          <span className="cash-flow-stat-label">Net</span>
+          <span className={`amount ${totalNetCents >= 0 ? "credit" : "debit"}`}>
+            {formatCents(totalNetCents)}
+          </span>
+        </div>
+      </div>
+
+      <CashFlowChart months={months} />
+
+      <div className="spending-chart-legend">
+        <span>
+          <span className="spending-chart-swatch spending-chart-swatch-income" /> Income
+        </span>
+        <span>
+          <span className="spending-chart-swatch spending-chart-swatch-expense" /> Expenses
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function CashFlowChart({ months }: { months: MonthlyCashFlow[] }) {
+  if (months.length < 2) {
+    return null;
+  }
+
+  const width = 280;
+  const height = 100;
+  const income = months.map((m) => m.income_cents);
+  const expense = months.map((m) => m.expense_cents);
+  const max = Math.max(1, ...income, ...expense);
+
+  const toPoints = (values: number[]) =>
+    values
+      .map((v, i) => {
+        const x = (i / (months.length - 1)) * width;
+        const y = height - (v / max) * height;
+        return `${x},${y}`;
+      })
+      .join(" ");
+
+  return (
+    <svg
+      className="spending-chart"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Income and expenses trended over the selected range"
+    >
+      <polyline points={toPoints(expense)} fill="none" stroke="var(--debit)" strokeWidth={2} />
+      <polyline points={toPoints(income)} fill="none" stroke="var(--credit)" strokeWidth={2} />
+    </svg>
+  );
+}

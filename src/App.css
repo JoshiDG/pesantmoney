@@ -1574,6 +1574,37 @@ button.danger:hover,
   background: var(--text-tertiary);
 }
 
+.spending-chart-swatch-income {
+  background: var(--credit);
+}
+
+.spending-chart-swatch-expense {
+  background: var(--debit);
+}
+
+.tab-strip {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--paper-line);
+  margin-bottom: 1.25rem;
+}
+
+.tab-strip-item {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-strip-item.selected {
+  color: var(--paper-text);
+  border-bottom-color: var(--credit);
+  font-weight: 600;
+}
+
 .budget-rollup-ready-to-assign {
   display: flex;
   flex-direction: column;
