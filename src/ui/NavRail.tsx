@@ -1,13 +1,14 @@
-import { LayoutDashboard, Landmark, PiggyBank, Target, Settings } from "lucide-react";
+import { LayoutDashboard, Landmark, Receipt, PiggyBank, Target, Settings } from "lucide-react";
 
 // Pure navigation rail: icon + label only, no inline data (e.g. no Account
 // list). Per issue #50 (first slice of the nav-rail IA restructuring, ADR-0017
-// / #49), this slice's rail is intentionally limited to destinations that
-// already have a working screen -- Transactions, Reports, Recurring, and
-// Investments land as their own nav items in later slices once their
-// all-Accounts views exist. Categories/Rules/Merchants move under Settings in
-// a later slice (#58) and are not top-level items here.
-export type NavRailKey = "dashboard" | "accounts" | "budget" | "goals" | "settings";
+// / #49), this slice's rail was intentionally limited to destinations that
+// already had a working screen. #51 adds Transactions as the first all-Accounts
+// destination; Reports, Recurring, and Investments land as their own nav
+// items in later slices once their all-Accounts views exist.
+// Categories/Rules/Merchants move under Settings in a later slice (#58) and
+// are not top-level items here.
+export type NavRailKey = "dashboard" | "accounts" | "transactions" | "budget" | "goals" | "settings";
 
 interface NavRailItem {
   key: NavRailKey;
@@ -18,6 +19,7 @@ interface NavRailItem {
 const NAV_ITEMS: NavRailItem[] = [
   { key: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { key: "accounts", label: "Accounts", Icon: Landmark },
+  { key: "transactions", label: "Transactions", Icon: Receipt },
   { key: "budget", label: "Budget", Icon: PiggyBank },
   { key: "goals", label: "Goals", Icon: Target },
   { key: "settings", label: "Settings", Icon: Settings },
@@ -27,6 +29,7 @@ interface NavRailProps {
   active: string;
   onOpenDashboard: () => void;
   onOpenAccounts: () => void;
+  onOpenTransactions: () => void;
   onOpenBudget: () => void;
   onOpenGoals: () => void;
   onOpenSettings: () => void;
@@ -36,6 +39,7 @@ export function NavRail({
   active,
   onOpenDashboard,
   onOpenAccounts,
+  onOpenTransactions,
   onOpenBudget,
   onOpenGoals,
   onOpenSettings,
@@ -43,6 +47,7 @@ export function NavRail({
   const handlers: Record<NavRailKey, () => void> = {
     dashboard: onOpenDashboard,
     accounts: onOpenAccounts,
+    transactions: onOpenTransactions,
     budget: onOpenBudget,
     goals: onOpenGoals,
     settings: onOpenSettings,

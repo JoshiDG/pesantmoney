@@ -10,6 +10,7 @@ describe("NavRail", () => {
         active="dashboard"
         onOpenDashboard={() => {}}
         onOpenAccounts={() => {}}
+        onOpenTransactions={() => {}}
         onOpenBudget={() => {}}
         onOpenGoals={() => {}}
         onOpenSettings={() => {}}
@@ -18,6 +19,7 @@ describe("NavRail", () => {
 
     expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Accounts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Transactions" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Budget" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Goals" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
@@ -32,6 +34,7 @@ describe("NavRail", () => {
         active="accounts"
         onOpenDashboard={() => {}}
         onOpenAccounts={() => {}}
+        onOpenTransactions={() => {}}
         onOpenBudget={() => {}}
         onOpenGoals={() => {}}
         onOpenSettings={() => {}}
@@ -49,6 +52,7 @@ describe("NavRail", () => {
         active="dashboard"
         onOpenDashboard={() => {}}
         onOpenAccounts={() => {}}
+        onOpenTransactions={() => {}}
         onOpenBudget={onOpenBudget}
         onOpenGoals={() => {}}
         onOpenSettings={() => {}}
@@ -58,5 +62,24 @@ describe("NavRail", () => {
     await userEvent.click(screen.getByRole("button", { name: "Budget" }));
 
     expect(onOpenBudget).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicking Transactions invokes its handler", async () => {
+    const onOpenTransactions = vi.fn();
+    render(
+      <NavRail
+        active="dashboard"
+        onOpenDashboard={() => {}}
+        onOpenAccounts={() => {}}
+        onOpenTransactions={onOpenTransactions}
+        onOpenBudget={() => {}}
+        onOpenGoals={() => {}}
+        onOpenSettings={() => {}}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Transactions" }));
+
+    expect(onOpenTransactions).toHaveBeenCalledTimes(1);
   });
 });

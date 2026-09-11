@@ -41,6 +41,37 @@ fn transaction_from_row(row: &rusqlite::Row) -> rusqlite::Result<Transaction> {
 const SELECT_COLUMNS: &str =
     "id, account_id, date, amount_cents, description, category_id, hidden, merchant_name";
 
+/// A Transaction row carrying its Account's name alongside it, returned by
+/// `list_all_with_accounts` for the all-Accounts Transactions view (#51) so
+/// that screen can render an Account column/badge per row without a second
+/// round-trip per Account.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TransactionWithAccount {
+    pub id: i64,
+    pub account_id: i64,
+    pub account_name: String,
+    pub date: String,
+    pub amount_cents: i64,
+    pub description: String,
+    pub category_id: Option<i64>,
+    pub hidden: bool,
+    pub merchant_name: Option<String>,
+}
+
+fn transaction_with_account_from_row(row: &rusqlite::Row) -> rusqlite::Result<TransactionWithAccount> {
+    Ok(TransactionWithAccount {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        account_name: row.get(2)?,
+        date: row.get(3)?,
+        amount_cents: row.get(4)?,
+        description: row.get(5)?,
+        category_id: row.get(6)?,
+        hidden: row.get(7)?,
+        merchant_name: row.get(8)?,
+    })
+}
+
 pub fn create(
     conn: &Connection,
     account_id: i64,
@@ -90,6 +121,27 @@ pub fn list_visible_for_account(
         "SELECT {SELECT_COLUMNS} FROM transactions WHERE account_id = ?1 AND hidden = 0 ORDER BY date, id"
     ))?;
     let rows = stmt.query_map([account_id], transaction_from_row)?;
+    rows.collect()
+}
+
+/// All Transactions across every Account, each row carrying its Account's
+/// name (`TransactionWithAccount`) so the all-Accounts Transactions view
+/// (#51) can render an Account column/badge. Added alongside
+/// `list_for_account`, not a replacement for it -- the Import flow and
+/// per-Account balance display keep using the per-Account query unchanged
+/// (see #49's "why all-Accounts queries alongside per-Account ones" note).
+/// Unlike `list_visible_for_account`, this does not filter out hidden
+/// Transactions -- that exclusion rule is Reports-specific (#49), not a
+/// Transactions-view rule.
+pub fn list_all_with_accounts(conn: &Connection) -> rusqlite::Result<Vec<TransactionWithAccount>> {
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.account_id, a.name, t.date, t.amount_cents, t.description, \
+                t.category_id, t.hidden, t.merchant_name \
+         FROM transactions t \
+         JOIN accounts a ON a.id = t.account_id \
+         ORDER BY t.date, t.id",
+    )?;
+    let rows = stmt.query_map([], transaction_with_account_from_row)?;
     rows.collect()
 }
 
@@ -371,6 +423,12 @@ mod tests {
             .id
     }
 
+    fn create_named_account(conn: &Connection, name: &str) -> i64 {
+        accounts::create(conn, name, AccountType::Checking, None)
+            .expect("create account")
+            .id
+    }
+
     #[test]
     fn create_returns_the_new_transaction_with_its_assigned_id() {
         let conn = db::open_in_memory().expect("open in-memory test database");
@@ -402,6 +460,67 @@ mod tests {
         assert_eq!(transactions.len(), 2);
         assert_eq!(transactions[0].description, "Earlier");
         assert_eq!(transactions[1].description, "Later");
+    }
+
+    #[test]
+    fn list_all_with_accounts_aggregates_across_every_account_with_account_names() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_named_account(&conn, "Everyday Checking");
+        let savings_id = create_named_account(&conn, "Rainy Day Savings");
+
+        create(&conn, checking_id, "2026-08-02", -1_500, "Groceries", None).expect("create transaction");
+        create(&conn, savings_id, "2026-08-01", 10_000, "Transfer in", None).expect("create transaction");
+
+        let rows = list_all_with_accounts(&conn).expect("list all transactions with accounts");
+
+        assert_eq!(rows.len(), 2);
+        // Ordered by date, id -- the savings deposit (earlier date) comes first.
+        assert_eq!(rows[0].account_name, "Rainy Day Savings");
+        assert_eq!(rows[0].description, "Transfer in");
+        assert_eq!(rows[1].account_name, "Everyday Checking");
+        assert_eq!(rows[1].description, "Groceries");
+    }
+
+    #[test]
+    fn list_all_with_accounts_returns_an_empty_vec_when_there_are_no_transactions() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        create_test_account(&conn);
+
+        let rows = list_all_with_accounts(&conn).expect("list all transactions with accounts");
+
+        assert_eq!(rows, Vec::new());
+    }
+
+    #[test]
+    fn list_all_with_accounts_does_not_filter_out_hidden_transactions() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let hidden = create(&conn, account_id, "2026-08-01", -5_000, "Hidden expense", None)
+            .expect("create transaction");
+        set_hidden(&conn, hidden.id, true).expect("set hidden");
+
+        let rows = list_all_with_accounts(&conn).expect("list all transactions with accounts");
+
+        // Unlike Reports totals, the Transactions view (all-Accounts or
+        // per-Account) does not exclude hidden Transactions by default.
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].hidden);
+    }
+
+    #[test]
+    fn list_for_account_is_unaffected_by_the_new_all_accounts_query() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_named_account(&conn, "Checking");
+        let savings_id = create_named_account(&conn, "Savings");
+        create(&conn, checking_id, "2026-08-01", -100, "Checking only", None)
+            .expect("create transaction");
+        create(&conn, savings_id, "2026-08-01", 100, "Savings only", None)
+            .expect("create transaction");
+
+        let checking_transactions = list_for_account(&conn, checking_id).expect("list transactions");
+
+        assert_eq!(checking_transactions.len(), 1);
+        assert_eq!(checking_transactions[0].description, "Checking only");
     }
 
     #[test]

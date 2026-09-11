@@ -17,7 +17,7 @@ use crate::services::notifications;
 use crate::services::recurring_items::{self, Frequency, RecurringItem};
 use crate::services::settings::{self, Settings};
 use crate::services::tags::{self, Tag};
-use crate::services::transactions::{self, Transaction};
+use crate::services::transactions::{self, Transaction, TransactionWithAccount};
 use crate::services::transfers::{self, Transfer};
 use crate::AppState;
 
@@ -103,6 +103,16 @@ pub fn list_transactions(
 ) -> CommandResult<Vec<Transaction>> {
     let conn = state.db.lock().map_err(to_command_error)?;
     transactions::list_for_account(&conn, account_id).map_err(to_command_error)
+}
+
+/// Backs the all-Accounts Transactions view (#51): every Transaction across
+/// every Account, each carrying its Account's name. Alongside
+/// `list_transactions`, not a replacement -- Import and per-Account balance
+/// display keep calling `list_transactions` unchanged.
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_all_transactions(state: tauri::State<AppState>) -> CommandResult<Vec<TransactionWithAccount>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::list_all_with_accounts(&conn).map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]
