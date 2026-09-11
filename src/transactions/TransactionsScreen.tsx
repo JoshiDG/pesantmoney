@@ -32,6 +32,9 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [error, setError] = useState<string | null>(null);
   const [ledgerView, setLedgerView] = useState<LedgerView>("transactions");
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(DEFAULT_COLUMN_VISIBILITY);
+  // Hidden transactions (#70): off by default, so the grid keeps excluding
+  // hidden Transactions exactly like before this toggle existed.
+  const [showHidden, setShowHidden] = useState(false);
   const { confirm } = useConfirmation();
   const { exportCsv, exporting: exportingCsv, result: csvExportResult, error: csvExportError } = useCsvExport();
 
@@ -48,7 +51,10 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
     try {
       const [transactionList, balance, categoryList, accountList, transferList, tagsByTransaction] =
         await Promise.all([
-          invoke<Transaction[]>("list_transactions", { account_id: account.id }),
+          invoke<Transaction[]>("list_visible_transactions", {
+            account_id: account.id,
+            include_hidden: showHidden,
+          }),
           invoke<number>("account_balance_cents", { account_id: account.id }),
           invoke<Category[]>("list_categories"),
           invoke<Account[]>("list_accounts"),
@@ -71,7 +77,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
     refresh();
     setLedgerView("transactions");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account.id]);
+  }, [account.id, showHidden]);
 
   // Column Management (#68): one global config for the whole app, so it's
   // loaded once on mount rather than per-Account like the rest of this
@@ -175,6 +181,18 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
     }
   }
 
+  // Hidden transactions (#70): a right-click Hide/Unhide action on the
+  // Transaction row calls the already-existing `set_transaction_hidden`
+  // command, then refreshes -- same pattern as onUpdate/onDelete above.
+  async function handleSetHidden(transaction: Transaction, hidden: boolean) {
+    try {
+      await invoke("set_transaction_hidden", { id: transaction.id, hidden });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   return (
     <section>
       <button type="button" className="back-link" onClick={onBack}>
@@ -190,6 +208,14 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
           </div>
         </div>
         <div className="content-header-actions">
+          <label className="show-hidden-toggle">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => setShowHidden(e.currentTarget.checked)}
+            />
+            Show hidden
+          </label>
           <button type="button" onClick={onImport}>
             Import
           </button>
@@ -241,6 +267,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
             onUpdate={handleUpdate}
             onBulkAssignCategory={handleBulkAssignCategory}
             onDelete={handleDelete}
+            onSetHidden={handleSetHidden}
           />
 
           <div className="ledger new-transaction-row">

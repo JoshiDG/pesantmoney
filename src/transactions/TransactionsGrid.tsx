@@ -86,6 +86,12 @@ interface TransactionsGridProps {
   onUpdate: (id: number, fields: TransactionFields) => void;
   onBulkAssignCategory: (ids: number[], categoryId: number | null) => void;
   onDelete: (transaction: Transaction) => void;
+  // Hidden-transaction support (#70): a row-level right-click context menu
+  // offers Hide/Unhide, toggling the already-existing backend `hidden`
+  // field. Callers (TransactionsScreen/AllTransactionsScreen) call
+  // `set_transaction_hidden` and refresh -- the grid itself is unaware of
+  // the persistence mechanism, same as onDelete/onUpdate.
+  onSetHidden: (transaction: Transaction, hidden: boolean) => void;
 }
 
 // Only these four columns are backed by EDITABLE_COLUMNS (see grid-nav.ts);
@@ -123,6 +129,7 @@ export function TransactionsGrid({
   onUpdate,
   onBulkAssignCategory,
   onDelete,
+  onSetHidden,
 }: TransactionsGridProps) {
   const categoryNameById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
@@ -144,6 +151,9 @@ export function TransactionsGrid({
   const [flashCell, setFlashCell] = useState<CellPos | null>(null);
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number } | null>(null);
   const [sortState, setSortState] = useState<SortState | null>(null);
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; transaction: Transaction } | null>(
+    null,
+  );
 
   const editingRef = useRef<CellPos | null>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -420,6 +430,25 @@ export function TransactionsGrid({
     setColumnMenu({ x: e.clientX, y: e.clientY });
   }
 
+  // Row-level right-click context menu (#70): a single Hide/Unhide action
+  // reflecting the Transaction's current `hidden` state. Distinct from the
+  // header's Column Management menu above -- this is scoped to a data row,
+  // not the header row.
+  function handleRowContextMenu(e: React.MouseEvent, transaction: Transaction) {
+    e.preventDefault();
+    e.stopPropagation();
+    setRowMenu({ x: e.clientX, y: e.clientY, transaction });
+  }
+
+  function rowMenuItems(transaction: Transaction): ContextMenuItem[] {
+    return [
+      {
+        label: transaction.hidden ? "Unhide" : "Hide",
+        onClick: () => onSetHidden(transaction, !transaction.hidden),
+      },
+    ];
+  }
+
   function columnMenuItems(): ContextMenuItem[] {
     return COLUMN_SET.map((column) => ({
       label: COLUMN_LABELS[column],
@@ -608,7 +637,10 @@ export function TransactionsGrid({
     const isLinked = linkedTransactionIds.has(transaction.id);
     return (
       <Fragment key={transaction.id}>
-        <div className={`ledger-card${isLinked ? " is-transfer" : ""}`}>
+        <div
+          className={`ledger-card${isLinked ? " is-transfer" : ""}${transaction.hidden ? " hidden-row" : ""}`}
+          onContextMenu={(e) => handleRowContextMenu(e, transaction)}
+        >
           <div className="ledger-card-select">
             <input
               type="checkbox"
@@ -669,7 +701,10 @@ export function TransactionsGrid({
   function renderRow(transaction: Transaction, row: number) {
     return (
       <Fragment key={transaction.id}>
-        <div className={`ledger-row${linkedTransactionIds.has(transaction.id) ? " is-transfer" : ""}`}>
+        <div
+          className={`ledger-row${linkedTransactionIds.has(transaction.id) ? " is-transfer" : ""}${transaction.hidden ? " hidden-row" : ""}`}
+          onContextMenu={(e) => handleRowContextMenu(e, transaction)}
+        >
           <span className="cell-select">
             <input
               type="checkbox"
@@ -763,6 +798,15 @@ export function TransactionsGrid({
           y={columnMenu.y}
           items={columnMenuItems()}
           onClose={() => setColumnMenu(null)}
+        />
+      )}
+
+      {rowMenu && (
+        <ContextMenu
+          x={rowMenu.x}
+          y={rowMenu.y}
+          items={rowMenuItems(rowMenu.transaction)}
+          onClose={() => setRowMenu(null)}
         />
       )}
 

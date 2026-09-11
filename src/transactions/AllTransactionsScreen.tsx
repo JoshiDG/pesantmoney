@@ -37,6 +37,15 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(DEFAULT_COLUMN_VISIBILITY);
+  // Hidden transactions (#70): off by default. `list_all_transactions`
+  // has no `include_hidden` param (unlike the per-Account
+  // `list_visible_transactions`) -- see the "Hidden transactions" section
+  // of #67's Implementation Decisions, which scopes `list_all_with_accounts`
+  // to intentionally not filter hidden rows (that's a Reports-specific
+  // exclusion, not a Transactions-view one). So this screen filters
+  // client-side over the already-fetched, already-`hidden`-carrying rows,
+  // same as its existing Account-filter logic below.
+  const [showHidden, setShowHidden] = useState(false);
   const { confirm } = useConfirmation();
 
   // Keeps the filter in sync with the Account the caller pre-selected, even
@@ -171,6 +180,18 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
     }
   }
 
+  // Hidden transactions (#70): same pattern as onUpdate/onDelete above --
+  // call the already-existing `set_transaction_hidden` command, then
+  // refresh.
+  async function handleSetHidden(transaction: Transaction, hidden: boolean) {
+    try {
+      await invoke("set_transaction_hidden", { id: transaction.id, hidden });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   const linkedTransactionIds = new Set(
     transfers.flatMap((transfer) => [transfer.from_transaction_id, transfer.to_transaction_id]),
   );
@@ -180,8 +201,9 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
     transferByTransactionId.set(transfer.to_transaction_id, transfer);
   }
 
-  const filteredTransactions: Transaction[] =
-    accountFilter == null ? transactions : transactions.filter((t) => t.account_id === accountFilter);
+  const filteredTransactions: Transaction[] = transactions
+    .filter((t) => accountFilter == null || t.account_id === accountFilter)
+    .filter((t) => showHidden || !t.hidden);
 
   // TransactionsGrid now owns Account-column suppression itself (#68):
   // it force-hides the Account column whenever the transactions it's given
@@ -208,6 +230,14 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
               onChange={(val) => setAccountFilter(val === "all" ? null : Number(val))}
             />
           </label>
+          <label className="show-hidden-toggle">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => setShowHidden(e.currentTarget.checked)}
+            />
+            Show hidden
+          </label>
         </div>
       </div>
 
@@ -231,6 +261,7 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
           onUpdate={handleUpdate}
           onBulkAssignCategory={handleBulkAssignCategory}
           onDelete={handleDelete}
+          onSetHidden={handleSetHidden}
         />
       </div>
     </section>

@@ -1184,6 +1184,21 @@ body {
   color: var(--text-tertiary);
 }
 
+/* ---------- hidden transactions (#70) ----------
+   `.ledger-row` renders as `display: contents` (see above), so it never
+   generates its own box -- opacity has to be applied to each child cell
+   directly rather than the row element itself. `.ledger-card` (Mobile tier)
+   is a real box, so it can be dimmed directly. This is a functional-only
+   visual difference for this slice; the full Bloomberg dark-theme pass is
+   #74. */
+.ledger-row.hidden-row > * {
+  opacity: 0.55;
+}
+
+.ledger-card.hidden-row {
+  opacity: 0.55;
+}
+
 .transfer-badge {
   display: inline-block;
   margin-right: 0.4rem;
@@ -1670,6 +1685,17 @@ body {
   display: flex;
   align-items: center;
   gap: 1.25rem;
+}
+
+/* Hidden transactions (#70): the "Show hidden" toggle next to the Account
+   filter on TransactionsScreen/AllTransactionsScreen. */
+.show-hidden-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .import-step {

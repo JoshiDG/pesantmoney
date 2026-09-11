@@ -58,6 +58,7 @@ function renderGrid(
     onUpdate: vi.fn(),
     onBulkAssignCategory: vi.fn(),
     onDelete: vi.fn(),
+    onSetHidden: vi.fn(),
     ...overrides,
   };
   render(<TransactionsGrid {...props} />, { wrapper: withBreakpoint(tier) });
@@ -450,6 +451,7 @@ describe("TransactionsGrid Column Management", () => {
           onUpdate={vi.fn()}
           onBulkAssignCategory={vi.fn()}
           onDelete={vi.fn()}
+          onSetHidden={vi.fn()}
         />
       );
     }
@@ -601,6 +603,83 @@ describe("TransactionsGrid click-to-sort columns", () => {
     fireEvent.contextMenu(document.querySelector(".ledger-head") as HTMLElement);
 
     expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+});
+
+describe("TransactionsGrid Hidden transactions (#70)", () => {
+  it("right-clicking a data row opens a context menu with a 'Hide' item for a currently-visible transaction", () => {
+    renderGrid();
+
+    fireEvent.contextMenu(memoCell("Coffee shop").closest(".ledger-row") as HTMLElement);
+
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getByText("Hide")).toBeInTheDocument();
+    expect(within(menu).queryByText("Unhide")).toBeNull();
+  });
+
+  it("selecting Hide calls onSetHidden with the transaction and true", () => {
+    const props = renderGrid();
+
+    fireEvent.contextMenu(memoCell("Coffee shop").closest(".ledger-row") as HTMLElement);
+    fireEvent.click(screen.getByText("Hide"));
+
+    expect(props.onSetHidden).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1, description: "Coffee shop" }),
+      true,
+    );
+  });
+
+  it("right-clicking an already-hidden data row opens a context menu with an 'Unhide' item", () => {
+    const transactions: Transaction[] = [
+      { ...makeTransactions()[0], hidden: true },
+      makeTransactions()[1],
+    ];
+    renderGrid({ transactions });
+
+    fireEvent.contextMenu(memoCell("Coffee shop").closest(".ledger-row") as HTMLElement);
+
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getByText("Unhide")).toBeInTheDocument();
+    expect(within(menu).queryByText("Hide")).toBeNull();
+  });
+
+  it("selecting Unhide calls onSetHidden with the transaction and false", () => {
+    const transactions: Transaction[] = [
+      { ...makeTransactions()[0], hidden: true },
+      makeTransactions()[1],
+    ];
+    const props = renderGrid({ transactions });
+
+    fireEvent.contextMenu(memoCell("Coffee shop").closest(".ledger-row") as HTMLElement);
+    fireEvent.click(screen.getByText("Unhide"));
+
+    expect(props.onSetHidden).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1, description: "Coffee shop" }),
+      false,
+    );
+  });
+
+  it("renders a hidden transaction's row with a dimmed style class", () => {
+    const transactions: Transaction[] = [
+      { ...makeTransactions()[0], hidden: true },
+      makeTransactions()[1],
+    ];
+    renderGrid({ transactions });
+
+    const hiddenRow = memoCell("Coffee shop").closest(".ledger-row") as HTMLElement;
+    const visibleRow = memoCell("Paycheck").closest(".ledger-row") as HTMLElement;
+    expect(hiddenRow.className).toMatch(/hidden-row/);
+    expect(visibleRow.className).not.toMatch(/hidden-row/);
+  });
+
+  it("right-clicking a column header still opens Column Management, not the row menu", () => {
+    renderGrid();
+
+    fireEvent.contextMenu(document.querySelector(".ledger-head") as HTMLElement);
+
+    const menu = screen.getByRole("menu");
+    expect(within(menu).queryByText("Hide")).toBeNull();
+    expect(within(menu).getAllByRole("menuitemcheckbox").length).toBeGreaterThan(0);
   });
 });
 

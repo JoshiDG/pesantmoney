@@ -44,7 +44,7 @@ describe("TransactionsScreen delete confirmation", () => {
     mockedInvoke.mockReset();
     mockedInvoke.mockImplementation(async (cmd: string) => {
       switch (cmd) {
-        case "list_transactions":
+        case "list_visible_transactions":
           return [
             { id: 1, account_id: 1, date: "2026-09-01", amount_cents: -1250, description: "Coffee shop", category_id: null },
           ];
@@ -114,13 +114,91 @@ describe("TransactionsScreen delete confirmation", () => {
   });
 });
 
+describe("TransactionsScreen Show hidden toggle (#70)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      const params = args as Record<string, unknown> | undefined;
+      switch (cmd) {
+        case "list_visible_transactions":
+          if (params?.include_hidden) {
+            return [
+              { id: 1, account_id: 1, date: "2026-09-01", amount_cents: -1250, description: "Coffee shop", category_id: null, hidden: false, merchant_name: null },
+              { id: 2, account_id: 1, date: "2026-09-02", amount_cents: -900, description: "Old subscription", category_id: null, hidden: true, merchant_name: null },
+            ];
+          }
+          return [
+            { id: 1, account_id: 1, date: "2026-09-01", amount_cents: -1250, description: "Coffee shop", category_id: null, hidden: false, merchant_name: null },
+          ];
+        case "account_balance_cents":
+          return -1250;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [account];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "update_transaction_column_visibility":
+          return null;
+        case "set_transaction_hidden":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("defaults to off: fetches without include_hidden set, and hidden transactions are excluded", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    expect(mockedInvoke).toHaveBeenCalledWith("list_visible_transactions", {
+      account_id: 1,
+      include_hidden: false,
+    });
+    expect(screen.queryByText("Old subscription")).not.toBeInTheDocument();
+  });
+
+  it("checking Show hidden refetches with include_hidden: true and renders the hidden transaction dimmed", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByLabelText("Show hidden"));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("list_visible_transactions", {
+        account_id: 1,
+        include_hidden: true,
+      }),
+    );
+    const hiddenRow = await findMemoCell("Old subscription");
+    expect(hiddenRow.closest(".ledger-row")?.className).toMatch(/hidden-row/);
+  });
+
+  it("right-click Hide on a row calls set_transaction_hidden and refreshes", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.contextMenu(memoCell("Coffee shop").closest(".ledger-row") as HTMLElement);
+    await userEvent.click(screen.getByText("Hide"));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("set_transaction_hidden", { id: 1, hidden: true }),
+    );
+  });
+});
+
 describe("TransactionsScreen CSV export", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();
     mockedSave.mockReset();
     mockedInvoke.mockImplementation(async (cmd: string) => {
       switch (cmd) {
-        case "list_transactions":
+        case "list_visible_transactions":
           return [];
         case "account_balance_cents":
           return 0;
@@ -173,7 +251,7 @@ describe("TransactionsScreen CSV export", () => {
         throw "disk full";
       }
       switch (cmd) {
-        case "list_transactions":
+        case "list_visible_transactions":
           return [];
         case "account_balance_cents":
           return 0;
