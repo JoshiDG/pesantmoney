@@ -1,9 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { Category } from "../categories/types";
+import { withBreakpoint } from "../ui/withBreakpoint";
+import type { BreakpointTier } from "../ui/breakpoints";
 import { TransactionsGrid } from "./TransactionsGrid";
-import { Transaction } from "./types";
+import { formatCents, Transaction } from "./types";
 
 function makeTransactions(): Transaction[] {
   return [
@@ -35,7 +37,10 @@ const categories: Category[] = [
   { id: 11, group_id: 1, name: "Income" },
 ];
 
-function renderGrid(overrides: Partial<Parameters<typeof TransactionsGrid>[0]> = {}) {
+function renderGrid(
+  overrides: Partial<Parameters<typeof TransactionsGrid>[0]> = {},
+  tier: BreakpointTier = "expanded",
+) {
   const props = {
     transactions: makeTransactions(),
     categories,
@@ -52,7 +57,7 @@ function renderGrid(overrides: Partial<Parameters<typeof TransactionsGrid>[0]> =
     onDelete: vi.fn(),
     ...overrides,
   };
-  render(<TransactionsGrid {...props} />);
+  render(<TransactionsGrid {...props} />, { wrapper: withBreakpoint(tier) });
   return props;
 }
 
@@ -216,5 +221,104 @@ describe("TransactionsGrid tag chips", () => {
 
     const paycheckCell = screen.getByText("Paycheck").closest(".cell-description");
     expect(paycheckCell?.querySelector(".tag-chip")).toBeNull();
+  });
+});
+
+describe("TransactionsGrid layout across Breakpoint Tiers", () => {
+  it("renders the grid/table row layout at Expanded tier", () => {
+    renderGrid({}, "expanded");
+
+    const row = screen.getByText("Coffee shop").closest(".ledger-row");
+    expect(row).toBeInTheDocument();
+    expect(screen.getByText("Coffee shop").closest(".ledger-card")).toBeNull();
+  });
+
+  it("renders the grid/table row layout at Compact tier (cosmetic reflow only)", () => {
+    renderGrid({}, "compact");
+
+    const row = screen.getByText("Coffee shop").closest(".ledger-row");
+    expect(row).toBeInTheDocument();
+    expect(screen.getByText("Coffee shop").closest(".ledger-card")).toBeNull();
+  });
+
+  it("renders each transaction as a stacked card at Mobile tier, showing merchant/amount/date/category/account", () => {
+    const transactions: Transaction[] = [
+      {
+        id: 1,
+        account_id: 1,
+        account_name: "Checking",
+        date: "2026-08-01",
+        amount_cents: -1250,
+        description: "Coffee shop",
+        category_id: 10,
+        merchant_name: "Blue Bottle Coffee",
+        hidden: false,
+      },
+    ];
+    renderGrid({ transactions }, "mobile");
+
+    const card = screen.getByText("Blue Bottle Coffee").closest(".ledger-card");
+    expect(card).toBeInTheDocument();
+    expect(screen.queryByText("Blue Bottle Coffee")?.closest(".ledger-row")).toBeNull();
+
+    expect(within(card as HTMLElement).getByText("Blue Bottle Coffee")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText(formatCents(-1250))).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("2026-08-01")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("Food")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("Checking")).toBeInTheDocument();
+  });
+
+  it("does not render the column header row at Mobile tier", () => {
+    renderGrid({}, "mobile");
+
+    expect(document.querySelector(".ledger-head")).toBeNull();
+  });
+
+  it("inline edit still works on a card at Mobile tier", () => {
+    const props = renderGrid({}, "mobile");
+
+    fireEvent.click(screen.getByText("Coffee shop"));
+    const input = screen.getByLabelText("Description for Coffee shop") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Espresso bar" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(props.onUpdate).toHaveBeenCalledWith(1, {
+      date: "2026-08-01",
+      amount_cents: -1250,
+      description: "Espresso bar",
+      category_id: null,
+    });
+  });
+
+  it("delete still works on a card at Mobile tier", () => {
+    const props = renderGrid({}, "mobile");
+
+    const card = screen.getByText("Coffee shop").closest(".ledger-card") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "Delete" }));
+
+    expect(props.onDelete).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1, description: "Coffee shop" }),
+    );
+  });
+
+  it("bulk category assignment still works at Mobile tier", () => {
+    const props = renderGrid({}, "mobile");
+
+    fireEvent.click(screen.getByLabelText("Select Coffee shop"));
+    fireEvent.click(screen.getByLabelText("Select Paycheck"));
+
+    const bulkSelect = screen.getByLabelText("Assign category to selection") as HTMLSelectElement;
+    fireEvent.change(bulkSelect, { target: { value: "11" } });
+
+    expect(props.onBulkAssignCategory).toHaveBeenCalledWith([1, 2], 11);
+  });
+
+  it("link transfer still works on a card at Mobile tier", () => {
+    const props = renderGrid({}, "mobile");
+
+    const card = screen.getByText("Coffee shop").closest(".ledger-card") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "Link transfer" }));
+
+    expect(props.onStartLink).toHaveBeenCalledWith(1);
   });
 });

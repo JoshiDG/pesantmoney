@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { withBreakpoint } from "../ui/withBreakpoint";
+import type { BreakpointTier } from "../ui/breakpoints";
 import { AllTransactionsScreen } from "./AllTransactionsScreen";
 import { Account } from "../accounts/types";
 
@@ -40,11 +42,12 @@ const allTransactions = [
   },
 ];
 
-function renderScreen(initialAccountId: number | null = null) {
+function renderScreen(initialAccountId: number | null = null, tier: BreakpointTier = "expanded") {
   render(
     <ConfirmationProvider>
       <AllTransactionsScreen initialAccountId={initialAccountId} />
     </ConfirmationProvider>,
+    { wrapper: withBreakpoint(tier) },
   );
 }
 
@@ -169,5 +172,38 @@ describe("AllTransactionsScreen", () => {
       "update_transaction",
       expect.objectContaining({ id: 2, category_id: 10 }),
     );
+  });
+
+  it("renders the grid/table row layout at Expanded tier", async () => {
+    renderScreen(null, "expanded");
+    await screen.findByText("Coffee shop");
+
+    expect(screen.getByText("Coffee shop").closest(".ledger-row")).toBeInTheDocument();
+    expect(screen.getByText("Coffee shop").closest(".ledger-card")).toBeNull();
+  });
+
+  it("renders each Transaction as a stacked card at Mobile tier, with the Account filter still working", async () => {
+    renderScreen(null, "mobile");
+    await screen.findByText("Coffee shop");
+
+    const card = screen.getByText("Coffee shop").closest(".ledger-card");
+    expect(card).toBeInTheDocument();
+    expect(screen.getByText("Coffee shop").closest(".ledger-row")).toBeNull();
+
+    await userEvent.selectOptions(screen.getByLabelText("Filter by account"), "1");
+
+    await waitFor(() => expect(screen.queryByText("Interest")).not.toBeInTheDocument());
+    expect(screen.getByText("Coffee shop")).toBeInTheDocument();
+  });
+
+  it("still supports deleting a transaction in card view at Mobile tier", async () => {
+    renderScreen(null, "mobile");
+    await screen.findByText("Coffee shop");
+
+    const card = screen.getByText("Coffee shop").closest(".ledger-card") as HTMLElement;
+    await userEvent.click(within(card).getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete Transaction" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_transaction", { id: 1 }));
   });
 });

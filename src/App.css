@@ -561,6 +561,72 @@ body {
   margin-top: 0.5rem;
 }
 
+/* Compact tier (768-1279px, ADR-0018): cosmetic reflow only -- same grid
+   row structure as Expanded, tighter spacing/density. */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .ledger-row > * {
+    padding: 0.5rem 0;
+    font-size: 0.85rem;
+  }
+}
+
+/* Mobile tier (<768px, ADR-0018): stacked cards instead of grid rows.
+   Structural swap is driven by useBreakpoint() in TransactionsGrid -- this
+   CSS only styles the card markup once JS has already chosen to render it.
+   All per-Transaction interactions (inline edit, categorize, tag,
+   link/unlink transfer, mark hidden, delete, bulk category assignment) are
+   the same elements as the grid layout, just arranged as a card. */
+.ledger-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ledger-cards .bulk-actions-bar {
+  grid-column: auto;
+}
+
+.ledger-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--paper-line);
+  border-radius: 8px;
+}
+
+.ledger-card.is-transfer .cell-description,
+.ledger-card.is-transfer .amount {
+  color: var(--text-tertiary);
+}
+
+.ledger-card-select {
+  align-self: flex-end;
+}
+
+.ledger-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.ledger-card-label {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.ledger-card-field-amount .amount {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.ledger-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--paper-line);
+}
+
 /* ---------- transfers ---------- */
 
 .ledger-row.is-transfer .cell-description,
@@ -694,6 +760,17 @@ body {
   background-color: var(--credit-soft);
   border-color: var(--credit);
   color: var(--paper-text);
+}
+
+/* Mobile tier (<768px, ADR-0018, issue #66): four tab buttons in a single
+   row overflow a phone-width viewport. Wrapping into a second row (rather
+   than horizontal scroll, which the ADR already rejected as unusable on
+   touch for dense grids) keeps every tab visible and tappable without
+   introducing a new interaction model. */
+@media (max-width: 767px) {
+  .settings-tab-strip {
+    flex-wrap: wrap;
+  }
 }
 
 /* ---------- recurring items ---------- */
@@ -1080,6 +1157,23 @@ body {
   padding: 0.35em 0.7em;
 }
 
+/* Mobile tier (<768px, ADR-0018, issue #66): .content-header is a shared
+   title/actions row used by several screens; Budget is the one screen that
+   puts a whole month-picker widget in the actions slot, which is wide
+   enough to squeeze against the title at phone width. Scoped to
+   .budget-header (set alongside .content-header only in BudgetScreen) so
+   other screens' headers are untouched. */
+@media (max-width: 767px) {
+  .budget-header {
+    flex-wrap: wrap;
+  }
+
+  .budget-header .month-picker {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
 .ready-to-assign {
   display: flex;
   flex-direction: column;
@@ -1166,6 +1260,63 @@ body {
 
 .assigned-cell-button:hover {
   border-color: var(--paper-line);
+}
+
+/* Compact tier (768-1279px, ADR-0018): cosmetic reflow only -- same grid
+   structure as Expanded, tighter row density, per issue #66. */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .budget-row > * {
+    padding: 0.4rem 0;
+  }
+}
+
+/* Mobile tier (<768px, ADR-0018, issue #66): the 4-column
+   Category/Assigned/Activity/Available grid doesn't fit a phone-width
+   viewport, but Budget isn't one of the ADR's dense-row screens
+   (Transactions/Accounts/Holdings) that get a bespoke card conversion --
+   this is cosmetic single-column stacking only. Each row becomes a small
+   stack: the category name on its own line, then Assigned/Activity/
+   Available underneath as labelled-by-position pairs (column headers are
+   redundant once each row is self-contained, so they're hidden here). */
+@media (max-width: 767px) {
+  .budget-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .budget-head {
+    display: none;
+  }
+
+  .budget-group {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .budget-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--paper-line);
+  }
+
+  .budget-row > * {
+    padding: 0;
+    border-bottom: none;
+    min-width: 0;
+  }
+
+  .budget-row .cell-category {
+    font-weight: 600;
+    white-space: normal;
+  }
+
+  .budget-row .cell-assigned,
+  .budget-row .amount {
+    justify-content: space-between;
+  }
 }
 
 /* ---------- goals ---------- */
@@ -1318,6 +1469,37 @@ body {
 .goal-form-actions {
   display: flex;
   gap: 0.5rem;
+}
+
+/* Compact tier (768-1279px, ADR-0018): cosmetic reflow only -- same card
+   structure as Expanded, tighter padding, per issue #66. */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .goal-card {
+    padding: 0.85rem 1rem;
+  }
+}
+
+/* Mobile tier (<768px, ADR-0018, issue #66): Goals is already a
+   single-column stack of cards at every tier, so no structural change is
+   needed here -- just spacing/density and un-squeezing the name/actions
+   row, which is tight enough at phone width to clip the Edit/Delete
+   buttons against the goal name otherwise. */
+@media (max-width: 767px) {
+  .goal-card {
+    padding: 0.85rem 1rem;
+  }
+
+  .goal-card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+
+  .goal-payoff-apr-form,
+  .goal-payoff-project-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 /* ---------- forms & inputs ---------- */
@@ -1843,6 +2025,35 @@ button.danger:hover,
   color: var(--text-secondary);
   padding-top: 0.5rem;
   border-top: 1px solid var(--paper-line);
+}
+
+/* Compact tier (768-1279px, ADR-0018): cosmetic reflow only -- same row
+   structure as Expanded, tighter padding, per issue #66. */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .settings-row {
+    padding: 0.85rem 1rem;
+  }
+}
+
+/* Mobile tier (<768px, ADR-0018, issue #66): settings-row pairs a label
+   with a toggle/button side by side, which squeezes the toggle against
+   wrapped label text at phone width. Stacking the toggle underneath keeps
+   both fully readable and tappable. */
+@media (max-width: 767px) {
+  .settings-panel {
+    max-width: none;
+  }
+
+  .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+  }
+
+  .settings-toggle {
+    align-self: flex-start;
+  }
 }
 
 .confirmation-overlay {

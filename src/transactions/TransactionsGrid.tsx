@@ -10,6 +10,7 @@ import {
 import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
 import { Tag } from "../tags/types";
+import { useBreakpoint } from "../ui/BreakpointProvider";
 import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
 import { CellPos, ColumnKey, EDITABLE_COLUMNS, nextCellForKey } from "./grid-nav";
@@ -24,6 +25,16 @@ import {
 
 const UNCATEGORIZED = "";
 const BULK_PLACEHOLDER = "__bulk_placeholder__";
+
+// Field labels for the Mobile-tier stacked-card layout (ADR-0018) -- the
+// grid's column headers don't apply to cards, so each field is labeled
+// inline instead.
+const COLUMN_LABELS: Record<ColumnKey, string> = {
+  date: "Date",
+  description: "Description",
+  category: "Category",
+  amount: "Amount",
+};
 
 interface TransactionsGridProps {
   transactions: Transaction[];
@@ -76,6 +87,8 @@ export function TransactionsGrid({
     [categories],
   );
   const orderedIds = useMemo(() => transactions.map((t) => t.id), [transactions]);
+  const tier = useBreakpoint();
+  const isMobile = tier === "mobile";
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [anchorId, setAnchorId] = useState<number | null>(null);
@@ -361,23 +374,156 @@ export function TransactionsGrid({
     }
   }
 
+  // Mobile tier (<768px, ADR-0018): one card per Transaction instead of a
+  // grid row -- column headers don't apply to cards, so each field carries
+  // its own label. Reuses renderDisplayCell/renderEditingCell so inline
+  // edit, categorize, and every other per-Transaction interaction stay
+  // identical to the grid layout; only the surrounding markup differs.
+  function renderCard(transaction: Transaction, row: number) {
+    const isLinked = linkedTransactionIds.has(transaction.id);
+    return (
+      <Fragment key={transaction.id}>
+        <div className={`ledger-card${isLinked ? " is-transfer" : ""}`}>
+          <div className="ledger-card-select">
+            <input
+              type="checkbox"
+              aria-label={`Select ${transaction.description}`}
+              checked={selected.has(transaction.id)}
+              onClick={(e) => {
+                e.preventDefault();
+                toggleSelectRow(transaction.id, e.shiftKey);
+              }}
+              onChange={() => {}}
+            />
+          </div>
+          {EDITABLE_COLUMNS.map((column, col) => (
+            <div className={`ledger-card-field ledger-card-field-${column}`} key={column}>
+              <span className="ledger-card-label">{COLUMN_LABELS[column]}</span>
+              {editingCell?.row === row && editingCell?.col === col
+                ? renderEditingCell(transaction, row, col, column)
+                : renderDisplayCell(transaction, row, col, column)}
+            </div>
+          ))}
+          <div className="ledger-card-actions">
+            {isLinked ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const transfer = transferByTransactionId.get(transaction.id);
+                  if (transfer) {
+                    onUnlink(transfer);
+                  }
+                }}
+              >
+                Unlink
+              </button>
+            ) : (
+              <button type="button" onClick={() => onStartLink(transaction.id)}>
+                Link transfer
+              </button>
+            )}
+            <button type="button" onClick={() => onDelete(transaction)}>
+              Delete
+            </button>
+          </div>
+        </div>
+
+        {linkingId === transaction.id && (
+          <div className="transfer-picker-row">
+            <TransferPicker
+              transaction={transaction}
+              accounts={accounts}
+              linkedTransactionIds={linkedTransactionIds}
+              onLink={(toTransactionId) => onLink(transaction.id, toTransactionId)}
+              onCancel={onCancelLink}
+            />
+          </div>
+        )}
+      </Fragment>
+    );
+  }
+
+  function renderRow(transaction: Transaction, row: number) {
+    return (
+      <Fragment key={transaction.id}>
+        <div className={`ledger-row${linkedTransactionIds.has(transaction.id) ? " is-transfer" : ""}`}>
+          <span className="cell-select">
+            <input
+              type="checkbox"
+              aria-label={`Select ${transaction.description}`}
+              checked={selected.has(transaction.id)}
+              onClick={(e) => {
+                e.preventDefault();
+                toggleSelectRow(transaction.id, e.shiftKey);
+              }}
+              onChange={() => {}}
+            />
+          </span>
+          {EDITABLE_COLUMNS.map((column, col) =>
+            editingCell?.row === row && editingCell?.col === col ? (
+              <Fragment key={column}>{renderEditingCell(transaction, row, col, column)}</Fragment>
+            ) : (
+              <Fragment key={column}>{renderDisplayCell(transaction, row, col, column)}</Fragment>
+            ),
+          )}
+          <span className="row-actions">
+            {linkedTransactionIds.has(transaction.id) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const transfer = transferByTransactionId.get(transaction.id);
+                  if (transfer) {
+                    onUnlink(transfer);
+                  }
+                }}
+              >
+                Unlink
+              </button>
+            ) : (
+              <button type="button" onClick={() => onStartLink(transaction.id)}>
+                Link transfer
+              </button>
+            )}
+            <button type="button" onClick={() => onDelete(transaction)}>
+              Delete
+            </button>
+          </span>
+        </div>
+
+        {linkingId === transaction.id && (
+          <div className="transfer-picker-row">
+            <TransferPicker
+              transaction={transaction}
+              accounts={accounts}
+              linkedTransactionIds={linkedTransactionIds}
+              onLink={(toTransactionId) => onLink(transaction.id, toTransactionId)}
+              onCancel={onCancelLink}
+            />
+          </div>
+        )}
+      </Fragment>
+    );
+  }
+
   return (
-    <div className="ledger ledger-editable">
-      <div className="ledger-head">
-        <span className="cell-select">
-          <input
-            type="checkbox"
-            aria-label="Select all transactions"
-            checked={transactions.length > 0 && selected.size === transactions.length}
-            onChange={toggleSelectAll}
-          />
-        </span>
-        <span>Date</span>
-        <span>Description</span>
-        <span>Category</span>
-        <span>Amount</span>
-        <span></span>
-      </div>
+    <div className={`ledger ledger-editable${isMobile ? " ledger-cards" : ""}`}>
+      {!isMobile && (
+        <div className="ledger-head">
+          <span className="cell-select">
+            <input
+              type="checkbox"
+              aria-label="Select all transactions"
+              checked={transactions.length > 0 && selected.size === transactions.length}
+              onChange={toggleSelectAll}
+            />
+          </span>
+          <span>Date</span>
+          <span>Description</span>
+          <span>Category</span>
+          <span>Amount</span>
+          <span></span>
+        </div>
+      )}
 
       {selected.size > 0 && (
         <div className="bulk-actions-bar">
@@ -405,65 +551,9 @@ export function TransactionsGrid({
         </div>
       )}
 
-      {transactions.map((transaction, row) => (
-        <Fragment key={transaction.id}>
-          <div className={`ledger-row${linkedTransactionIds.has(transaction.id) ? " is-transfer" : ""}`}>
-            <span className="cell-select">
-              <input
-                type="checkbox"
-                aria-label={`Select ${transaction.description}`}
-                checked={selected.has(transaction.id)}
-                onClick={(e) => {
-                  e.preventDefault();
-                  toggleSelectRow(transaction.id, e.shiftKey);
-                }}
-                onChange={() => {}}
-              />
-            </span>
-            {EDITABLE_COLUMNS.map((column, col) =>
-              editingCell?.row === row && editingCell?.col === col ? (
-                <Fragment key={column}>{renderEditingCell(transaction, row, col, column)}</Fragment>
-              ) : (
-                <Fragment key={column}>{renderDisplayCell(transaction, row, col, column)}</Fragment>
-              ),
-            )}
-            <span className="row-actions">
-              {linkedTransactionIds.has(transaction.id) ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const transfer = transferByTransactionId.get(transaction.id);
-                    if (transfer) {
-                      onUnlink(transfer);
-                    }
-                  }}
-                >
-                  Unlink
-                </button>
-              ) : (
-                <button type="button" onClick={() => onStartLink(transaction.id)}>
-                  Link transfer
-                </button>
-              )}
-              <button type="button" onClick={() => onDelete(transaction)}>
-                Delete
-              </button>
-            </span>
-          </div>
-
-          {linkingId === transaction.id && (
-            <div className="transfer-picker-row">
-              <TransferPicker
-                transaction={transaction}
-                accounts={accounts}
-                linkedTransactionIds={linkedTransactionIds}
-                onLink={(toTransactionId) => onLink(transaction.id, toTransactionId)}
-                onCancel={onCancelLink}
-              />
-            </div>
-          )}
-        </Fragment>
-      ))}
+      {transactions.map((transaction, row) =>
+        isMobile ? renderCard(transaction, row) : renderRow(transaction, row),
+      )}
     </div>
   );
 }

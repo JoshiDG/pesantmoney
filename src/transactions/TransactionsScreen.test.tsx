@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { withBreakpoint } from "../ui/withBreakpoint";
 import { TransactionsScreen } from "./TransactionsScreen";
 import { Account } from "../accounts/types";
 
@@ -25,6 +26,7 @@ function renderScreen() {
     <ConfirmationProvider>
       <TransactionsScreen account={account} onBack={vi.fn()} onImport={vi.fn()} />
     </ConfirmationProvider>,
+    { wrapper: withBreakpoint("expanded") },
   );
 }
 
