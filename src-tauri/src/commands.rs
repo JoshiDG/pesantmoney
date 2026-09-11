@@ -14,7 +14,7 @@ use crate::services::holdings::{self, Holding, HoldingWithAccount, HoldingWithVa
 use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::merchants::{self, Merchant};
 use crate::services::notifications;
-use crate::services::recurring_items::{self, Frequency, RecurringItem};
+use crate::services::recurring_items::{self, Frequency, RecurringItem, RecurringItemWithAccount};
 use crate::services::reports::{self, MonthlyCashFlow};
 use crate::services::settings::{self, Settings};
 use crate::services::tags::{self, Tag};
@@ -423,6 +423,19 @@ pub fn list_recurring_items(
 ) -> CommandResult<Vec<RecurringItem>> {
     let conn = state.db.lock().map_err(to_command_error)?;
     recurring_items::list_for_account(&conn, account_id).map_err(to_command_error)
+}
+
+/// Backs the all-Accounts Recurring screen (#52): every Recurring Item
+/// across every Account, each carrying its Account's name. Alongside
+/// `list_recurring_items`, not a replacement -- detection still runs per
+/// Account and keeps calling `recurring_items::list_for_account` internally
+/// unchanged.
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_all_recurring_items(
+    state: tauri::State<AppState>,
+) -> CommandResult<Vec<RecurringItemWithAccount>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    recurring_items::list_all_with_accounts(&conn).map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]

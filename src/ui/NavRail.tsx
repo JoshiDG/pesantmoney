@@ -5,6 +5,7 @@ import {
   Receipt,
   BarChart3,
   PiggyBank,
+  Repeat,
   Target,
   TrendingUp,
   Settings,
@@ -16,15 +17,16 @@ import { useBreakpoint } from "./BreakpointProvider";
 // list). Per issue #50 (first slice of the nav-rail IA restructuring, ADR-0017
 // / #49), this slice's rail was intentionally limited to destinations that
 // already had a working screen. #51 added Transactions, #54 added Reports,
-// and #53 added Investments; Recurring lands as its own nav item once its
-// all-Accounts view exists (#52). Categories/Rules/Merchants move under
-// Settings in a later slice (#58) and are not top-level items here.
+// #52 added Recurring, and #53 added Investments. Categories/Rules/Merchants
+// move under Settings in a later slice (#58) and are not top-level items
+// here.
 export type NavRailKey =
   | "dashboard"
   | "accounts"
   | "transactions"
   | "reports"
   | "budget"
+  | "recurring"
   | "goals"
   | "investments"
   | "settings";
@@ -41,6 +43,7 @@ const NAV_ITEMS: NavRailItem[] = [
   { key: "transactions", label: "Transactions", Icon: Receipt },
   { key: "reports", label: "Reports", Icon: BarChart3 },
   { key: "budget", label: "Budget", Icon: PiggyBank },
+  { key: "recurring", label: "Recurring", Icon: Repeat },
   { key: "goals", label: "Goals", Icon: Target },
   { key: "investments", label: "Investments", Icon: TrendingUp },
   { key: "settings", label: "Settings", Icon: Settings },
@@ -48,12 +51,12 @@ const NAV_ITEMS: NavRailItem[] = [
 
 // The Mobile-tier Bottom Tab Bar's primary destinations, per ADR-0018 / issue
 // #61: Dashboard, Transactions, Budget, Accounts stay directly on the bar;
-// everything else collapses under "More". This is intentionally a plain
-// string set rather than tied to NavRailKey -- Transactions isn't a nav
-// destination yet (lands with #52), and Reports/Recurring/Investments land
-// with #52/#53. Keying the split off membership (rather than an exhaustive
-// hardcoded overflow list) means any nav item added later that isn't one of
-// these four primaries automatically falls into "More" with no changes here.
+// everything else (Reports, Recurring, Goals, Investments, Settings)
+// collapses under "More". This is intentionally a plain string set rather
+// than tied to NavRailKey -- keying the split off membership (rather than an
+// exhaustive hardcoded overflow list) means any nav item added later that
+// isn't one of these four primaries automatically falls into "More" with no
+// changes here.
 const PRIMARY_TAB_KEYS = new Set<string>(["dashboard", "transactions", "budget", "accounts"]);
 
 interface NavRailProps {
@@ -63,6 +66,7 @@ interface NavRailProps {
   onOpenTransactions: () => void;
   onOpenReports: () => void;
   onOpenBudget: () => void;
+  onOpenRecurring: () => void;
   onOpenGoals: () => void;
   onOpenInvestments: () => void;
   onOpenSettings: () => void;
@@ -75,6 +79,7 @@ export function NavRail({
   onOpenTransactions,
   onOpenReports,
   onOpenBudget,
+  onOpenRecurring,
   onOpenGoals,
   onOpenInvestments,
   onOpenSettings,
@@ -86,6 +91,7 @@ export function NavRail({
     transactions: onOpenTransactions,
     reports: onOpenReports,
     budget: onOpenBudget,
+    recurring: onOpenRecurring,
     goals: onOpenGoals,
     investments: onOpenInvestments,
     settings: onOpenSettings,

@@ -9,6 +9,7 @@ import { GoalsScreen } from "./goals/GoalsScreen";
 import { ImportScreen } from "./import/ImportScreen";
 import { InvestmentsScreen } from "./investments/InvestmentsScreen";
 import { NavRail } from "./ui/NavRail";
+import { AllRecurringScreen } from "./recurring/AllRecurringScreen";
 import { ReportsScreen } from "./reports/ReportsScreen";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { AllTransactionsScreen } from "./transactions/AllTransactionsScreen";
@@ -36,6 +37,7 @@ type ContentView =
   | { type: "transactions"; accountId: number | null }
   | { type: "reports" }
   | { type: "budget" }
+  | { type: "recurring" }
   | { type: "goals" }
   | { type: "investments" }
   | { type: "settings" }
@@ -67,6 +69,7 @@ function App() {
           onOpenTransactions={() => setView({ type: "transactions", accountId: null })}
           onOpenReports={() => setView({ type: "reports" })}
           onOpenBudget={() => setView({ type: "budget" })}
+          onOpenRecurring={() => setView({ type: "recurring" })}
           onOpenGoals={() => setView({ type: "goals" })}
           onOpenInvestments={() => setView({ type: "investments" })}
           onOpenSettings={() => setView({ type: "settings" })}
@@ -90,6 +93,7 @@ function App() {
           {view.type === "transactions" && <AllTransactionsScreen initialAccountId={view.accountId} />}
           {view.type === "reports" && <ReportsScreen />}
           {view.type === "budget" && <BudgetScreen />}
+          {view.type === "recurring" && <AllRecurringScreen />}
           {view.type === "goals" && <GoalsScreen />}
           {view.type === "investments" && <InvestmentsScreen />}
           {view.type === "settings" && <SettingsScreen />}

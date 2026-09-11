@@ -107,6 +107,43 @@ fn recurring_item_from_row(row: &rusqlite::Row) -> rusqlite::Result<RecurringIte
 
 const SELECT_COLUMNS: &str = "id, account_id, description, amount_cents, frequency, next_expected_date, category_id, is_confirmed";
 
+/// A Recurring Item row carrying its Account's name alongside it, returned by
+/// `list_all_with_accounts` for the all-Accounts Recurring screen (#52) so
+/// that screen can render an Account column/badge per row without a second
+/// round-trip per Account. Mirrors `transactions::TransactionWithAccount`
+/// (#51)'s shape and rationale.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RecurringItemWithAccount {
+    pub id: i64,
+    pub account_id: i64,
+    pub account_name: String,
+    pub description: String,
+    pub amount_cents: i64,
+    pub frequency: Frequency,
+    pub next_expected_date: String,
+    pub category_id: Option<i64>,
+    pub is_confirmed: bool,
+}
+
+fn recurring_item_with_account_from_row(row: &rusqlite::Row) -> rusqlite::Result<RecurringItemWithAccount> {
+    let frequency_str: String = row.get(5)?;
+    let frequency = Frequency::from_str(&frequency_str).ok_or_else(|| {
+        rusqlite::Error::InvalidColumnType(5, "frequency".into(), rusqlite::types::Type::Text)
+    })?;
+
+    Ok(RecurringItemWithAccount {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        account_name: row.get(2)?,
+        description: row.get(3)?,
+        amount_cents: row.get(4)?,
+        frequency,
+        next_expected_date: row.get(6)?,
+        category_id: row.get(7)?,
+        is_confirmed: row.get::<_, i64>(8)? != 0,
+    })
+}
+
 /// Manually define a recurring item. Manually-defined items are considered
 /// user-confirmed from the start (`is_confirmed = true`) since there's no
 /// detection step to confirm.
@@ -150,6 +187,24 @@ pub fn list_for_account(conn: &Connection, account_id: i64) -> rusqlite::Result<
         "SELECT {SELECT_COLUMNS} FROM recurring_items WHERE account_id = ?1 ORDER BY next_expected_date, id"
     ))?;
     let rows = stmt.query_map([account_id], recurring_item_from_row)?;
+    rows.collect()
+}
+
+/// All Recurring Items across every Account, each row carrying its Account's
+/// name (`RecurringItemWithAccount`), for the all-Accounts Recurring screen
+/// (#52). Added alongside `list_for_account`, not a replacement for it -- any
+/// code still relying on the per-Account query (detection, which still runs
+/// per Account) keeps calling it unchanged (see #49's "why all-Accounts
+/// queries alongside per-Account ones" note).
+pub fn list_all_with_accounts(conn: &Connection) -> rusqlite::Result<Vec<RecurringItemWithAccount>> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.account_id, a.name, r.description, r.amount_cents, r.frequency, \
+                r.next_expected_date, r.category_id, r.is_confirmed \
+         FROM recurring_items r \
+         JOIN accounts a ON a.id = r.account_id \
+         ORDER BY r.next_expected_date, r.id",
+    )?;
+    let rows = stmt.query_map([], recurring_item_with_account_from_row)?;
     rows.collect()
 }
 
@@ -497,6 +552,45 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].description, "Netflix");
+    }
+
+    #[test]
+    fn list_all_with_accounts_aggregates_across_every_account_with_account_names() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let other_account_id = accounts::create(&conn, "Rainy Day Savings", AccountType::Savings, None)
+            .expect("create account")
+            .id;
+        create(&conn, account_id, "Netflix", -1599, Frequency::Monthly, "2026-09-15", None)
+            .expect("create recurring item");
+        create(
+            &conn,
+            other_account_id,
+            "Gym",
+            -4000,
+            Frequency::Monthly,
+            "2026-09-01",
+            None,
+        )
+        .expect("create recurring item");
+
+        let rows = list_all_with_accounts(&conn).expect("list all recurring items with accounts");
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].description, "Gym");
+        assert_eq!(rows[0].account_name, "Rainy Day Savings");
+        assert_eq!(rows[1].description, "Netflix");
+        assert_eq!(rows[1].account_name, "Everyday Checking");
+    }
+
+    #[test]
+    fn list_all_with_accounts_returns_an_empty_vec_when_there_are_no_recurring_items() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        create_test_account(&conn);
+
+        let rows = list_all_with_accounts(&conn).expect("list all recurring items with accounts");
+
+        assert!(rows.is_empty());
     }
 
     #[test]
