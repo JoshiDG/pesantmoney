@@ -576,7 +576,7 @@ export function SettingsScreen() {
             )}
 
             {folderSyncResult?.outcome === "success" && (
-              <p className="settings-check-result" style={{ color: "#10b981" }}>
+              <p className="settings-check-result" style={{ color: "var(--credit)" }}>
                 Sync successful! Copied to {folderSyncResult.dest_path} at {folderSyncResult.synced_at}.
               </p>
             )}
@@ -787,7 +787,7 @@ export function SettingsScreen() {
             )}
 
             {gdriveSyncResult?.outcome === "success" && (
-              <p className="settings-check-result" style={{ color: "#10b981" }}>
+              <p className="settings-check-result" style={{ color: "var(--credit)" }}>
                 Sync successful! Uploaded {gdriveSyncResult.file_name} at {gdriveSyncResult.synced_at}.
               </p>
             )}
@@ -805,7 +805,7 @@ export function SettingsScreen() {
             )}
 
             {restoreMessage && (
-              <p className="settings-check-result" style={{ color: "#10b981" }}>
+              <p className="settings-check-result" style={{ color: "var(--credit)" }}>
                 {restoreMessage}
               </p>
             )}
