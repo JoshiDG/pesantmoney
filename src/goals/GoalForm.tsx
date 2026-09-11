@@ -3,6 +3,7 @@ import { Account, ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { Category } from "../categories/types";
 import { centsToDollarInput, dollarInputToCents } from "../transactions/types";
 import { Goal, GoalFields } from "./types";
+import { CustomSelect } from "../ui/Dropdown";
 
 type LinkType = "category" | "account";
 
@@ -104,31 +105,24 @@ export function GoalForm({ categories, debtAccounts, initial, onSubmit, onCancel
       </div>
 
       {linkType === "category" ? (
-        <select
-          aria-label="Savings category"
+        <CustomSelect
+          ariaLabel="Savings category"
+          disabled={isEditing}
+          options={categories.map((category) => ({ value: category.id, label: category.name }))}
           value={categoryId}
-          disabled={isEditing}
-          onChange={(e) => setCategoryId(Number(e.currentTarget.value))}
-        >
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
+          onChange={(val) => setCategoryId(Number(val))}
+        />
       ) : (
-        <select
-          aria-label="Debt account"
-          value={accountId}
+        <CustomSelect
+          ariaLabel="Debt account"
           disabled={isEditing}
-          onChange={(e) => setAccountId(Number(e.currentTarget.value))}
-        >
-          {debtAccounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name} ({ACCOUNT_TYPE_LABELS[account.account_type]})
-            </option>
-          ))}
-        </select>
+          options={debtAccounts.map((account) => ({
+            value: account.id,
+            label: `${account.name} (${ACCOUNT_TYPE_LABELS[account.account_type]})`,
+          }))}
+          value={accountId}
+          onChange={(val) => setAccountId(Number(val))}
+        />
       )}
 
       <div className="goal-form-actions">

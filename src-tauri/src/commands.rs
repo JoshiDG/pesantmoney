@@ -20,6 +20,8 @@ use crate::services::settings::{self, Settings};
 use crate::services::tags::{self, Tag};
 use crate::services::transactions::{self, Transaction, TransactionWithAccount};
 use crate::services::transfers::{self, Transfer};
+use crate::services::gdrive::{self, GDriveBackupFile, GDriveConfig, GDriveStatus, GDriveSyncResult};
+use crate::services::folder_sync::{self, FolderBackupFile, FolderSyncConfig, FolderSyncResult, FolderSyncStatus};
 use crate::AppState;
 
 /// How many days ahead a confirmed Recurring Item's `next_expected_date` can
@@ -996,3 +998,104 @@ pub fn export_transactions_csv(state: tauri::State<AppState>, destination: Strin
     let conn = state.db.lock().map_err(to_command_error)?;
     csv_export::export_transactions_csv(&conn, std::path::Path::new(&destination)).map_err(to_command_error)
 }
+
+#[tauri::command]
+pub fn get_gdrive_status(state: tauri::State<AppState>) -> CommandResult<GDriveStatus> {
+    Ok(gdrive::get_status(&state.app_data_dir))
+}
+
+#[tauri::command]
+pub fn start_gdrive_auth(state: tauri::State<AppState>) -> CommandResult<String> {
+    gdrive::start_oauth_listener(state.app_data_dir.clone())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn exchange_gdrive_code(
+    state: tauri::State<AppState>,
+    code: String,
+    redirect_uri: String,
+    client_id: Option<String>,
+    client_secret: Option<String>,
+) -> CommandResult<GDriveConfig> {
+    gdrive::exchange_auth_code(
+        &state.app_data_dir,
+        &code,
+        &redirect_uri,
+        client_id.as_deref(),
+        client_secret.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn disconnect_gdrive(state: tauri::State<AppState>) -> CommandResult<()> {
+    gdrive::disconnect(&state.app_data_dir).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn sync_gdrive_now(state: tauri::State<AppState>) -> CommandResult<GDriveSyncResult> {
+    let _conn = state.db.lock().map_err(to_command_error)?;
+    Ok(gdrive::sync_now(&state.db_path, &state.app_data_dir))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_gdrive_auto_sync(state: tauri::State<AppState>, enabled: bool) -> CommandResult<GDriveConfig> {
+    gdrive::update_auto_sync(&state.app_data_dir, enabled).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn list_gdrive_backups(state: tauri::State<AppState>) -> CommandResult<Vec<GDriveBackupFile>> {
+    gdrive::list_remote_backups(&state.app_data_dir)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn restore_gdrive_backup(state: tauri::State<AppState>, file_id: String) -> CommandResult<()> {
+    let _conn = state.db.lock().map_err(to_command_error)?;
+    gdrive::restore_remote_backup(&state.db_path, &state.app_data_dir, &file_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_gdrive_credentials(
+    state: tauri::State<AppState>,
+    client_id: String,
+    client_secret: String,
+) -> CommandResult<GDriveConfig> {
+    gdrive::update_credentials(&state.app_data_dir, client_id, client_secret).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn get_folder_sync_status(state: tauri::State<AppState>) -> CommandResult<FolderSyncStatus> {
+    Ok(folder_sync::get_status(&state.app_data_dir))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_folder_sync_path(
+    state: tauri::State<AppState>,
+    folder_path: Option<String>,
+) -> CommandResult<FolderSyncConfig> {
+    folder_sync::set_sync_folder(&state.app_data_dir, folder_path).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn sync_folder_now(state: tauri::State<AppState>) -> CommandResult<FolderSyncResult> {
+    let _conn = state.db.lock().map_err(to_command_error)?;
+    Ok(folder_sync::sync_now(&state.db_path, &state.app_data_dir))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_folder_auto_sync(state: tauri::State<AppState>, enabled: bool) -> CommandResult<FolderSyncConfig> {
+    folder_sync::update_auto_sync(&state.app_data_dir, enabled).map_err(to_command_error)
+}
+
+#[tauri::command]
+pub fn list_folder_backups(state: tauri::State<AppState>) -> CommandResult<Vec<FolderBackupFile>> {
+    folder_sync::list_backups(&state.app_data_dir)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn restore_folder_backup(state: tauri::State<AppState>, file_path: String) -> CommandResult<()> {
+    let _conn = state.db.lock().map_err(to_command_error)?;
+    folder_sync::restore_backup(&state.db_path, &state.app_data_dir, &file_path)
+}
+
+
+

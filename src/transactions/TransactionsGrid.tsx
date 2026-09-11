@@ -31,7 +31,7 @@ const BULK_PLACEHOLDER = "__bulk_placeholder__";
 // inline instead.
 const COLUMN_LABELS: Record<ColumnKey, string> = {
   date: "Date",
-  description: "Description",
+  description: "Payee / Description",
   category: "Category",
   amount: "Amount",
 };
@@ -271,30 +271,40 @@ export function TransactionsGrid({
 
     switch (column) {
       case "date":
-        return <div {...commonProps}>{transaction.date}</div>;
-      case "description":
+        return <div {...commonProps} className={`${commonProps.className} cell-date`}>{transaction.date}</div>;
+      case "description": {
+        const payee = transaction.merchant_name || transaction.description;
+        const showMemo = Boolean(
+          transaction.merchant_name && transaction.merchant_name !== transaction.description,
+        );
         return (
           <div
             {...commonProps}
             className={`${commonProps.className} cell-description`}
-            title={transaction.merchant_name ? `Original: ${transaction.description}` : undefined}
+            title={transaction.merchant_name ? `Original Memo: ${transaction.description}` : undefined}
           >
-            {linkedTransactionIds.has(transaction.id) && (
-              <span className="transfer-badge" title="Part of a transfer">
-                ⇄
-              </span>
-            )}
-            {transaction.account_name && (
-              <span className="account-badge">{transaction.account_name}</span>
-            )}
-            {transaction.merchant_name ?? transaction.description}
-            {(tagsByTransactionId[transaction.id] ?? []).map((tag) => (
-              <span key={tag.id} className="tag-chip">
-                {tag.name}
-              </span>
-            ))}
+            <div className="passbook-payee-wrapper">
+              <div className="passbook-payee-main">
+                {linkedTransactionIds.has(transaction.id) && (
+                  <span className="transfer-badge" title="Part of a transfer">
+                    ⇄
+                  </span>
+                )}
+                {transaction.account_name && (
+                  <span className="account-badge">{transaction.account_name}</span>
+                )}
+                <span className="passbook-payee-name">{payee}</span>
+                {(tagsByTransactionId[transaction.id] ?? []).map((tag) => (
+                  <span key={tag.id} className="tag-chip">
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+              {showMemo && <div className="passbook-memo">{transaction.description}</div>}
+            </div>
           </div>
         );
+      }
       case "category":
         return (
           <div {...commonProps} className={`${commonProps.className} cell-category`}>
@@ -518,7 +528,7 @@ export function TransactionsGrid({
             />
           </span>
           <span>Date</span>
-          <span>Description</span>
+          <span>Payee / Description</span>
           <span>Category</span>
           <span>Amount</span>
           <span></span>

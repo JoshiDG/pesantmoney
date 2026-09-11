@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { formatCents } from "../transactions/types";
 import { AccountBalance, isoDateNDaysAgo, isAssetType, sortForBreakdown, svgPolylinePoints } from "./types";
+import { CustomSelect } from "../ui/Dropdown";
 
 const VISIBLE_ACCOUNT_COUNT = 4;
 const TREND_POINTS = 12;
@@ -83,18 +84,16 @@ export function NetWorthWidget() {
     <div className="dashboard-widget">
       <div className="dashboard-widget-header">
         <h3 className="dashboard-section-title">Net Worth</h3>
-        <select
+        <CustomSelect
           className="dashboard-widget-period"
-          aria-label="Net worth trend period"
+          ariaLabel="Net worth trend period"
+          options={(Object.keys(PERIOD_LABELS) as NetWorthPeriod[]).map((p) => ({
+            value: p,
+            label: PERIOD_LABELS[p],
+          }))}
           value={period}
-          onChange={(e) => setPeriod(e.target.value as NetWorthPeriod)}
-        >
-          {(Object.keys(PERIOD_LABELS) as NetWorthPeriod[]).map((p) => (
-            <option key={p} value={p}>
-              {PERIOD_LABELS[p]}
-            </option>
-          ))}
-        </select>
+          onChange={setPeriod}
+        />
       </div>
 
       {error && <p role="alert">{error}</p>}

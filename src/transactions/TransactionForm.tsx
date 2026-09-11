@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Category } from "../categories/types";
 import { centsToDollarInput, dollarInputToCents, Transaction, TransactionFields } from "./types";
+import { CustomSelect } from "../ui/Dropdown";
 
 interface TransactionFormProps {
   categories: Category[];
@@ -51,18 +52,15 @@ export function TransactionForm({ categories, initial, onSubmit, onCancel }: Tra
         onChange={(e) => setDescription(e.currentTarget.value)}
         required
       />
-      <select
-        aria-label="Category"
+      <CustomSelect
+        ariaLabel="Category"
+        options={[
+          { value: UNCATEGORIZED, label: "Uncategorized" },
+          ...categories.map((c) => ({ value: String(c.id), label: c.name })),
+        ]}
         value={categoryId}
-        onChange={(e) => setCategoryId(e.currentTarget.value)}
-      >
-        <option value={UNCATEGORIZED}>Uncategorized</option>
-        {categories.map((category) => (
-          <option key={category.id} value={category.id}>
-            {category.name}
-          </option>
-        ))}
-      </select>
+        onChange={setCategoryId}
+      />
       <input
         aria-label="Amount"
         type="number"

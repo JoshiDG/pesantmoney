@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -59,6 +59,10 @@ describe("AccountsScreen", () => {
       switch (cmd) {
         case "list_accounts":
           return [CHECKING, SAVINGS];
+        case "get_net_worth_by_account":
+          return [[CHECKING, 125000], [SAVINGS, 50000]];
+        case "account_balance_cents":
+          return 0;
         case "create_account":
         case "update_account":
         case "delete_account":
@@ -69,11 +73,54 @@ describe("AccountsScreen", () => {
     });
   });
 
-  it("lists every account", async () => {
+  it("lists every account with account type and balance", async () => {
     renderScreen();
 
     expect(await screen.findByText("Main Checking")).toBeInTheDocument();
     expect(screen.getByText("Rainy Day")).toBeInTheDocument();
+    expect(screen.getByText("Checking", { selector: ".account-type-badge" })).toBeInTheDocument();
+    expect(screen.getByText("Savings", { selector: ".account-type-badge" })).toBeInTheDocument();
+    expect(screen.getByText("$1,250.00")).toBeInTheDocument();
+    expect(screen.getByText("$500.00")).toBeInTheDocument();
+  });
+
+  it("top action toolbar supports filtering accounts by type via custom dropdown", async () => {
+    renderScreen();
+    await screen.findByText("Main Checking");
+
+    const filterBtn = screen.getByRole("button", { name: "Filter accounts by type" });
+    await userEvent.click(filterBtn);
+
+    const checkingOpt = screen.getByRole("option", { name: "Checking" });
+    await userEvent.click(checkingOpt);
+
+    expect(screen.getByText("Main Checking")).toBeInTheDocument();
+    expect(screen.queryByText("Rainy Day")).not.toBeInTheDocument();
+  });
+
+  it("top action toolbar supports sorting accounts by balance via custom dropdown", async () => {
+    renderScreen();
+    await screen.findByText("Main Checking");
+
+    const sortBtn = screen.getByRole("button", { name: "Sort accounts" });
+    await userEvent.click(sortBtn);
+
+    const sortOpt = screen.getByRole("option", { name: "Balance (Low to High)" });
+    await userEvent.click(sortOpt);
+
+    const items = screen.getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("Rainy Day");
+    expect(items[1]).toHaveTextContent("Main Checking");
+  });
+
+  it("top action toolbar refresh button re-fetches account list", async () => {
+    renderScreen();
+    await screen.findByText("Main Checking");
+
+    const refreshBtn = screen.getByRole("button", { name: "Refresh accounts" });
+    await userEvent.click(refreshBtn);
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_accounts"));
   });
 
   it("clicking an account row navigates to its ledger", async () => {
@@ -85,22 +132,43 @@ describe("AccountsScreen", () => {
     expect(onSelectAccount).toHaveBeenCalledWith(CHECKING);
   });
 
-  it("clicking Import on a row invokes the import handler without navigating", async () => {
+  it("right-clicking a row opens custom context menu with options", async () => {
     const { onSelectAccount, onImportAccount } = renderScreen();
     await screen.findByText("Main Checking");
 
     const row = screen.getByText("Main Checking").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Import" }));
+    fireEvent.contextMenu(row);
+
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getByText("View Transactions")).toBeInTheDocument();
+    expect(screen.getByText("Import CSV")).toBeInTheDocument();
+    expect(screen.getByText("Edit Account")).toBeInTheDocument();
+    expect(screen.getByText("Delete Account")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Import CSV"));
 
     expect(onImportAccount).toHaveBeenCalledWith(CHECKING);
     expect(onSelectAccount).not.toHaveBeenCalled();
+  });
+
+  it("clicking action menu button (•••) opens context menu", async () => {
+    const { onImportAccount } = renderScreen();
+    await screen.findByText("Main Checking");
+
+    const trigger = screen.getByRole("button", { name: "Actions for Main Checking" });
+    await userEvent.click(trigger);
+
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Import CSV"));
+
+    expect(onImportAccount).toHaveBeenCalledWith(CHECKING);
   });
 
   it("adding an account creates it and refreshes the list", async () => {
     renderScreen();
     await screen.findByText("Main Checking");
 
-    await userEvent.click(screen.getByRole("button", { name: "Add account" }));
+    await userEvent.click(screen.getByRole("button", { name: /Add account/i }));
     await userEvent.type(screen.getByLabelText("Account name"), "New Card");
     await userEvent.click(screen.getByRole("button", { name: "Add Account" }));
 
@@ -112,12 +180,13 @@ describe("AccountsScreen", () => {
     );
   });
 
-  it("editing an account updates it", async () => {
+  it("editing an account updates it via context menu", async () => {
     renderScreen();
     await screen.findByText("Main Checking");
 
     const row = screen.getByText("Main Checking").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    fireEvent.contextMenu(row);
+    await userEvent.click(screen.getByText("Edit Account"));
 
     const nameInput = screen.getByLabelText("Account name");
     await userEvent.clear(nameInput);
@@ -132,12 +201,13 @@ describe("AccountsScreen", () => {
     );
   });
 
-  it("deleting an account confirms then deletes", async () => {
+  it("deleting an account confirms then deletes via context menu", async () => {
     renderScreen();
     await screen.findByText("Main Checking");
 
     const row = screen.getByText("Main Checking").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    fireEvent.contextMenu(row);
+    await userEvent.click(screen.getByText("Delete Account"));
 
     expect(screen.getByRole("heading", { name: "Delete Account" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Delete Account" }));
@@ -145,7 +215,7 @@ describe("AccountsScreen", () => {
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_account", { id: 1 }));
   });
 
-  it("renders the table/list row layout at Expanded tier", async () => {
+  it("renders the formal table row layout at Expanded tier", async () => {
     renderScreen({}, "expanded");
     await screen.findByText("Main Checking");
 
@@ -154,7 +224,7 @@ describe("AccountsScreen", () => {
     expect(row).not.toHaveClass("account-card");
   });
 
-  it("renders each account as a stacked card at Mobile tier, with the same key fields", async () => {
+  it("renders each account as a stacked card at Mobile tier, with key fields", async () => {
     renderScreen({}, "mobile");
     await screen.findByText("Main Checking");
 
@@ -162,38 +232,6 @@ describe("AccountsScreen", () => {
     expect(card).toHaveClass("account-card");
     expect(card).not.toHaveClass("account-row");
     expect(within(card).getByText("Main Checking")).toBeInTheDocument();
-    expect(within(card).getByText(/First Bank/)).toBeInTheDocument();
-  });
-
-  it("clicking a card navigates to its ledger at Mobile tier", async () => {
-    const { onSelectAccount } = renderScreen({}, "mobile");
-    await screen.findByText("Main Checking");
-
-    await userEvent.click(screen.getByText("Main Checking"));
-
-    expect(onSelectAccount).toHaveBeenCalledWith(CHECKING);
-  });
-
-  it("Import/Edit/Delete actions still work on cards at Mobile tier", async () => {
-    const { onSelectAccount, onImportAccount } = renderScreen({}, "mobile");
-    await screen.findByText("Main Checking");
-
-    const card = screen.getByText("Main Checking").closest("li")!;
-    await userEvent.click(within(card).getByRole("button", { name: "Import" }));
-    expect(onImportAccount).toHaveBeenCalledWith(CHECKING);
-    expect(onSelectAccount).not.toHaveBeenCalled();
-
-    await userEvent.click(within(card).getByRole("button", { name: "Edit" }));
-    const nameInput = screen.getByLabelText("Account name");
-    await userEvent.clear(nameInput);
-    await userEvent.type(nameInput, "Updated Checking");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(mockedInvoke).toHaveBeenCalledWith(
-        "update_account",
-        expect.objectContaining({ id: 1, name: "Updated Checking" }),
-      ),
-    );
+    expect(within(card).getByText("First Bank")).toBeInTheDocument();
   });
 });

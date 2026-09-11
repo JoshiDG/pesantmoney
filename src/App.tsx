@@ -59,6 +59,18 @@ function App() {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    function handleGlobalContextMenu(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+    }
+    window.addEventListener("contextmenu", handleGlobalContextMenu);
+    return () => window.removeEventListener("contextmenu", handleGlobalContextMenu);
+  }, []);
+
   return (
     <ConfirmationProvider>
       <div className="app-shell">

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
 import { formatCents, Transaction } from "../transactions/types";
+import { CustomSelect } from "../ui/Dropdown";
 
 const VISIBLE_COUNT = 5;
 const ALL_ACCOUNTS = "all";
@@ -76,19 +77,16 @@ export function RecentTransactionsWidget() {
     <div className="dashboard-widget">
       <div className="dashboard-widget-header">
         <h3 className="dashboard-section-title">Recent Transactions</h3>
-        <select
+        <CustomSelect
           className="dashboard-widget-period"
-          aria-label="Recent transactions account filter"
+          ariaLabel="Recent transactions account filter"
+          options={[
+            { value: ALL_ACCOUNTS, label: "All accounts" },
+            ...accounts.map((a) => ({ value: String(a.id), label: a.name })),
+          ]}
           value={accountFilter}
-          onChange={(e) => setAccountFilter(e.target.value)}
-        >
-          <option value={ALL_ACCOUNTS}>All accounts</option>
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </select>
+          onChange={setAccountFilter}
+        />
       </div>
 
       {error && <p role="alert">{error}</p>}

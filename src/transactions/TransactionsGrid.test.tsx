@@ -126,7 +126,7 @@ describe("TransactionsGrid keyboard navigation", () => {
     dateCell.focus();
     fireEvent.keyDown(dateCell, { key: "ArrowRight" });
 
-    expect(screen.getByText("Coffee shop")).toHaveFocus();
+    expect(screen.getByText("Coffee shop").closest('[role="gridcell"]')).toHaveFocus();
   });
 
   it("Enter on a focused (non-editing) cell opens it for editing", () => {
@@ -199,7 +199,7 @@ describe("TransactionsGrid merchant name display", () => {
     renderGrid({ transactions });
 
     expect(screen.getByText("Blue Bottle Coffee")).toBeInTheDocument();
-    expect(screen.queryByText("SQ *BLUE BOTTLE COF 04/12")).not.toBeInTheDocument();
+    expect(screen.getByText("SQ *BLUE BOTTLE COF 04/12")).toBeInTheDocument();
   });
 
   it("falls back to the raw description when no merchant is identified", () => {

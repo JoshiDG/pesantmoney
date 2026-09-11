@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { addMonths, currentMonth } from "../budget/types";
 import { formatCents } from "../transactions/types";
+import { CustomSelect } from "../ui/Dropdown";
 import { monthEndDate, monthStartDate, svgPolylinePoints } from "./types";
 
 type SpendingAveragePeriod = "3m" | "6m" | "12m";
@@ -109,18 +110,16 @@ export function SpendingWidget() {
     <div className="dashboard-widget">
       <div className="dashboard-widget-header">
         <h3 className="dashboard-section-title">Spending</h3>
-        <select
+        <CustomSelect
           className="dashboard-widget-period"
-          aria-label="Spending comparison period"
+          ariaLabel="Spending comparison period"
+          options={(Object.keys(PERIOD_LABELS) as SpendingAveragePeriod[]).map((p) => ({
+            value: p,
+            label: PERIOD_LABELS[p],
+          }))}
           value={period}
-          onChange={(e) => setPeriod(e.target.value as SpendingAveragePeriod)}
-        >
-          {(Object.keys(PERIOD_LABELS) as SpendingAveragePeriod[]).map((p) => (
-            <option key={p} value={p}>
-              {PERIOD_LABELS[p]}
-            </option>
-          ))}
-        </select>
+          onChange={setPeriod}
+        />
       </div>
 
       {error && <p role="alert">{error}</p>}

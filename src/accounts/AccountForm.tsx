@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES, Account, AccountFields, AccountType } from "./types";
+import { CustomSelect } from "../ui/Dropdown";
 
 interface AccountFormProps {
   initial?: Account;
@@ -32,17 +33,15 @@ export function AccountForm({ initial, onSubmit, onCancel }: AccountFormProps) {
         onChange={(e) => setName(e.currentTarget.value)}
         required
       />
-      <select
-        aria-label="Account type"
+      <CustomSelect
+        ariaLabel="Account type"
+        options={ACCOUNT_TYPES.map((type) => ({
+          value: type,
+          label: ACCOUNT_TYPE_LABELS[type],
+        }))}
         value={accountType}
-        onChange={(e) => setAccountType(e.currentTarget.value as AccountType)}
-      >
-        {ACCOUNT_TYPES.map((type) => (
-          <option key={type} value={type}>
-            {ACCOUNT_TYPE_LABELS[type]}
-          </option>
-        ))}
-      </select>
+        onChange={setAccountType}
+      />
       <input
         aria-label="Institution"
         placeholder="Institution (optional)"

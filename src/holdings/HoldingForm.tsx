@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Account } from "../accounts/types";
 import { centsToDollarInput, dollarInputToCents, Holding, HoldingFields } from "./types";
+import { CustomSelect } from "../ui/Dropdown";
 
 interface HoldingFormProps {
   initial?: Holding;
@@ -36,18 +37,12 @@ export function HoldingForm({ initial, accounts, onSubmit, onCancel }: HoldingFo
   return (
     <form onSubmit={handleSubmit} className="holding-form">
       {accounts && (
-        <select
-          aria-label="Account"
+        <CustomSelect
+          ariaLabel="Account"
+          options={accounts.map((account) => ({ value: String(account.id), label: account.name }))}
           value={accountId}
-          onChange={(e) => setAccountId(e.currentTarget.value)}
-          required
-        >
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </select>
+          onChange={setAccountId}
+        />
       )}
       <input
         aria-label="Ticker"

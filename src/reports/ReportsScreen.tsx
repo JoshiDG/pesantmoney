@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { addMonths, currentMonth } from "../budget/types";
 import { monthEndDate, monthStartDate } from "../dashboard/types";
 import { formatCents } from "../transactions/types";
+import { CustomSelect } from "../ui/Dropdown";
 import {
   CASH_FLOW_RANGE_LABELS,
   CASH_FLOW_RANGE_OPTIONS,
@@ -116,18 +117,13 @@ function CashFlowTab() {
     <div className="dashboard-widget reports-cash-flow-tab">
       <div className="dashboard-widget-header">
         <h3 className="dashboard-section-title">Cash Flow</h3>
-        <select
+        <CustomSelect
           className="dashboard-widget-period"
-          aria-label="Cash flow date range"
+          ariaLabel="Cash flow date range"
+          options={CASH_FLOW_RANGE_OPTIONS.map((r) => ({ value: r, label: CASH_FLOW_RANGE_LABELS[r] }))}
           value={range}
-          onChange={(e) => setRange(Number(e.target.value) as CashFlowRange)}
-        >
-          {CASH_FLOW_RANGE_OPTIONS.map((r) => (
-            <option key={r} value={r}>
-              {CASH_FLOW_RANGE_LABELS[r]}
-            </option>
-          ))}
-        </select>
+          onChange={(val) => setRange(Number(val) as CashFlowRange)}
+        />
       </div>
 
       {error && <p role="alert">{error}</p>}
@@ -235,18 +231,13 @@ function SpendingTab() {
     <div className="dashboard-widget reports-spending-tab">
       <div className="dashboard-widget-header">
         <h3 className="dashboard-section-title">Spending by Category</h3>
-        <select
+        <CustomSelect
           className="dashboard-widget-period"
-          aria-label="Spending date range"
+          ariaLabel="Spending date range"
+          options={CASH_FLOW_RANGE_OPTIONS.map((r) => ({ value: r, label: CASH_FLOW_RANGE_LABELS[r] }))}
           value={range}
-          onChange={(e) => setRange(Number(e.target.value) as CashFlowRange)}
-        >
-          {CASH_FLOW_RANGE_OPTIONS.map((r) => (
-            <option key={r} value={r}>
-              {CASH_FLOW_RANGE_LABELS[r]}
-            </option>
-          ))}
-        </select>
+          onChange={(val) => setRange(Number(val) as CashFlowRange)}
+        />
       </div>
 
       {error && <p role="alert">{error}</p>}
@@ -322,18 +313,13 @@ function IncomeTab() {
     <div className="dashboard-widget reports-income-tab">
       <div className="dashboard-widget-header">
         <h3 className="dashboard-section-title">Income</h3>
-        <select
+        <CustomSelect
           className="dashboard-widget-period"
-          aria-label="Income date range"
+          ariaLabel="Income date range"
+          options={CASH_FLOW_RANGE_OPTIONS.map((r) => ({ value: r, label: CASH_FLOW_RANGE_LABELS[r] }))}
           value={range}
-          onChange={(e) => setRange(Number(e.target.value) as CashFlowRange)}
-        >
-          {CASH_FLOW_RANGE_OPTIONS.map((r) => (
-            <option key={r} value={r}>
-              {CASH_FLOW_RANGE_LABELS[r]}
-            </option>
-          ))}
-        </select>
+          onChange={(val) => setRange(Number(val) as CashFlowRange)}
+        />
       </div>
 
       {error && <p role="alert">{error}</p>}

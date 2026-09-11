@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { Category } from "../categories/types";
 import { centsToDollarInput, dollarInputToCents } from "../transactions/types";
 import { FREQUENCIES, FREQUENCY_LABELS, RecurringItem, RecurringItemFields } from "./types";
+import { CustomSelect } from "../ui/Dropdown";
 
 interface RecurringItemFormProps {
   categories: Category[];
@@ -54,17 +55,12 @@ export function RecurringItemForm({ categories, initial, onSubmit, onCancel }: R
         onChange={(e) => setAmount(e.currentTarget.value)}
         required
       />
-      <select
-        aria-label="Frequency"
+      <CustomSelect
+        ariaLabel="Frequency"
+        options={FREQUENCIES.map((f) => ({ value: f, label: FREQUENCY_LABELS[f] }))}
         value={frequency}
-        onChange={(e) => setFrequency(e.currentTarget.value as RecurringItemFields["frequency"])}
-      >
-        {FREQUENCIES.map((f) => (
-          <option key={f} value={f}>
-            {FREQUENCY_LABELS[f]}
-          </option>
-        ))}
-      </select>
+        onChange={(val) => setFrequency(val as RecurringItemFields["frequency"])}
+      />
       <input
         aria-label="Next expected date"
         type="date"
@@ -72,18 +68,15 @@ export function RecurringItemForm({ categories, initial, onSubmit, onCancel }: R
         onChange={(e) => setNextExpectedDate(e.currentTarget.value)}
         required
       />
-      <select
-        aria-label="Category"
+      <CustomSelect
+        ariaLabel="Category"
+        options={[
+          { value: UNCATEGORIZED, label: "Uncategorized" },
+          ...categories.map((c) => ({ value: String(c.id), label: c.name })),
+        ]}
         value={categoryId}
-        onChange={(e) => setCategoryId(e.currentTarget.value)}
-      >
-        <option value={UNCATEGORIZED}>Uncategorized</option>
-        {categories.map((category) => (
-          <option key={category.id} value={category.id}>
-            {category.name}
-          </option>
-        ))}
-      </select>
+        onChange={setCategoryId}
+      />
       <div className="txn-form-actions">
         <button type="submit">{initial ? "Save" : "Add"}</button>
         {onCancel && (

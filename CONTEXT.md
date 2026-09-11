@@ -43,6 +43,14 @@ _Avoid_: Label (too generic), Category (a Transaction has exactly one Category b
 A user-maintained keyword-to-name mapping (e.g. `"SQ *BLUE BOTTLE"` → "Blue Bottle Coffee") used to identify a clean, human-readable name from a Transaction's raw imported description. Matched by substring at Import time only; seeded with a small local dictionary and freely editable/extendable by the user. Never a cloud lookup or ML model — see ADR-0011.
 _Avoid_: Merchant enrichment (describes the behavior, not the entity)
 
+**Payee**:
+The name shown for a Transaction — `merchant_name` when identified, falling back to the raw `description` otherwise. Directly editable per-Transaction from the Transactions grid, in addition to the existing Merchant-dictionary-match and Categorization-Rule-rename writers to the same `merchant_name` field (see ADR-0012, ADR-0019); an inline edit optionally adds the Transaction's raw `description` as a new Merchant dictionary keyword, gated on user confirmation, and never retroactively renames other Transactions.
+_Avoid_: Merchant name (the field; Payee is the user-facing concept of "the name I see for this transaction")
+
+**Suggestion Combobox**:
+A reusable autocomplete input: type-ahead ghost-text completion against a list of known values (Merchant names, Tags, or Categories), commit via Tab/Enter, or fall through to a "create new" flow (itself reusable, optionally gated by a confirmation step — e.g. Category's required Group) when nothing matches. Backs Payee (single-select, confirm-gated create), Tags (multi-select chips, ungated create), and Category (single-select, Group-picker-gated create) editing in the Transactions grid.
+_Avoid_: Autocomplete, typeahead (generic terms for the browser/HTML behavior; Suggestion Combobox is this app's specific reusable component with its ghost-text-commit and create-new semantics)
+
 **Budget**:
 A zero-based monthly plan: all available income must be Assigned to Categories before it can be spent. Distinct from Monarch's model of independent per-category targets that need not sum to income — see ADR-0004.
 _Avoid_: Target, spending limit (implies Monarch's model, not this one)
@@ -86,3 +94,11 @@ _Avoid_: Sidebar (describes the Expanded/Icon states only, not the Bottom Tab Ba
 **Bottom Tab Bar**:
 The Mobile-tier form of the Nav Rail: a fixed bottom bar showing Dashboard, Transactions, Budget, and Accounts, plus a "More" destination for the remaining Nav Rail items. See ADR-0018.
 _Avoid_: Tab bar (too generic — this is specifically the Nav Rail's Mobile-tier state, not an unrelated tabbed-content pattern)
+
+**Column Set** (Transactions grid):
+The full list of columns the Transactions grid can display for a Transaction (e.g. Date, Account, Payee, Memo, Category, Tags, Amount, Running Balance). Distinct from which of those columns are currently visible — see **Column Management**.
+_Avoid_: Columns (ambiguous between the full available set and what's currently shown)
+
+**Column Management**:
+User control over which columns from the Column Set are visible and in what order, for the Transactions grid. Lets a power-user configure a dense, Bloomberg-terminal-style view rather than being locked to a fixed column list.
+_Avoid_: Column customization (vaguer — Column Management is the specific show/hide/reorder affordance, not styling)

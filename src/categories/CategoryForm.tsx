@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { Category, CategoryFields, CategoryGroup } from "./types";
+import { CustomSelect } from "../ui/Dropdown";
 
 interface CategoryFormProps {
   groups: CategoryGroup[];
@@ -29,17 +30,12 @@ export function CategoryForm({ groups, initial, defaultGroupId, onSubmit, onCanc
         onChange={(e) => setName(e.currentTarget.value)}
         required
       />
-      <select
-        aria-label="Category group"
+      <CustomSelect
+        ariaLabel="Category group"
+        options={groups.map((group) => ({ value: group.id, label: group.name }))}
         value={groupId}
-        onChange={(e) => setGroupId(Number(e.currentTarget.value))}
-      >
-        {groups.map((group) => (
-          <option key={group.id} value={group.id}>
-            {group.name}
-          </option>
-        ))}
-      </select>
+        onChange={(val) => setGroupId(Number(val))}
+      />
       <button type="submit">{initial ? "Save" : "Add category"}</button>
       {onCancel && (
         <button type="button" onClick={onCancel}>

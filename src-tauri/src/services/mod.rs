@@ -16,3 +16,7 @@ pub mod settings;
 pub mod tags;
 pub mod transactions;
 pub mod transfers;
+pub mod gdrive;
+pub mod folder_sync;
+
+

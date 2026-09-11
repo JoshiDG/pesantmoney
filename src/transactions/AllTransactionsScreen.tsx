@@ -7,6 +7,7 @@ import { Transfer } from "../transfers/types";
 import { TransactionsGrid } from "./TransactionsGrid";
 import { Transaction, TransactionFields, TransactionWithAccount } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
+import { CustomSelect } from "../ui/Dropdown";
 
 interface AllTransactionsScreenProps {
   // Pre-selects the Account filter, e.g. when opened from an Account row
@@ -176,20 +177,15 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
         <div className="content-header-actions">
           <label>
             Account{" "}
-            <select
-              aria-label="Filter by account"
+            <CustomSelect
+              ariaLabel="Filter by account"
+              options={[
+                { value: "all", label: "All accounts" },
+                ...accounts.map((account) => ({ value: String(account.id), label: account.name })),
+              ]}
               value={accountFilter == null ? "all" : String(accountFilter)}
-              onChange={(e) =>
-                setAccountFilter(e.currentTarget.value === "all" ? null : Number(e.currentTarget.value))
-              }
-            >
-              <option value="all">All accounts</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setAccountFilter(val === "all" ? null : Number(val))}
+            />
           </label>
         </div>
       </div>

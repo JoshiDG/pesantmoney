@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
 import { centsToDollarInput, dollarInputToCents } from "../transactions/types";
+import { CustomSelect } from "../ui/Dropdown";
 import { Tag } from "../tags/types";
 import {
   MATCH_TYPE_LABELS,
@@ -85,30 +86,20 @@ export function RuleForm({ accounts, categories, allTags, initial, onSubmit, onC
 
   return (
     <form onSubmit={handleSubmit} className="rule-form">
-      <select
-        aria-label="Field"
+      <CustomSelect
+        ariaLabel="Field"
+        options={RULE_FIELDS.map((f) => ({ value: f, label: RULE_FIELD_LABELS[f] }))}
         value={field}
-        onChange={(e) => setField(e.currentTarget.value as RuleField)}
-      >
-        {RULE_FIELDS.map((f) => (
-          <option key={f} value={f}>
-            {RULE_FIELD_LABELS[f]}
-          </option>
-        ))}
-      </select>
+        onChange={(val) => setField(val as RuleField)}
+      />
 
       {field === "description" && (
-        <select
-          aria-label="Match type"
+        <CustomSelect
+          ariaLabel="Match type"
+          options={MATCH_TYPES.map((mt) => ({ value: mt, label: MATCH_TYPE_LABELS[mt] }))}
           value={matchType}
-          onChange={(e) => setMatchType(e.currentTarget.value as MatchType)}
-        >
-          {MATCH_TYPES.map((mt) => (
-            <option key={mt} value={mt}>
-              {MATCH_TYPE_LABELS[mt]}
-            </option>
-          ))}
-        </select>
+          onChange={(val) => setMatchType(val as MatchType)}
+        />
       )}
 
       {field === "description" && (
@@ -134,33 +125,23 @@ export function RuleForm({ accounts, categories, allTags, initial, onSubmit, onC
       )}
 
       {field === "account" && (
-        <select
-          aria-label="Match value"
+        <CustomSelect
+          ariaLabel="Match value"
+          options={accounts.map((a) => ({ value: String(a.id), label: a.name }))}
           value={accountValue}
-          onChange={(e) => setAccountValue(e.currentTarget.value)}
-        >
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </select>
+          onChange={setAccountValue}
+        />
       )}
 
-      <select
-        aria-label="Category"
-        value={categoryId === 0 ? NO_CATEGORY : categoryId}
-        onChange={(e) =>
-          setCategoryId(e.currentTarget.value === NO_CATEGORY ? 0 : Number(e.currentTarget.value))
-        }
-      >
-        <option value={NO_CATEGORY}>No category</option>
-        {categories.map((category) => (
-          <option key={category.id} value={category.id}>
-            {category.name}
-          </option>
-        ))}
-      </select>
+      <CustomSelect
+        ariaLabel="Category"
+        options={[
+          { value: NO_CATEGORY, label: "No category change" },
+          ...categories.map((c) => ({ value: String(c.id), label: c.name })),
+        ]}
+        value={categoryId === 0 ? NO_CATEGORY : String(categoryId)}
+        onChange={(val) => setCategoryId(val === NO_CATEGORY ? 0 : Number(val))}
+      />
 
       <input
         aria-label="Rename merchant to"

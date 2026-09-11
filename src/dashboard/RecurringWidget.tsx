@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FREQUENCY_LABELS, RecurringItem } from "../recurring/types";
 import { formatCents } from "../transactions/types";
+import { CustomSelect } from "../ui/Dropdown";
 import { todayIso } from "./types";
 
 type RecurringPeriod = "7" | "14" | "30";
@@ -62,18 +63,16 @@ export function RecurringWidget() {
     <div className="dashboard-widget">
       <div className="dashboard-widget-header">
         <h3 className="dashboard-section-title">Recurring</h3>
-        <select
+        <CustomSelect
           className="dashboard-widget-period"
-          aria-label="Recurring items period"
+          ariaLabel="Recurring items period"
+          options={(Object.keys(PERIOD_LABELS) as RecurringPeriod[]).map((p) => ({
+            value: p,
+            label: PERIOD_LABELS[p],
+          }))}
           value={period}
-          onChange={(e) => setPeriod(e.target.value as RecurringPeriod)}
-        >
-          {(Object.keys(PERIOD_LABELS) as RecurringPeriod[]).map((p) => (
-            <option key={p} value={p}>
-              {PERIOD_LABELS[p]}
-            </option>
-          ))}
-        </select>
+          onChange={setPeriod}
+        />
       </div>
 
       {error && <p role="alert">{error}</p>}

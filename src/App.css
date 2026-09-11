@@ -66,7 +66,8 @@ body {
 
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* Pure icon+label nav rail (#50 / ADR-0017) -- no inline Account list, so it
@@ -80,6 +81,8 @@ body {
   background: var(--ink);
   color: var(--ink-text);
   padding: 1.5rem 1rem;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .sidebar-brand {
@@ -243,7 +246,315 @@ body {
   color: var(--credit);
 }
 
-/* ---------- Accounts screen (content pane) ---------- */
+/* ---------- Monarch Money Style Top Header & Action Toolbar ---------- */
+
+.accounts-sticky-header {
+  position: sticky;
+  top: -2.5rem;
+  z-index: 25;
+  background: var(--paper, #ffffff);
+  margin: -2.5rem -3rem 1.25rem -3rem;
+  padding: 1.5rem 3rem 1rem 3rem;
+  border-bottom: 1px solid var(--paper-line);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.accounts-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.accounts-header-row .account-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.6rem;
+  font-weight: 500;
+  color: var(--paper-text);
+  line-height: 1.2;
+}
+
+.accounts-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.accounts-toolbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Custom Dropdown & Select Component Styling */
+.custom-dropdown-container {
+  position: relative;
+  display: inline-block;
+}
+
+.visually-hidden-select {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.custom-select-container {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.custom-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  color: var(--paper-text);
+  background: var(--paper, #ffffff);
+  border: 1px solid var(--paper-line);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.custom-select-trigger:hover:not(.disabled) {
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+.custom-select-trigger.open {
+  border-color: var(--ink, #1c2430);
+  box-shadow: 0 0 0 2px rgba(28, 36, 48, 0.1);
+}
+
+.custom-select-trigger.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.select-trigger-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-trigger-label .placeholder {
+  color: var(--text-tertiary);
+}
+
+.select-trigger-chevron {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.custom-select-trigger.open .select-trigger-chevron {
+  transform: rotate(180deg);
+}
+
+.custom-select-container .custom-dropdown-menu {
+  width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.toolbar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid var(--paper-line);
+  background: var(--paper, #ffffff);
+  color: var(--paper-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+}
+
+.toolbar-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.25);
+}
+
+.toolbar-icon-btn.active {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: var(--paper-text);
+}
+
+.toolbar-icon-btn.has-active-state {
+  border-color: #2980b9;
+}
+
+.toolbar-icon-btn .active-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2980b9;
+}
+
+.custom-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  min-width: 180px;
+  background: var(--paper, #ffffff);
+  border: 1px solid var(--paper-line, rgba(0, 0, 0, 0.15));
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: dropdownFadeIn 0.1s ease-out;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.custom-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  font-family: var(--font-sans);
+  color: var(--paper-text);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.custom-dropdown-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.custom-dropdown-item.selected {
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.dropdown-item-check {
+  font-size: 0.8rem;
+  color: #2980b9;
+  font-weight: bold;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid var(--paper-line);
+  background: var(--paper, #ffffff);
+  color: var(--paper-text);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+}
+
+.toolbar-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.25);
+}
+
+.toolbar-btn--primary {
+  background: var(--ink, #1c2430);
+  color: var(--ink-text, #ffffff);
+  border-color: var(--ink, #1c2430);
+  font-weight: 600;
+}
+
+.toolbar-btn--primary:hover {
+  background: #2c3848;
+  border-color: #2c3848;
+  color: #ffffff;
+}
+
+.refresh-icon {
+  display: inline-block;
+  font-size: 0.85rem;
+}
+
+.refresh-icon.spinning {
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- account table & formal rows ---------- */
+
+.account-table-header {
+  position: sticky;
+  top: 2.4rem;
+  z-index: 20;
+  background: var(--paper, #ffffff);
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 40px;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  border-bottom: 2px solid var(--paper-line);
+  margin-bottom: 0.25rem;
+}
+
+.account-table-header .col-balance {
+  text-align: right;
+}
 
 .account-list {
   list-style: none;
@@ -254,37 +565,196 @@ body {
 }
 
 .account-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 40px;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
-  padding: 0.65rem 0.25rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--paper-line);
   cursor: pointer;
+  transition: background 0.12s ease;
+  font-family: var(--font-sans);
 }
 
 .account-row:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0, 0, 0, 0.035);
+}
+
+.account-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 .account-row-name {
-  font-size: 0.92rem;
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--paper-text);
+  letter-spacing: 0.01em;
 }
 
-.account-row-meta {
-  font-size: 0.8rem;
+.account-row-institution {
+  font-size: 0.78rem;
   color: var(--text-tertiary);
+}
+
+.account-row-type {
+  display: flex;
+  align-items: center;
+}
+
+.account-type-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  background: var(--paper-surface, #f4f4f6);
+  color: var(--text-secondary);
+  border: 1px solid var(--paper-line);
+}
+
+.account-type-badge--checking {
+  background: rgba(41, 128, 185, 0.08);
+  color: #1f618d;
+  border-color: rgba(41, 128, 185, 0.2);
+}
+
+.account-type-badge--savings {
+  background: rgba(39, 174, 96, 0.08);
+  color: #1e8449;
+  border-color: rgba(39, 174, 96, 0.2);
+}
+
+.account-type-badge--credit_card {
+  background: rgba(142, 68, 173, 0.08);
+  color: #6c3483;
+  border-color: rgba(142, 68, 173, 0.2);
+}
+
+.account-type-badge--investment {
+  background: rgba(211, 84, 0, 0.08);
+  color: #a04000;
+  border-color: rgba(211, 84, 0, 0.2);
+}
+
+.account-type-badge--loan {
+  background: rgba(192, 57, 43, 0.08);
+  color: #922b21;
+  border-color: rgba(192, 57, 43, 0.2);
+}
+
+.account-type-badge--cash {
+  background: rgba(22, 160, 133, 0.08);
+  color: #117864;
+  border-color: rgba(22, 160, 133, 0.2);
+}
+
+.account-row-balance {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 500;
+  text-align: right;
+  color: var(--paper-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.account-row-balance.debit {
+  color: var(--debit, #c0392b);
+}
+
+.account-menu-trigger {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+  letter-spacing: 0.1em;
+}
+
+.account-menu-trigger:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--paper-text);
+}
+
+/* Custom Context Menu */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--paper, #ffffff);
+  border: 1px solid var(--paper-line, rgba(0, 0, 0, 0.15));
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  padding: 4px;
+  min-width: 170px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: contextMenuFadeIn 0.1s ease-out;
+}
+
+@keyframes contextMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  color: var(--paper-text);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.context-menu-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--paper-text);
+}
+
+.context-menu-item--danger {
+  color: var(--debit, #c0392b);
+}
+
+.context-menu-item--danger:hover {
+  background: rgba(192, 57, 43, 0.08);
+  color: var(--debit, #c0392b);
+}
+
+.context-menu-icon {
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
 }
 
 .account-actions {
   display: flex;
-  gap: 0.4rem;
-  flex-shrink: 0;
+  justify-content: flex-end;
 }
 
-/* Mobile tier (<768px, ADR-0018): stacked cards instead of table/list rows.
-   Structural swap is driven by useBreakpoint() in AccountsScreen -- this CSS
-   only styles the card markup once JS has already chosen to render it. */
+/* Mobile tier (<768px, ADR-0018): stacked cards instead of table/list rows. */
 .account-list--cards {
   gap: 0.75rem;
 }
@@ -317,11 +787,9 @@ body {
   gap: 0.5rem;
 }
 
-/* Compact tier (768-1279px, ADR-0018): cosmetic reflow only -- same
-   table/list row structure as Expanded, tighter spacing/density. */
 @media (min-width: 768px) and (max-width: 1279px) {
   .account-row {
-    padding: 0.55rem 0.2rem;
+    padding: 0.45rem 0.5rem;
   }
 }
 
@@ -336,6 +804,7 @@ body {
 .content {
   flex: 1 1 auto;
   padding: 2.5rem 3rem;
+  height: 100%;
   overflow-y: auto;
 }
 
@@ -421,12 +890,21 @@ body {
   font-weight: 400;
 }
 
-/* ---------- ledger table ---------- */
+/* ---------- ledger table (modernized skeuomorphic passbook) ---------- */
 
 .ledger {
   display: grid;
   grid-template-columns: 112px 1fr 150px 130px 112px;
   column-gap: 1rem;
+  background-color: var(--card-bg);
+  border: 1px solid var(--paper-line);
+  border-radius: 12px;
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 32px 0 0 -31px rgba(185, 28, 28, 0.15); /* Vintage passbook page margin line */
+  padding: 0.75rem 1.25rem 1.25rem 1.25rem;
+  position: relative;
 }
 
 .ledger-head,
@@ -436,26 +914,72 @@ body {
 }
 
 .ledger-head > span {
+  font-family: var(--font-heading, Georgia, serif);
   font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--text-tertiary);
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--paper-line);
+  padding: 0.85rem 0.4rem 0.6rem 0.4rem;
+  border-bottom: 2px double var(--paper-line);
 }
 
 .ledger-row > * {
   display: flex;
   align-items: center;
-  padding: 0.6rem 0;
-  border-bottom: 1px solid var(--paper-line);
+  padding: 0.65rem 0.4rem;
+  border-bottom: 1px dashed var(--paper-line);
   font-size: 0.9rem;
   min-width: 0;
+  transition: background-color 0.15s ease;
+}
+
+.cell-date {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .ledger-row .cell-description,
 .ledger-row .cell-category {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.passbook-payee-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  overflow: hidden;
+}
+
+.passbook-payee-main {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  overflow: hidden;
   white-space: nowrap;
+}
+
+.passbook-payee-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.passbook-memo {
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  color: var(--text-tertiary);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
 }
 
 .ledger-row .cell-category {
@@ -477,8 +1001,10 @@ body {
 .amount {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
   justify-content: flex-end;
   text-align: right;
+  letter-spacing: -0.01em;
 }
 
 .amount.credit {
@@ -501,7 +1027,7 @@ body {
 
 .transaction-form > * {
   padding: 0.5rem 0;
-  border-bottom: 1px solid var(--paper-line);
+  border-bottom: 1px dashed var(--paper-line);
 }
 
 .transaction-form input {
@@ -525,8 +1051,9 @@ body {
 
 .ledger-editable .grid-cell {
   cursor: text;
-  border-radius: 3px;
+  border-radius: 4px;
   outline: none;
+  padding: 0.35rem 0.45rem;
 }
 
 .ledger-editable .grid-cell:hover {
@@ -2202,6 +2729,97 @@ button.danger:hover,
   padding-top: 0.5rem;
   border-top: 1px solid var(--paper-line);
 }
+
+/* Google Drive Sync Styling */
+.gdrive-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.gdrive-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: var(--paper-line);
+}
+
+.gdrive-status-badge.connected {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.gdrive-status-badge.disconnected {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.gdrive-sync-btn {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gdrive-sync-btn:hover:not(:disabled) {
+  background: #059669;
+}
+
+.gdrive-sync-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.gdrive-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.gdrive-backups-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.gdrive-backups-table th,
+.gdrive-backups-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--paper-line);
+  text-align: left;
+}
+
+.gdrive-header-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.75rem;
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.gdrive-header-sync:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.2);
+}
+
 
 /* Compact tier (768-1279px, ADR-0018): cosmetic reflow only -- same row
    structure as Expanded, tighter padding, per issue #66. */

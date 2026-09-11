@@ -45,6 +45,12 @@ pub fn run() {
             // surfaced later via the `get_backup_status` command instead.
             let last_backup = services::backup::run_startup_backup(&db_path, &app_data_dir);
 
+            // Auto-sync to configured local sync folder (e.g. Dropbox / Google Drive Desktop)
+            let folder_config = services::folder_sync::load_config(&app_data_dir);
+            if folder_config.auto_sync && folder_config.sync_folder_path.is_some() {
+                let _ = services::folder_sync::sync_now(&db_path, &app_data_dir);
+            }
+
             app.manage(AppState {
                 db: Mutex::new(conn),
                 app_data_dir,
@@ -141,6 +147,21 @@ pub fn run() {
             commands::export_data,
             commands::export_transactions_csv,
             commands::run_notification_check,
+            commands::get_gdrive_status,
+            commands::start_gdrive_auth,
+            commands::exchange_gdrive_code,
+            commands::disconnect_gdrive,
+            commands::sync_gdrive_now,
+            commands::set_gdrive_auto_sync,
+            commands::list_gdrive_backups,
+            commands::restore_gdrive_backup,
+            commands::update_gdrive_credentials,
+            commands::get_folder_sync_status,
+            commands::set_folder_sync_path,
+            commands::sync_folder_now,
+            commands::set_folder_auto_sync,
+            commands::list_folder_backups,
+            commands::restore_folder_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
