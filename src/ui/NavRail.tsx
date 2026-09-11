@@ -1,4 +1,14 @@
-import { LayoutDashboard, Landmark, Receipt, BarChart3, PiggyBank, Target, Settings } from "lucide-react";
+import { useState } from "react";
+import {
+  LayoutDashboard,
+  Landmark,
+  Receipt,
+  BarChart3,
+  PiggyBank,
+  Target,
+  Settings,
+  MoreHorizontal,
+} from "lucide-react";
 import { useBreakpoint } from "./BreakpointProvider";
 
 // Pure navigation rail: icon + label only, no inline data (e.g. no Account
@@ -34,6 +44,16 @@ const NAV_ITEMS: NavRailItem[] = [
   { key: "settings", label: "Settings", Icon: Settings },
 ];
 
+// The Mobile-tier Bottom Tab Bar's primary destinations, per ADR-0018 / issue
+// #61: Dashboard, Transactions, Budget, Accounts stay directly on the bar;
+// everything else collapses under "More". This is intentionally a plain
+// string set rather than tied to NavRailKey -- Transactions isn't a nav
+// destination yet (lands with #52), and Reports/Recurring/Investments land
+// with #52/#53. Keying the split off membership (rather than an exhaustive
+// hardcoded overflow list) means any nav item added later that isn't one of
+// these four primaries automatically falls into "More" with no changes here.
+const PRIMARY_TAB_KEYS = new Set<string>(["dashboard", "transactions", "budget", "accounts"]);
+
 interface NavRailProps {
   active: string;
   onOpenDashboard: () => void;
@@ -55,6 +75,7 @@ export function NavRail({
   onOpenGoals,
   onOpenSettings,
 }: NavRailProps) {
+  const tier = useBreakpoint();
   const handlers: Record<NavRailKey, () => void> = {
     dashboard: onOpenDashboard,
     accounts: onOpenAccounts,
@@ -65,12 +86,15 @@ export function NavRail({
     settings: onOpenSettings,
   };
 
-  // Structural swap per ADR-0018 / issue #60: Expanded tier shows icon +
-  // label; Compact (and, until the bottom-tab-bar of #61 lands, Mobile) tier
-  // collapses to icon-only. The label is still exposed for icon-only items
-  // via aria-label (accessible name) and title (hover/focus tooltip), since
-  // there's no dedicated Tooltip component in the codebase yet.
-  const tier = useBreakpoint();
+  // Structural swap per ADR-0018: Expanded tier shows icon + label; Compact
+  // tier (issue #60) collapses to icon-only; Mobile tier (issue #61) swaps to
+  // a fixed Bottom Tab Bar with a "More" overflow entirely. The label is
+  // still exposed for icon-only items via aria-label (accessible name) and
+  // title (hover/focus tooltip), since there's no dedicated Tooltip component
+  // in the codebase yet.
+  if (tier === "mobile") {
+    return <BottomTabBar active={active} handlers={handlers} />;
+  }
   const isIconOnly = tier !== "expanded";
 
   return (
@@ -98,6 +122,79 @@ export function NavRail({
             </li>
           );
         })}
+      </ul>
+    </nav>
+  );
+}
+
+function BottomTabBar({
+  active,
+  handlers,
+}: {
+  active: string;
+  handlers: Record<NavRailKey, () => void>;
+}) {
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const primaryItems = NAV_ITEMS.filter((item) => PRIMARY_TAB_KEYS.has(item.key));
+  const overflowItems = NAV_ITEMS.filter((item) => !PRIMARY_TAB_KEYS.has(item.key));
+  const overflowIsActive = overflowItems.some((item) => item.key === active);
+
+  return (
+    <nav className="bottom-tab-bar" aria-label="Main navigation">
+      <ul className="bottom-tab-list">
+        {primaryItems.map(({ key, label, Icon }) => {
+          const isActive = active === key;
+          return (
+            <li key={key}>
+              <button
+                type="button"
+                className={`bottom-tab-item${isActive ? " selected" : ""}`}
+                aria-current={isActive ? "page" : undefined}
+                onClick={handlers[key]}
+              >
+                <Icon size={20} aria-hidden="true" />
+                <span className="bottom-tab-label">{label}</span>
+              </button>
+            </li>
+          );
+        })}
+        <li className="bottom-tab-more">
+          <button
+            type="button"
+            className={`bottom-tab-item${overflowIsActive ? " selected" : ""}`}
+            aria-current={overflowIsActive ? "page" : undefined}
+            aria-haspopup="true"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((open) => !open)}
+          >
+            <MoreHorizontal size={20} aria-hidden="true" />
+            <span className="bottom-tab-label">More</span>
+          </button>
+          {moreOpen && (
+            <ul className="bottom-tab-more-sheet" role="menu" aria-label="More destinations">
+              {overflowItems.map(({ key, label, Icon }) => {
+                const isActive = active === key;
+                return (
+                  <li key={key} role="none">
+                    <button
+                      type="button"
+                      className={`bottom-tab-more-item${isActive ? " selected" : ""}`}
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={() => {
+                        handlers[key]();
+                        setMoreOpen(false);
+                      }}
+                    >
+                      <Icon size={18} aria-hidden="true" />
+                      <span>{label}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </li>
       </ul>
     </nav>
   );
