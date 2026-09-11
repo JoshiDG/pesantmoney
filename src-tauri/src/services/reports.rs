@@ -112,11 +112,74 @@ pub fn monthly_cash_flow_for_range(
     Ok(result)
 }
 
+/// One Category's total expense amount for the selected range, across every
+/// Account. `category_id` is `None` and `category_name` is `"Uncategorized"`
+/// for expense Transactions with no Category assigned, so callers always get
+/// a defined bucket for category-less spending rather than a dropped or
+/// erroring row. `amount_cents` is a positive magnitude (expenses stored as
+/// negative `amount_cents` are negated), matching how `MonthlyCashFlow`
+/// already reports `expense_cents`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct CategorySpending {
+    pub category_id: Option<i64>,
+    pub category_name: String,
+    pub amount_cents: i64,
+}
+
+/// Expense Transactions grouped by Category, totalled from `start_month`
+/// through `end_month` (both inclusive, each "YYYY-MM"), across every
+/// Account -- there is no per-Account variant, matching Reports' Cash-Flow
+/// query and #49's "aggregate across every Account by default" requirement.
+///
+/// Excludes linked Transfers and Hidden Transactions, same as
+/// `monthly_cash_flow_for_range` and `transactions::income_expense_totals_for_range`.
+/// Category-less Transactions land in a defined "Uncategorized" bucket
+/// (`category_id: None`) rather than being dropped or erroring.
+///
+/// Rows are ordered by `amount_cents` descending (biggest spending category
+/// first). A range with no matching expense Transactions returns an empty
+/// `Vec` rather than an error.
+pub fn spending_by_category_for_range(
+    conn: &Connection,
+    start_month: &str,
+    end_month: &str,
+) -> rusqlite::Result<Vec<CategorySpending>> {
+    let invalid = |field: &str| rusqlite::Error::InvalidParameterName(field.to_string());
+    let start_date = month_start_date(start_month).ok_or_else(|| invalid("start_month"))?;
+    let end_date = month_end_date(end_month).ok_or_else(|| invalid("end_month"))?;
+
+    let sql = "SELECT t.category_id, COALESCE(c.name, 'Uncategorized') AS category_name, \
+            SUM(-t.amount_cents) AS amount_cents \
+        FROM transactions t \
+        LEFT JOIN categories c ON c.id = t.category_id \
+        WHERE t.date >= ?1 AND t.date <= ?2 \
+        AND t.hidden = 0 \
+        AND t.amount_cents < 0 \
+        AND t.id NOT IN ( \
+            SELECT from_transaction_id FROM transfers \
+            UNION \
+            SELECT to_transaction_id FROM transfers \
+        ) \
+        GROUP BY t.category_id \
+        ORDER BY amount_cents DESC";
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(rusqlite::params![start_date, end_date], |row| {
+        Ok(CategorySpending {
+            category_id: row.get(0)?,
+            category_name: row.get(1)?,
+            amount_cents: row.get(2)?,
+        })
+    })?;
+    rows.collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db;
     use crate::services::accounts::{self, AccountType};
+    use crate::services::categories;
     use crate::services::transactions;
     use crate::services::transfers;
 
@@ -124,6 +187,11 @@ mod tests {
         accounts::create(conn, "Everyday Checking", AccountType::Checking, None)
             .expect("create account")
             .id
+    }
+
+    fn create_test_category(conn: &Connection, name: &str) -> i64 {
+        let group_id = categories::create_group(conn, "Test Group").expect("create group").id;
+        categories::create(conn, group_id, name).expect("create category").id
     }
 
     #[test]
@@ -251,5 +319,145 @@ mod tests {
             .expect("compute monthly cash flow");
 
         assert_eq!(months, Vec::new());
+    }
+
+    #[test]
+    fn spending_by_category_for_range_aggregates_across_every_account() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let credit_card_id = create_test_account(&conn);
+        let groceries_id = create_test_category(&conn, "Groceries");
+
+        transactions::create(&conn, checking_id, "2026-08-05", -2_000, "Groceries run", Some(groceries_id))
+            .expect("create transaction");
+        transactions::create(
+            &conn,
+            credit_card_id,
+            "2026-08-10",
+            -3_000,
+            "More groceries",
+            Some(groceries_id),
+        )
+        .expect("create transaction");
+
+        let categories = spending_by_category_for_range(&conn, "2026-08", "2026-08")
+            .expect("compute spending by category");
+
+        assert_eq!(
+            categories,
+            vec![CategorySpending {
+                category_id: Some(groceries_id),
+                category_name: "Groceries".to_string(),
+                amount_cents: 5_000,
+            }]
+        );
+    }
+
+    #[test]
+    fn spending_by_category_for_range_excludes_a_linked_transfer_pair() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let credit_card_id = create_test_account(&conn);
+        let groceries_id = create_test_category(&conn, "Groceries");
+
+        let out = transactions::create(&conn, checking_id, "2026-08-10", -50_000, "CC payment", None)
+            .expect("create transaction");
+        let in_ = transactions::create(&conn, credit_card_id, "2026-08-10", 50_000, "Payment received", None)
+            .expect("create transaction");
+        transfers::link(&conn, out.id, in_.id).expect("link transfer");
+
+        transactions::create(
+            &conn,
+            checking_id,
+            "2026-08-12",
+            -2_500,
+            "Groceries run",
+            Some(groceries_id),
+        )
+        .expect("create transaction");
+
+        let categories = spending_by_category_for_range(&conn, "2026-08", "2026-08")
+            .expect("compute spending by category");
+
+        assert_eq!(
+            categories,
+            vec![CategorySpending {
+                category_id: Some(groceries_id),
+                category_name: "Groceries".to_string(),
+                amount_cents: 2_500,
+            }]
+        );
+    }
+
+    #[test]
+    fn spending_by_category_for_range_excludes_a_hidden_transaction() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let groceries_id = create_test_category(&conn, "Groceries");
+
+        let hidden = transactions::create(
+            &conn,
+            account_id,
+            "2026-08-01",
+            -5_000,
+            "Hidden expense",
+            Some(groceries_id),
+        )
+        .expect("create transaction");
+        transactions::set_hidden(&conn, hidden.id, true).expect("set hidden");
+        transactions::create(
+            &conn,
+            account_id,
+            "2026-08-02",
+            -2_500,
+            "Groceries run",
+            Some(groceries_id),
+        )
+        .expect("create transaction");
+
+        let categories = spending_by_category_for_range(&conn, "2026-08", "2026-08")
+            .expect("compute spending by category");
+
+        assert_eq!(
+            categories,
+            vec![CategorySpending {
+                category_id: Some(groceries_id),
+                category_name: "Groceries".to_string(),
+                amount_cents: 2_500,
+            }]
+        );
+    }
+
+    #[test]
+    fn spending_by_category_for_range_buckets_category_less_transactions_as_uncategorized() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let groceries_id = create_test_category(&conn, "Groceries");
+
+        transactions::create(&conn, account_id, "2026-08-05", -2_000, "Groceries run", Some(groceries_id))
+            .expect("create transaction");
+        transactions::create(&conn, account_id, "2026-08-06", -1_500, "Mystery expense", None)
+            .expect("create transaction");
+
+        let categories = spending_by_category_for_range(&conn, "2026-08", "2026-08")
+            .expect("compute spending by category");
+
+        assert_eq!(categories.len(), 2);
+        let uncategorized = categories
+            .iter()
+            .find(|c| c.category_id.is_none())
+            .expect("an Uncategorized bucket");
+        assert_eq!(uncategorized.category_name, "Uncategorized");
+        assert_eq!(uncategorized.amount_cents, 1_500);
+    }
+
+    #[test]
+    fn spending_by_category_for_range_returns_an_empty_vec_for_a_range_with_no_data() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+
+        let categories = spending_by_category_for_range(&conn, "2026-08", "2026-08")
+            .expect("compute spending by category");
+
+        assert_eq!(categories, Vec::new());
     }
 }

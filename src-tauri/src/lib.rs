@@ -73,6 +73,7 @@ pub fn run() {
             commands::get_net_worth_as_of,
             commands::get_daily_cash_flow_for_range,
             commands::get_monthly_cash_flow_for_range,
+            commands::get_spending_by_category_for_range,
             commands::create_category_group,
             commands::list_category_groups,
             commands::update_category_group,

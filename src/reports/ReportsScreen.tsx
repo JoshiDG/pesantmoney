@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { addMonths, currentMonth } from "../budget/types";
 import { formatCents } from "../transactions/types";
-import { CASH_FLOW_RANGE_LABELS, CASH_FLOW_RANGE_OPTIONS, CashFlowRange, MonthlyCashFlow } from "./types";
+import {
+  CASH_FLOW_RANGE_LABELS,
+  CASH_FLOW_RANGE_OPTIONS,
+  CashFlowRange,
+  CategorySpending,
+  MonthlyCashFlow,
+} from "./types";
 
 type ReportsTab = "cash-flow" | "spending" | "income";
 
@@ -55,9 +61,7 @@ export function ReportsScreen() {
         aria-labelledby="reports-tab-spending"
         hidden={activeTab !== "spending"}
       >
-        {activeTab === "spending" && (
-          <p className="empty-state">Spending by Category is coming soon.</p>
-        )}
+        {activeTab === "spending" && <SpendingTab />}
       </div>
       <div
         role="tabpanel"
@@ -188,5 +192,93 @@ function CashFlowChart({ months }: { months: MonthlyCashFlow[] }) {
       <polyline points={toPoints(expense)} fill="none" stroke="var(--debit)" strokeWidth={2} />
       <polyline points={toPoints(income)} fill="none" stroke="var(--credit)" strokeWidth={2} />
     </svg>
+  );
+}
+
+function SpendingTab() {
+  const [range, setRange] = useState<CashFlowRange>(3);
+  const [categories, setCategories] = useState<CategorySpending[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh() {
+      try {
+        const endMonth = currentMonth();
+        const startMonth = addMonths(endMonth, -(range - 1));
+        const result = await invoke<CategorySpending[]>("get_spending_by_category_for_range", {
+          start_month: startMonth,
+          end_month: endMonth,
+        });
+        if (!cancelled) {
+          setCategories(result);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) setError(String(err));
+      }
+    }
+
+    refresh();
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
+
+  const totalCents = categories.reduce((sum, c) => sum + c.amount_cents, 0);
+  const maxCents = Math.max(1, ...categories.map((c) => c.amount_cents));
+
+  return (
+    <div className="dashboard-widget reports-spending-tab">
+      <div className="dashboard-widget-header">
+        <h3 className="dashboard-section-title">Spending by Category</h3>
+        <select
+          className="dashboard-widget-period"
+          aria-label="Spending date range"
+          value={range}
+          onChange={(e) => setRange(Number(e.target.value) as CashFlowRange)}
+        >
+          {CASH_FLOW_RANGE_OPTIONS.map((r) => (
+            <option key={r} value={r}>
+              {CASH_FLOW_RANGE_LABELS[r]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {error && <p role="alert">{error}</p>}
+
+      <div className="cash-flow-summary">
+        <div className="cash-flow-stat">
+          <span className="cash-flow-stat-label">Total Spending</span>
+          <span className="amount debit">{formatCents(-totalCents)}</span>
+        </div>
+      </div>
+
+      {categories.length === 0 && !error && (
+        <p className="empty-state">No spending in the selected range.</p>
+      )}
+
+      <ul className="spending-category-list">
+        {categories.map((category) => (
+          <li
+            key={category.category_id ?? "uncategorized"}
+            className="spending-category-row"
+          >
+            <div className="spending-category-row-header">
+              <span className="spending-category-name">{category.category_name}</span>
+              <span className="amount debit">{formatCents(-category.amount_cents)}</span>
+            </div>
+            <div className="goal-progress-bar">
+              <div
+                className="goal-progress-fill negative"
+                style={{ width: `${(category.amount_cents / maxCents) * 100}%` }}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
