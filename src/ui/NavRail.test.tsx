@@ -74,6 +74,7 @@ describe("NavRail", () => {
         active="dashboard"
         onOpenDashboard={() => {}}
         onOpenAccounts={() => {}}
+        onOpenReports={() => {}}
         onOpenBudget={() => {}}
         onOpenGoals={() => {}}
         onOpenSettings={() => {}}
@@ -81,7 +82,7 @@ describe("NavRail", () => {
       { wrapper: withBreakpoint("expanded") },
     );
 
-    for (const label of ["Dashboard", "Accounts", "Budget", "Goals", "Settings"]) {
+    for (const label of ["Dashboard", "Accounts", "Reports", "Budget", "Goals", "Settings"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
@@ -93,6 +94,7 @@ describe("NavRail", () => {
         active="dashboard"
         onOpenDashboard={() => {}}
         onOpenAccounts={() => {}}
+        onOpenReports={() => {}}
         onOpenBudget={() => {}}
         onOpenGoals={() => {}}
         onOpenSettings={() => {}}
@@ -100,7 +102,7 @@ describe("NavRail", () => {
       { wrapper: withBreakpoint("compact") },
     );
 
-    for (const label of ["Dashboard", "Accounts", "Budget", "Goals", "Settings"]) {
+    for (const label of ["Dashboard", "Accounts", "Reports", "Budget", "Goals", "Settings"]) {
       // No visible label text is rendered...
       expect(screen.queryByText(label)).not.toBeInTheDocument();
       // ...but the button still has an accessible name and a hover/focus tooltip.
@@ -116,6 +118,7 @@ describe("NavRail", () => {
         active="goals"
         onOpenDashboard={() => {}}
         onOpenAccounts={() => {}}
+        onOpenReports={() => {}}
         onOpenBudget={() => {}}
         onOpenGoals={onOpenGoals}
         onOpenSettings={() => {}}
