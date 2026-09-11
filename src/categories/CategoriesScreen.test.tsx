@@ -116,3 +116,93 @@ describe("CategoriesScreen group action layout", () => {
     expect(addCategoryButton.parentElement).not.toBe(editButton.parentElement);
   });
 });
+
+describe("CategoriesScreen keyboard navigation (ADR-0020, #76 grid-nav primitive)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_category_groups":
+          return [{ id: 1, name: "Food" }];
+        case "list_categories":
+          return [
+            { id: 10, group_id: 1, name: "Groceries" },
+            { id: 11, group_id: 1, name: "Dining" },
+          ];
+        case "delete_category":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("ArrowDown moves keyboard focus from one category row to the next", async () => {
+    renderScreen();
+    await screen.findByText("Groceries");
+
+    const firstRow = screen.getByText("Groceries").closest("li")!;
+    const secondRow = screen.getByText("Dining").closest("li")!;
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: "ArrowDown" });
+
+    expect(secondRow).toHaveFocus();
+  });
+
+  it("ArrowUp moves keyboard focus back to the previous category row", async () => {
+    renderScreen();
+    await screen.findByText("Groceries");
+
+    const firstRow = screen.getByText("Groceries").closest("li")!;
+    const secondRow = screen.getByText("Dining").closest("li")!;
+    secondRow.focus();
+    fireEvent.keyDown(secondRow, { key: "ArrowUp" });
+
+    expect(firstRow).toHaveFocus();
+  });
+
+  it("bare 'e' on a keyboard-focused row opens it for editing", async () => {
+    renderScreen();
+    await screen.findByText("Groceries");
+
+    const row = screen.getByText("Groceries").closest("li")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "e" });
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("'e' does not fire while a text input (the row's own selection checkbox) has focus", async () => {
+    renderScreen();
+    await screen.findByText("Groceries");
+
+    const checkbox = screen.getByLabelText("Select Groceries");
+    checkbox.focus();
+    fireEvent.keyDown(checkbox, { key: "e" });
+
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("clicking a checkbox then shift-clicking another selects the range in between", async () => {
+    renderScreen();
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByLabelText("Select Groceries"));
+    fireEvent.click(screen.getByLabelText("Select Dining"), { shiftKey: true });
+
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+  });
+
+  it("Delete selected removes every selected category after one confirmation", async () => {
+    renderScreen();
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByLabelText("Select Groceries"));
+    fireEvent.click(screen.getByLabelText("Select Dining"));
+    await userEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete Categories" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_category", { id: 10 }));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_category", { id: 11 }));
+  });
+});
