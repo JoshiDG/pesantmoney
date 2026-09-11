@@ -145,6 +145,104 @@ body {
   padding: 0.65rem;
 }
 
+/* Mobile-tier (<768px) Bottom Tab Bar -- the Nav Rail's structural swap at
+   the Mobile Breakpoint Tier (see ADR-0018, issue #61). A fixed bar with 4
+   primary destinations plus a "More" tab that reveals the rest in a sheet
+   anchored above it. Distinct component/markup from `.nav-rail` (rail vs.
+   bottom bar are different DOM/interaction models, not a CSS-only variant --
+   see ADR-0018's "Structural swap vs. cosmetic reflow"). */
+.bottom-tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  background: var(--ink);
+  color: var(--ink-text);
+  border-top: 1px solid var(--ink-line);
+  /* Reserved now even though it's a no-op in the current Tauri desktop
+     shell -- matters the moment a real mobile wrapper exists. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.bottom-tab-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.bottom-tab-more {
+  position: relative;
+  flex: 1;
+  display: flex;
+}
+
+.bottom-tab-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.4rem 0.25rem;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.bottom-tab-item.selected {
+  color: var(--credit);
+}
+
+.bottom-tab-label {
+  font-size: 0.7rem;
+}
+
+.bottom-tab-more-sheet {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  min-width: 180px;
+  list-style: none;
+  margin: 0 0 0.4rem;
+  padding: 0.4rem;
+  background: var(--ink);
+  border: 1px solid var(--ink-line);
+  border-radius: 6px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.bottom-tab-more-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bottom-tab-more-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.bottom-tab-more-item.selected {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--credit);
+}
+
 /* ---------- Accounts screen (content pane) ---------- */
 
 .account-list {

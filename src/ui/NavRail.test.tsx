@@ -90,4 +90,81 @@ describe("NavRail", () => {
     await userEvent.click(screen.getByRole("button", { name: "Goals" }));
     expect(onOpenGoals).toHaveBeenCalledTimes(1);
   });
+
+  describe("at the Mobile tier", () => {
+    // Primary tab-bar destinations per PRIMARY_TAB_KEYS in NavRail.tsx:
+    // dashboard, transactions, budget, accounts. Everything else (reports,
+    // goals, settings) collapses under "More".
+    function renderMobile(overrides: Partial<Record<string, unknown>> = {}) {
+      const handlers = noopProps();
+      const spies = {
+        onOpenDashboard: vi.fn(),
+        onOpenAccounts: vi.fn(),
+        onOpenTransactions: vi.fn(),
+        onOpenReports: vi.fn(),
+        onOpenBudget: vi.fn(),
+        onOpenGoals: vi.fn(),
+        onOpenSettings: vi.fn(),
+      };
+      render(<NavRail active="dashboard" {...handlers} {...spies} {...overrides} />, {
+        wrapper: withBreakpoint("mobile"),
+      });
+      return spies;
+    }
+
+    it("renders a fixed bottom tab bar with the primary destinations plus a More tab", () => {
+      renderMobile();
+
+      const nav = screen.getByRole("navigation", { name: "Main navigation" });
+      expect(nav).toHaveClass("bottom-tab-bar");
+
+      expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Accounts" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Transactions" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Budget" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument();
+
+      // Overflow destinations are not directly on the bar until "More" opens.
+      expect(screen.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Goals" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+    });
+
+    it("invokes the handler for a primary tab", async () => {
+      const spies = renderMobile();
+
+      await userEvent.click(screen.getByRole("button", { name: "Budget" }));
+
+      expect(spies.onOpenBudget).toHaveBeenCalledTimes(1);
+    });
+
+    it("opens More to reveal the remaining destinations, each navigable", async () => {
+      const spies = renderMobile();
+
+      expect(screen.queryByRole("button", { name: "Goals" })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "More" }));
+
+      expect(screen.getByRole("button", { name: "Reports" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Goals" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+      expect(spies.onOpenSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("indicates More as the active tab when the active screen is an overflow destination", () => {
+      renderMobile({ active: "goals" });
+
+      expect(screen.getByRole("button", { name: "More" })).toHaveAttribute("aria-current", "page");
+      expect(screen.getByRole("button", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
+    });
+
+    it("does not mark More active when the active screen is a primary destination", () => {
+      renderMobile({ active: "dashboard" });
+
+      expect(screen.getByRole("button", { name: "More" })).not.toHaveAttribute("aria-current");
+    });
+  });
 });
