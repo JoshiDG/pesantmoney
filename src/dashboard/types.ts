@@ -82,3 +82,19 @@ export function isoDateNDaysAgo(days: number): string {
     "-" +
     `${d.getDate()}`.padStart(2, "0");
 }
+
+/** Maps `values` onto an SVG `<polyline points="...">` string spanning
+ * `[0, width] x [0, height]`, scaling each value against `[min, max]`
+ * (`max - min` floored to 1 to avoid a divide-by-zero when every value is
+ * identical). Shared by the Dashboard's hand-rolled inline-SVG line charts
+ * (Net Worth trend, Spending) so each only owns its own axis/color choices. */
+export function svgPolylinePoints(values: number[], min: number, max: number, width: number, height: number): string {
+  const range = max - min || 1;
+  return values
+    .map((value, i) => {
+      const x = values.length > 1 ? (i / (values.length - 1)) * width : 0;
+      const y = height - ((value - min) / range) * height;
+      return `${x},${y}`;
+    })
+    .join(" ");
+}

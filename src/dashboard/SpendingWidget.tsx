@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { addMonths, currentMonth } from "../budget/types";
 import { formatCents } from "../transactions/types";
-import { monthEndDate, monthStartDate } from "./types";
+import { monthEndDate, monthStartDate, svgPolylinePoints } from "./types";
 
 type SpendingAveragePeriod = "3m" | "6m" | "12m";
 
@@ -160,15 +160,7 @@ function SpendingChart({ thisMonth, average }: { thisMonth: number[]; average: n
   const width = 280;
   const height = 100;
   const max = Math.max(1, ...thisMonth, ...average);
-
-  const toPoints = (values: number[]) =>
-    values
-      .map((v, i) => {
-        const x = (i / (thisMonth.length - 1)) * width;
-        const y = height - (v / max) * height;
-        return `${x},${y}`;
-      })
-      .join(" ");
+  const toPoints = (values: number[]) => svgPolylinePoints(values, 0, max, width, height);
 
   return (
     <svg

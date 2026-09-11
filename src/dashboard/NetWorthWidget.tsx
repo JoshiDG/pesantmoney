@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { formatCents } from "../transactions/types";
-import { AccountBalance, isoDateNDaysAgo, isAssetType, sortForBreakdown } from "./types";
+import { AccountBalance, isoDateNDaysAgo, isAssetType, sortForBreakdown, svgPolylinePoints } from "./types";
 
 const VISIBLE_ACCOUNT_COUNT = 4;
 const TREND_POINTS = 12;
@@ -140,17 +140,7 @@ function NetWorthTrendChart({ trend }: { trend: TrendPoint[] }) {
   const width = 280;
   const height = 64;
   const values = trend.map((p) => p.netWorthCents);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-
-  const points = trend
-    .map((p, i) => {
-      const x = (i / (trend.length - 1)) * width;
-      const y = height - ((p.netWorthCents - min) / range) * height;
-      return `${x},${y}`;
-    })
-    .join(" ");
+  const points = svgPolylinePoints(values, Math.min(...values), Math.max(...values), width, height);
 
   return (
     <svg

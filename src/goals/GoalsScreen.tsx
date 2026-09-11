@@ -4,14 +4,11 @@ import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
 import { dollarInputToCents, formatCents } from "../transactions/types";
 import { GoalForm } from "./GoalForm";
-import { GOAL_PACE_LABELS, GoalFields, GoalWithProgress, PayoffProjection, progressFraction } from "./types";
+import { GoalPaceBadge } from "./GoalPaceBadge";
+import { GoalFields, GoalWithProgress, PayoffProjection, progressFraction } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 
 const DEBT_ACCOUNT_TYPES = new Set(["credit_card", "loan"]);
-
-function GoalPaceBadge({ goal }: { goal: GoalWithProgress }) {
-  return <span className={`goal-pace-badge goal-pace-${goal.pace}`}>{GOAL_PACE_LABELS[goal.pace]}</span>;
-}
 
 interface DebtPayoffCalculatorProps {
   account: Account | undefined;

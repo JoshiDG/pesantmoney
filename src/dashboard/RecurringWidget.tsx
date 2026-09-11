@@ -80,7 +80,7 @@ export function RecurringWidget() {
 
       <div className="recurring-remaining-due">
         <span className="recurring-remaining-due-label">Still due this period</span>
-        <span className="ready-to-assign-amount debit">{formatCents(remainingDueCents)}</span>
+        <span className="amount debit recurring-remaining-due-amount">{formatCents(remainingDueCents)}</span>
       </div>
 
       {items.map((item) => (

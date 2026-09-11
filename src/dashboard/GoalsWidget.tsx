@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { GOAL_PACE_LABELS, GoalWithProgress, progressFraction } from "../goals/types";
+import { GoalPaceBadge } from "../goals/GoalPaceBadge";
+import { GoalWithProgress, progressFraction } from "../goals/types";
 import { formatCents } from "../transactions/types";
-
-function GoalPaceBadge({ goal }: { goal: GoalWithProgress }) {
-  return <span className={`goal-pace-badge goal-pace-${goal.pace}`}>{GOAL_PACE_LABELS[goal.pace]}</span>;
-}
 
 export function GoalsWidget() {
   const [goals, setGoals] = useState<GoalWithProgress[]>([]);
