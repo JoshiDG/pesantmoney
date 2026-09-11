@@ -97,6 +97,153 @@ describe("GoalsScreen delete confirmation", () => {
   });
 });
 
+describe("GoalsScreen keyboard grid navigation and shortcuts (ADR-0020, #81)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_goals_with_progress":
+          return [
+            {
+              id: 1,
+              name: "Emergency Fund",
+              target_cents: 100000,
+              target_date: "2026-12-31",
+              linked_category_id: 10,
+              linked_account_id: null,
+              starting_balance_cents: null,
+              created_at: "2026-01-01 00:00:00",
+              progress_cents: 5000,
+              pace: "insufficient_data",
+            },
+            {
+              id: 2,
+              name: "Payoff Credit Card",
+              target_cents: 0,
+              target_date: "2027-06-30",
+              linked_category_id: null,
+              linked_account_id: 20,
+              starting_balance_cents: -50000,
+              created_at: "2026-01-01 00:00:00",
+              progress_cents: 1000,
+              pace: "insufficient_data",
+            },
+          ];
+        case "list_categories":
+          return [{ id: 10, group_id: 1, name: "Savings" }];
+        case "list_accounts":
+          return [
+            { id: 20, name: "Visa", account_type: "credit_card", institution_name: null, apr_bps: null },
+          ];
+        case "delete_goal":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  async function renderTwoGoals() {
+    renderScreen();
+    await screen.findByText("Emergency Fund");
+    await screen.findByText("Payoff Credit Card");
+  }
+
+  function goalCard(name: string): HTMLElement {
+    return screen.getByText(name).closest('[role="gridcell"]') as HTMLElement;
+  }
+
+  it("ArrowDown moves keyboard focus from the first goal card to the next", async () => {
+    await renderTwoGoals();
+
+    const first = goalCard("Emergency Fund");
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+
+    expect(goalCard("Payoff Credit Card")).toHaveFocus();
+  });
+
+  it("ArrowUp moves keyboard focus back to the previous goal card", async () => {
+    await renderTwoGoals();
+
+    const second = goalCard("Payoff Credit Card");
+    second.focus();
+    fireEvent.keyDown(second, { key: "ArrowUp" });
+
+    expect(goalCard("Emergency Fund")).toHaveFocus();
+  });
+
+  it("ArrowUp on the first card is a clamped no-op, not a wrap", async () => {
+    await renderTwoGoals();
+
+    const first = goalCard("Emergency Fund");
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowUp" });
+
+    expect(first).toHaveFocus();
+  });
+
+  it("the bare 'e' shortcut opens the focused goal's edit form", async () => {
+    await renderTwoGoals();
+
+    const first = goalCard("Emergency Fund");
+    first.focus();
+    fireEvent.keyDown(first, { key: "e" });
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("the bare 'd' shortcut opens the confirm-gated delete dialog for the focused goal, not an immediate delete", async () => {
+    await renderTwoGoals();
+
+    const first = goalCard("Emergency Fund");
+    first.focus();
+    fireEvent.keyDown(first, { key: "d" });
+
+    expect(screen.getByRole("heading", { name: "Delete Goal" })).toBeInTheDocument();
+    expect(mockedInvoke).not.toHaveBeenCalledWith("delete_goal", expect.anything());
+  });
+
+  it("the bare 'x' shortcut toggles row selection for the focused goal, same model as Transactions' checkbox selection", async () => {
+    await renderTwoGoals();
+
+    const first = goalCard("Emergency Fund");
+    first.focus();
+    fireEvent.keyDown(first, { key: "x" });
+
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.getByLabelText("Select Emergency Fund")).toBeChecked();
+  });
+
+  it("single-letter shortcuts do not fire while a nested text input (e.g. the Payoff Calculator's APR field) has focus", async () => {
+    await renderTwoGoals();
+
+    const aprInput = screen.getByLabelText("APR percent");
+    aprInput.focus();
+    fireEvent.keyDown(aprInput, { key: "d" });
+
+    expect(screen.queryByRole("heading", { name: "Delete Goal" })).not.toBeInTheDocument();
+    expect(mockedInvoke).not.toHaveBeenCalledWith("delete_goal", expect.anything());
+  });
+
+  it("clicking a row's checkbox selects it and shows the bulk actions bar", async () => {
+    await renderTwoGoals();
+
+    await userEvent.click(screen.getByLabelText("Select Emergency Fund"));
+
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
+  it("Clear selection empties the selection and hides the bulk actions bar", async () => {
+    await renderTwoGoals();
+
+    await userEvent.click(screen.getByLabelText("Select Emergency Fund"));
+    await userEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+
+    expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+  });
+});
+
 describe("GoalsScreen at Mobile tier", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();

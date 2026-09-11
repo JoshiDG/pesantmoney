@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
@@ -7,6 +7,8 @@ import { GoalForm } from "./GoalForm";
 import { GoalPaceBadge } from "./GoalPaceBadge";
 import { GoalFields, GoalWithProgress, PayoffProjection, progressFraction } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
+import { isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
+import { selectRowRange, toggleRowSelection } from "../ui/selection";
 
 const DEBT_ACCOUNT_TYPES = new Set(["credit_card", "loan"]);
 
@@ -122,6 +124,21 @@ export function GoalsScreen() {
   const [error, setError] = useState<string | null>(null);
   const { confirm } = useConfirmation();
 
+  // Keyboard grid navigation + row selection (ADR-0020, issue #81): Goals is
+  // a single-column list of cards rather than a multi-column grid, so it
+  // reuses the shared nextCellForKey/selection primitives (see
+  // TransactionsGrid.tsx) with colCount pinned to 1 -- ArrowUp/ArrowDown move
+  // `focusedRow` between goal cards, and the shared toggleRowSelection/
+  // selectRowRange helpers back a checkbox + shift-click range-select model
+  // identical to Transactions'. `focusedRow` starts `null` (not 0) so
+  // mounting the screen never steals focus -- it's only set once a card
+  // actually receives DOM focus (click or Tab), same as TransactionsGrid's
+  // `focusedCell`.
+  const [focusedRow, setFocusedRow] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [anchorId, setAnchorId] = useState<number | null>(null);
+  const rowRefs = useRef<Record<number, HTMLLIElement | null>>({});
+
   const debtAccounts = accounts.filter((account) => DEBT_ACCOUNT_TYPES.has(account.account_type));
 
   async function refresh() {
@@ -143,6 +160,94 @@ export function GoalsScreen() {
   useEffect(() => {
     refresh();
   }, []);
+
+  // Keep the DOM focus in sync with `focusedRow` after arrow-key navigation,
+  // mirroring TransactionsGrid's `focusedCell` effect -- guarded against
+  // re-focusing an already-focused element since some DOM implementations
+  // (jsdom included) re-dispatch focus events even when the target is
+  // already `document.activeElement`.
+  useEffect(() => {
+    if (focusedRow == null) return;
+    const el = rowRefs.current[focusedRow];
+    if (el && document.activeElement !== el) {
+      el.focus();
+    }
+  }, [focusedRow]);
+
+  // Clamp `focusedRow`/selection to the current goal list whenever it
+  // shrinks (e.g. after a delete) so a stale row index doesn't linger.
+  useEffect(() => {
+    if (focusedRow != null && focusedRow > goals.length - 1) {
+      setFocusedRow(goals.length > 0 ? goals.length - 1 : null);
+    }
+  }, [goals.length, focusedRow]);
+
+  function toggleSelectRow(goalId: number, shiftKey: boolean) {
+    const orderedIds = goals.map((g) => g.id);
+    if (shiftKey && anchorId != null) {
+      setSelected(selectRowRange(orderedIds, anchorId, goalId));
+      return;
+    }
+    setSelected((prev) => toggleRowSelection(prev, goalId));
+    setAnchorId(goalId);
+  }
+
+  // Scoped bare single-letter shortcuts (ADR-0020's "Keyboard architecture"):
+  // active only while a goal card has keyboard focus (bound on the card's
+  // own onKeyDown, never document-global), and never fire while a nested
+  // text input has focus -- guards against the Payoff Calculator's APR/
+  // payment number inputs, whose keydown events bubble up from inside the
+  // same card.
+  //   e -- edit the focused goal (highest-frequency action: Goals are
+  //        revisited to adjust target/date far more often than deleted).
+  //   d -- delete the focused goal (routes through the same confirm() gate
+  //        as the Delete button, so it's never a bare destructive action).
+  //   x -- toggle selection of the focused goal, keyboard equivalent of the
+  //        row checkbox (Shift+x extends the selection range, same as
+  //        shift-click).
+  function handleRowKeyDown(e: KeyboardEvent<HTMLLIElement>, row: number, goal: GoalWithProgress) {
+    if (isTextInputTarget(e.target)) return;
+
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = nextCellForKey({ row, col: 0 }, e.key, goals.length, 1, e.shiftKey);
+      setFocusedRow(next.row);
+      return;
+    }
+
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    if (e.key === "e") {
+      e.preventDefault();
+      setEditingId(goal.id);
+    } else if (e.key === "d") {
+      e.preventDefault();
+      handleDelete(goal);
+    } else if (e.key === "x") {
+      e.preventDefault();
+      toggleSelectRow(goal.id, e.shiftKey);
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selected);
+    const confirmed = await confirm({
+      title: "Delete Goals",
+      message: `Delete ${ids.length} goal${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
+      confirmLabel: `Delete ${ids.length} Goal${ids.length === 1 ? "" : "s"}`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await Promise.all(ids.map((id) => invoke("delete_goal", { id })));
+      setSelected(new Set());
+      setAnchorId(null);
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
 
   async function handleCreate(fields: GoalFields) {
     try {
@@ -212,8 +317,26 @@ export function GoalsScreen() {
 
       {error && <p role="alert">{error}</p>}
 
+      {selected.size > 0 && (
+        <div className="bulk-actions-bar goal-bulk-actions-bar">
+          <span>{selected.size} selected</span>
+          <button type="button" onClick={handleBulkDelete}>
+            Delete selected
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSelected(new Set());
+              setAnchorId(null);
+            }}
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <ul className="goal-list">
-        {goals.map((goal) =>
+        {goals.map((goal, row) =>
           editingId === goal.id ? (
             <li key={goal.id} className="goal-card">
               <GoalForm
@@ -225,8 +348,31 @@ export function GoalsScreen() {
               />
             </li>
           ) : (
-            <li key={goal.id} className="goal-card">
+            <li
+              key={goal.id}
+              ref={(el) => {
+                rowRefs.current[row] = el;
+              }}
+              className={`goal-card${focusedRow === row ? " goal-card-focused" : ""}`}
+              tabIndex={0}
+              role="gridcell"
+              onFocus={() => setFocusedRow(row)}
+              onKeyDown={(e) => handleRowKeyDown(e, row, goal)}
+            >
               <div className="goal-card-header">
+                <span className="cell-select">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${goal.name}`}
+                    checked={selected.has(goal.id)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toggleSelectRow(goal.id, e.shiftKey);
+                    }}
+                    onChange={() => {}}
+                  />
+                </span>
                 <div>
                   <div className="goal-card-name">{goal.name}</div>
                   <div className="goal-card-meta">
