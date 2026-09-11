@@ -1,33 +1,55 @@
 :root {
-  --ink: #1c2430;
-  --ink-line: #33404f;
+  /* Terminal visual identity (ADR-0020): dark-only, unconditional -- no
+     `prefers-color-scheme` branch. These were previously the light-theme
+     defaults, overridden by a dark-mode media query; that override is now
+     the only theme there is. */
+  --ink: #101317;
+  --ink-line: #2a323b;
   --ink-text: #e7e3d8;
-  --paper: #f5f3ee;
-  --paper-line: #ddd8cc;
-  --paper-text: #1c2430;
+  /* Warm near-black canvas (not pure black), consistent with the
+     paper/ledger identity rather than a neutral-cool dark gray. */
+  --paper: #14120f;
+  --paper-line: #38352f;
+  /* ~90%-opacity body text (not pure white) — eases eye strain during
+     extended data-review sessions. */
+  --paper-text: rgba(233, 230, 223, 0.9);
+  /* Raised surface for inputs/buttons/menus sitting on top of --paper. */
+  --surface-raised: #22262c;
   --credit: #1f6f5c;
   --credit-soft: rgba(31, 111, 92, 0.12);
   --debit: #a23b2e;
   --debit-soft: rgba(162, 59, 46, 0.12);
   --focus: #3f7cac;
 
+  /* Multi-accent palette (ADR-0020): green/red stay reserved for
+     credit/debit; these two are new, additional accents so the dark base
+     reads as a real multi-color terminal screen, not a monochrome
+     single-phosphor retro look. */
+  /* Metadata/label color: column headers, small-caps captions, structural
+     chrome that isn't page-background text but also isn't a warning. */
+  --accent-label: #5fb8d6;
+  /* Warning/highlight color: "needs attention" states that aren't a debit
+     (missing price, needs-review import row) — kept distinct from --debit
+     so "this lost money" and "this needs your attention" don't collide. */
+  --accent-warning: #e0a53d;
+
   /* Secondary text: readable content that is intentionally de-emphasized
      (descriptions, results, values, interactive labels) — needs to stay legible. */
-  --text-secondary: rgba(28, 36, 48, 0.6);
+  --text-secondary: rgba(233, 230, 223, 0.7);
   /* Tertiary text: structural chrome (column headers, small-caps captions,
      meta labels) — the most muted tier, decorative rather than content. */
-  --text-tertiary: rgba(28, 36, 48, 0.55);
+  --text-tertiary: rgba(233, 230, 223, 0.55);
 
   --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --font-sans: -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
   --font-mono: "SF Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
 
-  /* Hero-number display treatment (issue #43, triage-resolved scale): the
+  /* Hero-number display treatment (issue #43, superseded by ADR-0020): the
      single most important figure per screen — net worth (Dashboard),
-     ready-to-assign (Budget), account balance (ledger). Serif at real
-     display size — mono already owns tabular ledger rows (.amount) well; a
-     giant mono figure reads more like a terminal than "architecture". */
-  --display-family: var(--font-serif);
+     ready-to-assign (Budget), account balance (ledger). Mono, matching the
+     dense tabular ledger rows (.amount) -- hierarchy comes from scale/weight
+     alone now, not a separate serif typeface family. */
+  --display-family: var(--font-mono);
   --display-weight: 500;
   --display-tracking: -0.02em;
   --display-size-1: 3rem;
@@ -38,7 +60,7 @@
   font-size: 16px;
   line-height: 1.5;
   color: var(--paper-text);
-  color-scheme: light;
+  color-scheme: dark;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -547,7 +569,10 @@ body {
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--text-tertiary);
+  /* Column-header label color: metadata/label accent (ADR-0020), not the
+     generic muted-text tertiary tone -- these are structural chrome, not
+     de-emphasized content. */
+  color: var(--accent-label);
   border-bottom: 2px solid var(--paper-line);
   margin-bottom: 0.25rem;
 }
@@ -927,7 +952,9 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-tertiary);
+  /* Metadata/label accent (ADR-0020) -- column headers are structural
+     chrome, not de-emphasized content. */
+  color: var(--accent-label);
   padding: 0.85rem 0.4rem 0.6rem 0.4rem;
   border-bottom: 2px double var(--paper-line);
   cursor: pointer;
@@ -1656,7 +1683,7 @@ body {
 
 .recurring-head > span {
   font-size: 0.76rem;
-  color: var(--text-tertiary);
+  color: var(--accent-label);
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--paper-line);
 }
@@ -1753,7 +1780,9 @@ body {
 
 .holdings-unpriced-note {
   font-size: 0.78rem;
-  color: var(--debit);
+  /* Warning/highlight accent (ADR-0020): a missing price is "needs your
+     attention", not a debit/loss -- kept distinct from the credit/debit pair. */
+  color: var(--accent-warning);
 }
 
 .holdings-list {
@@ -1770,7 +1799,7 @@ body {
 
 .holdings-head > span {
   font-size: 0.76rem;
-  color: var(--text-tertiary);
+  color: var(--accent-label);
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--paper-line);
 }
@@ -1801,7 +1830,8 @@ body {
 
 .price-missing {
   font-size: 0.82rem;
-  color: var(--debit);
+  /* Warning/highlight accent (ADR-0020), not debit -- see .holdings-unpriced-note. */
+  color: var(--accent-warning);
   font-style: italic;
 }
 
@@ -2091,7 +2121,9 @@ body {
 }
 
 .import-status-needs_review .import-status-label {
-  color: var(--debit);
+  /* Warning/highlight accent (ADR-0020): "review this" is not the same
+     signal as a debit amount. */
+  color: var(--accent-warning);
 }
 
 .import-status-new .import-status-label {
@@ -2175,7 +2207,7 @@ body {
 
 .budget-head > span {
   font-size: 0.76rem;
-  color: var(--text-tertiary);
+  color: var(--accent-label);
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--paper-line);
 }
@@ -2483,7 +2515,7 @@ select {
   font-size: 0.9em;
   font-family: inherit;
   color: var(--paper-text);
-  background-color: #fffdfa;
+  background-color: var(--surface-raised);
 }
 
 .sidebar input,
@@ -2508,7 +2540,7 @@ button {
   font-weight: 500;
   font-family: inherit;
   color: var(--paper-text);
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border-color: var(--paper-line);
   cursor: pointer;
   transition: border-color 0.15s, background-color 0.15s;
@@ -3346,49 +3378,21 @@ button.danger:hover,
   background-color: rgba(63, 124, 172, 0.08);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Warm near-black canvas (not pure black), consistent with the paper/ledger
-       identity rather than a neutral-cool dark gray. */
-    --paper: #14120f;
-    --paper-line: #38352f;
-    /* ~90%-opacity body text (not pure white) — eases eye strain during
-       extended data-review sessions. */
-    --paper-text: rgba(233, 230, 223, 0.9);
-    --ink: #101317;
-    --ink-line: #2a323b;
+/* Dark-only theme (ADR-0020): the rules below were previously gated behind
+   `@media (prefers-color-scheme: dark)`; that branch is removed and these
+   are now unconditional, since there is no light theme to fall back to. */
+.transfer-picker {
+  background: rgba(63, 124, 172, 0.1);
+}
 
-    /* Secondary/tertiary text tokens (see base :root, introduced for #47)
-       retuned against the dark canvas above per #45's resolved values. */
-    --text-secondary: rgba(233, 230, 223, 0.7);
-    --text-tertiary: rgba(233, 230, 223, 0.55);
-  }
+.transfer-candidate {
+  background: var(--surface-raised);
+}
 
-  input,
-  select {
-    background-color: #22262c;
-    border-color: var(--paper-line);
-    color: var(--paper-text);
-  }
+.confirmation-overlay {
+  background: rgba(0, 0, 0, 0.55);
+}
 
-  button {
-    background-color: #22262c;
-    color: var(--paper-text);
-  }
-
-  .transfer-picker {
-    background: rgba(63, 124, 172, 0.1);
-  }
-
-  .transfer-candidate {
-    background: #22262c;
-  }
-
-  .confirmation-overlay {
-    background: rgba(0, 0, 0, 0.55);
-  }
-
-  .confirmation-panel {
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  }
+.confirmation-panel {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
