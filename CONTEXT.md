@@ -102,3 +102,11 @@ _Avoid_: Columns (ambiguous between the full available set and what's currently 
 **Column Management**:
 User control over which columns from the Column Set are visible and in what order, for the Transactions grid. Lets a power-user configure a dense, Bloomberg-terminal-style view rather than being locked to a fixed column list.
 _Avoid_: Column customization (vaguer — Column Management is the specific show/hide/reorder affordance, not styling)
+
+**Command Palette**:
+A global, keyboard-invoked (Cmd+K) fuzzy search over actions, navigation destinations, and records (e.g. jump straight to an Account or Category by name). The primary keyboard interaction model for the app — see ADR-0020 — layered with fixed macOS-native modifier shortcuts and, within a focused grid, bare single-letter shortcuts.
+_Avoid_: Quick switcher, spotlight (describes the pattern generically; Command Palette is this app's specific instance)
+
+**Reserved Shortcut Set**:
+The closed, app-wide vocabulary of macOS-native modifier-key shortcuts (e.g. Cmd+N, Cmd+F, Cmd+,) that a screen may never repurpose for a different action. See ADR-0020; distinct from the bare single-letter shortcuts scoped to a focused grid/list, which aren't app-wide and don't need reservation.
+_Avoid_: Global shortcuts (ambiguous — could be read to include the grid-scoped single-letter shortcuts, which are deliberately not app-wide)
