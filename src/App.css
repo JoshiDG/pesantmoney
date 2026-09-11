@@ -1892,6 +1892,40 @@ button.danger:hover,
   background: var(--debit);
 }
 
+.income-category-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.income-category-row-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+
+.income-category-name {
+  color: var(--text-secondary);
+}
+
+.income-category-bar {
+  margin-top: 0.3rem;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--paper-line);
+  overflow: hidden;
+}
+
+.income-category-fill {
+  height: 100%;
+  background: var(--credit);
+}
+
 .tab-strip {
   display: flex;
   gap: 0.25rem;

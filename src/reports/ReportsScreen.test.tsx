@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { currentMonth } from "../budget/types";
 import { ReportsScreen } from "./ReportsScreen";
-import { CategorySpending, MonthlyCashFlow } from "./types";
+import { CategoryIncome, CategorySpending, MonthlyCashFlow } from "./types";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -28,6 +28,17 @@ function categorySpending(
   return { category_id, category_name, amount_cents };
 }
 
+function categoryIncome(category_name: string, income_cents: number): CategoryIncome {
+  return { category_name, income_cents };
+}
+
+/** Scopes queries to the Income tab's category breakdown list, since
+ * category names could otherwise collide with unrelated text elsewhere on
+ * the screen. */
+function incomeCategoryList() {
+  return within(document.querySelector(".income-category-list") as HTMLElement);
+}
+
 /** Scopes queries to the Cash Flow tab's income/expense/net summary, since
  * "Income"/"Expenses" also appear as tab and chart-legend labels, which
  * would otherwise make plain `screen.getByText` ambiguous. */
@@ -42,6 +53,8 @@ describe("ReportsScreen tab strip", () => {
       switch (cmd) {
         case "get_monthly_cash_flow_for_range":
         case "get_spending_by_category_for_range":
+          return [];
+        case "get_income_by_category_for_range":
           return [];
         default:
           return null;
@@ -58,7 +71,7 @@ describe("ReportsScreen tab strip", () => {
     expect(screen.getByRole("tab", { name: "Income" })).toHaveAttribute("aria-selected", "false");
   });
 
-  it("switches tabs on click, showing the Spending breakdown and stubbed Income content", async () => {
+  it("switches tabs on click, showing the Spending breakdown and Income breakdown", async () => {
     render(<ReportsScreen />);
 
     await screen.findByRole("tab", { name: "Cash Flow" });
@@ -71,10 +84,79 @@ describe("ReportsScreen tab strip", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "Income" }));
     expect(screen.getByRole("tab", { name: "Income" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("Income by Category is coming soon.")).toBeInTheDocument();
+    expect(await screen.findByText("Total Income")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("tab", { name: "Cash Flow" }));
     expect(screen.getByRole("tab", { name: "Cash Flow" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("ReportsScreen Income tab", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+  });
+
+  it("renders the per-Category income breakdown from mocked data", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_monthly_cash_flow_for_range":
+          return [];
+        case "get_income_by_category_for_range":
+          return [categoryIncome("Paycheck", 5_000_00), categoryIncome("Interest", 1_000_00)];
+        default:
+          return null;
+      }
+    });
+
+    render(<ReportsScreen />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Income" }));
+
+    expect(await screen.findByText("$6,000.00")).toBeInTheDocument();
+    expect(incomeCategoryList().getByText("Paycheck")).toBeInTheDocument();
+    expect(incomeCategoryList().getByText("$5,000.00")).toBeInTheDocument();
+    expect(incomeCategoryList().getByText("Interest")).toBeInTheDocument();
+    expect(incomeCategoryList().getByText("$1,000.00")).toBeInTheDocument();
+  });
+
+  it("renders a Category-less Transaction's total under the Uncategorized bucket", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_monthly_cash_flow_for_range":
+          return [];
+        case "get_income_by_category_for_range":
+          return [categoryIncome("Paycheck", 5_000_00), categoryIncome("Uncategorized", 1_500_00)];
+        default:
+          return null;
+      }
+    });
+
+    render(<ReportsScreen />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Income" }));
+
+    await screen.findByText("Paycheck");
+    expect(incomeCategoryList().getByText("Uncategorized")).toBeInTheDocument();
+    expect(incomeCategoryList().getByText("$1,500.00")).toBeInTheDocument();
+  });
+
+  it("shows an empty state when there is no income in the selected range", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_monthly_cash_flow_for_range":
+          return [];
+        case "get_income_by_category_for_range":
+          return [];
+        default:
+          return null;
+      }
+    });
+
+    render(<ReportsScreen />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Income" }));
+
+    expect(await screen.findByText("No income in this range yet.")).toBeInTheDocument();
   });
 });
 

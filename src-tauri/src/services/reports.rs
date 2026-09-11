@@ -174,6 +174,69 @@ pub fn spending_by_category_for_range(
     rows.collect()
 }
 
+/// The bucket label used for income Transactions with no Category assigned,
+/// returned by `income_by_category_for_range` instead of dropping those
+/// Transactions or erroring (per #57's "Category-less Transactions land in a
+/// defined 'Uncategorized' bucket" requirement).
+pub const UNCATEGORIZED_LABEL: &str = "Uncategorized";
+
+/// One Category's total income across every Account, for the Income tab's
+/// breakdown. `category_name` is the Category's name, or
+/// [`UNCATEGORIZED_LABEL`] for income Transactions with no Category
+/// assigned.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct CategoryIncome {
+    pub category_name: String,
+    pub income_cents: i64,
+}
+
+/// Income Transactions from `start_date` through `end_date` (both inclusive,
+/// each "YYYY-MM-DD"), grouped by Category and summed, across every Account
+/// (there is no per-Account variant -- Reports is explicitly a
+/// household-wide view, per #49's "Reports (new)" decision).
+///
+/// Excludes linked Transfers and Hidden Transactions, same as
+/// `monthly_cash_flow_for_range` and the rest of the app's income/expense
+/// reporting. A Category-less Transaction is grouped under
+/// [`UNCATEGORIZED_LABEL`] rather than dropped.
+///
+/// Rows are ordered by `income_cents` descending (largest Category first),
+/// with `category_name` as a tiebreaker for deterministic ordering. A range
+/// with no matching income Transactions returns an empty `Vec` -- there is no
+/// fixed set of Categories to enumerate zero-valued rows for, unlike
+/// `monthly_cash_flow_for_range`'s fixed set of months.
+pub fn income_by_category_for_range(
+    conn: &Connection,
+    start_date: &str,
+    end_date: &str,
+) -> rusqlite::Result<Vec<CategoryIncome>> {
+    let sql = format!(
+        "SELECT COALESCE(c.name, '{UNCATEGORIZED_LABEL}') AS category_name, \
+            SUM(t.amount_cents) AS income_cents \
+        FROM transactions t \
+        LEFT JOIN categories c ON c.id = t.category_id \
+        WHERE t.date >= ?1 AND t.date <= ?2 \
+        AND t.amount_cents > 0 \
+        AND t.hidden = 0 \
+        AND t.id NOT IN ( \
+            SELECT from_transaction_id FROM transfers \
+            UNION \
+            SELECT to_transaction_id FROM transfers \
+        ) \
+        GROUP BY category_name \
+        ORDER BY income_cents DESC, category_name ASC"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params![start_date, end_date], |row| {
+        Ok(CategoryIncome {
+            category_name: row.get(0)?,
+            income_cents: row.get(1)?,
+        })
+    })?;
+    rows.collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,6 +417,27 @@ mod tests {
     }
 
     #[test]
+    fn income_by_category_for_range_aggregates_across_every_account() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let savings_id = create_test_account(&conn);
+        let paycheck_id = create_test_category(&conn, "Paycheck");
+
+        transactions::create(&conn, checking_id, "2026-08-05", 5_000, "Paycheck", Some(paycheck_id))
+            .expect("create transaction");
+        transactions::create(&conn, savings_id, "2026-08-10", 1_000, "Bonus paycheck", Some(paycheck_id))
+            .expect("create transaction");
+
+        let categories = income_by_category_for_range(&conn, "2026-08-01", "2026-08-31")
+            .expect("compute income by category");
+
+        assert_eq!(
+            categories,
+            vec![CategoryIncome { category_name: "Paycheck".to_string(), income_cents: 6_000 }]
+        );
+    }
+
+    #[test]
     fn spending_by_category_for_range_excludes_a_linked_transfer_pair() {
         let conn = db::open_in_memory().expect("open in-memory test database");
         let checking_id = create_test_account(&conn);
@@ -386,6 +470,31 @@ mod tests {
                 category_name: "Groceries".to_string(),
                 amount_cents: 2_500,
             }]
+        );
+    }
+
+    #[test]
+    fn income_by_category_for_range_excludes_a_linked_transfer_pair() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let checking_id = create_test_account(&conn);
+        let savings_id = create_test_account(&conn);
+        let paycheck_id = create_test_category(&conn, "Paycheck");
+
+        let out = transactions::create(&conn, checking_id, "2026-08-10", -50_000, "Transfer out", None)
+            .expect("create transaction");
+        let in_ = transactions::create(&conn, savings_id, "2026-08-10", 50_000, "Transfer in", Some(paycheck_id))
+            .expect("create transaction");
+        transfers::link(&conn, out.id, in_.id).expect("link transfer");
+
+        transactions::create(&conn, checking_id, "2026-08-12", 3_000, "Paycheck", Some(paycheck_id))
+            .expect("create transaction");
+
+        let categories = income_by_category_for_range(&conn, "2026-08-01", "2026-08-31")
+            .expect("compute income by category");
+
+        assert_eq!(
+            categories,
+            vec![CategoryIncome { category_name: "Paycheck".to_string(), income_cents: 3_000 }]
         );
     }
 
@@ -429,6 +538,27 @@ mod tests {
     }
 
     #[test]
+    fn income_by_category_for_range_excludes_a_hidden_transaction() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let paycheck_id = create_test_category(&conn, "Paycheck");
+
+        let hidden = transactions::create(&conn, account_id, "2026-08-01", 10_000, "Hidden income", Some(paycheck_id))
+            .expect("create transaction");
+        transactions::set_hidden(&conn, hidden.id, true).expect("set hidden");
+        transactions::create(&conn, account_id, "2026-08-02", 3_000, "Paycheck", Some(paycheck_id))
+            .expect("create transaction");
+
+        let categories = income_by_category_for_range(&conn, "2026-08-01", "2026-08-31")
+            .expect("compute income by category");
+
+        assert_eq!(
+            categories,
+            vec![CategoryIncome { category_name: "Paycheck".to_string(), income_cents: 3_000 }]
+        );
+    }
+
+    #[test]
     fn spending_by_category_for_range_buckets_category_less_transactions_as_uncategorized() {
         let conn = db::open_in_memory().expect("open in-memory test database");
         let account_id = create_test_account(&conn);
@@ -457,6 +587,40 @@ mod tests {
 
         let categories = spending_by_category_for_range(&conn, "2026-08", "2026-08")
             .expect("compute spending by category");
+
+        assert_eq!(categories, Vec::new());
+    }
+
+    #[test]
+    fn income_by_category_for_range_groups_category_less_transactions_as_uncategorized() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let paycheck_id = create_test_category(&conn, "Paycheck");
+
+        transactions::create(&conn, account_id, "2026-08-05", 5_000, "Paycheck", Some(paycheck_id))
+            .expect("create transaction");
+        transactions::create(&conn, account_id, "2026-08-06", 1_500, "Garage sale", None)
+            .expect("create transaction");
+
+        let mut categories = income_by_category_for_range(&conn, "2026-08-01", "2026-08-31")
+            .expect("compute income by category");
+        categories.sort_by(|a, b| a.category_name.cmp(&b.category_name));
+
+        assert_eq!(
+            categories,
+            vec![
+                CategoryIncome { category_name: "Paycheck".to_string(), income_cents: 5_000 },
+                CategoryIncome { category_name: UNCATEGORIZED_LABEL.to_string(), income_cents: 1_500 },
+            ]
+        );
+    }
+
+    #[test]
+    fn income_by_category_for_range_returns_an_empty_vec_for_a_range_with_no_data() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+
+        let categories = income_by_category_for_range(&conn, "2026-08-01", "2026-08-31")
+            .expect("compute income by category");
 
         assert_eq!(categories, Vec::new());
     }
