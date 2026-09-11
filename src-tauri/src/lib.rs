@@ -63,6 +63,7 @@ pub fn run() {
             commands::set_account_apr,
             commands::create_transaction,
             commands::list_transactions,
+            commands::list_all_transactions,
             commands::update_transaction,
             commands::delete_transaction,
             commands::account_balance_cents,

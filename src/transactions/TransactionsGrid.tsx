@@ -271,6 +271,9 @@ export function TransactionsGrid({
                 ⇄
               </span>
             )}
+            {transaction.account_name && (
+              <span className="account-badge">{transaction.account_name}</span>
+            )}
             {transaction.merchant_name ?? transaction.description}
             {(tagsByTransactionId[transaction.id] ?? []).map((tag) => (
               <span key={tag.id} className="tag-chip">

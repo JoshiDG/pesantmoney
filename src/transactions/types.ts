@@ -13,6 +13,18 @@ export interface Transaction extends TransactionFields {
   // for `description`, which stays the raw imported/edited source of truth.
   merchant_name: string | null;
   hidden: boolean;
+  // Present only on rows returned by `list_all_transactions` (the
+  // all-Accounts Transactions view, #51) -- absent on rows from the
+  // per-Account `list_transactions`. Optional here (rather than a
+  // TransactionsGrid-specific type) so the grid can render an Account
+  // badge whenever it's given, without needing two parallel row shapes.
+  account_name?: string;
+}
+
+// Returned by `list_all_transactions`: every field `list_transactions`
+// returns, plus the owning Account's name.
+export interface TransactionWithAccount extends Transaction {
+  account_name: string;
 }
 
 export function centsToDollarInput(cents: number): string {
