@@ -29,6 +29,18 @@ const UNCATEGORIZED = "";
 const BULK_PLACEHOLDER = "__bulk_placeholder__";
 const NO_BALANCE = "—";
 
+type SortDirection = "asc" | "desc";
+
+// Client-side, single-column, three-state sort (see #67's "Sorting"
+// Implementation Decision and issue #69): a header click cycles
+// asc -> desc -> cleared (null, back to the default date-desc order the
+// screen already loaded `transactions` in). Only one column is ever
+// sorted at a time -- clicking a different header resets the cycle.
+interface SortState {
+  column: ColumnKey;
+  direction: SortDirection;
+}
+
 // Field labels for the Column Management checklist and the Mobile-tier
 // stacked-card layout (ADR-0018) -- the grid's column headers don't apply
 // to cards, so each field is labeled inline instead.
@@ -120,7 +132,6 @@ export function TransactionsGrid({
     () => new Map(accounts.map((account) => [account.id, account.name])),
     [accounts],
   );
-  const orderedIds = useMemo(() => transactions.map((t) => t.id), [transactions]);
   const tier = useBreakpoint();
   const isMobile = tier === "mobile";
 
@@ -132,6 +143,7 @@ export function TransactionsGrid({
   const [bulkCategoryId, setBulkCategoryId] = useState(BULK_PLACEHOLDER);
   const [flashCell, setFlashCell] = useState<CellPos | null>(null);
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number } | null>(null);
+  const [sortState, setSortState] = useState<SortState | null>(null);
 
   const editingRef = useRef<CellPos | null>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -182,8 +194,81 @@ export function TransactionsGrid({
     [visibleColumns],
   );
 
-  const rowCount = transactions.length;
+  // Sort-key extraction per column, shared by the comparator below. Text
+  // columns are lower-cased for a case-insensitive sort; Amount and Running
+  // Balance sort numerically on their underlying cents value.
+  function sortValue(transaction: Transaction, column: ColumnKey): string | number {
+    switch (column) {
+      case "date":
+        return transaction.date;
+      case "account":
+        return (
+          transaction.account_name ?? accountNameById.get(transaction.account_id) ?? ""
+        ).toLowerCase();
+      case "payee":
+        return (transaction.merchant_name || transaction.description).toLowerCase();
+      case "memo":
+        return transaction.description.toLowerCase();
+      case "category": {
+        const name =
+          transaction.category_id != null
+            ? categoryNameById.get(transaction.category_id) ?? "Uncategorized"
+            : "Uncategorized";
+        return name.toLowerCase();
+      }
+      case "tags":
+        return (tagsByTransactionId[transaction.id] ?? [])
+          .map((tag) => tag.name)
+          .join(",")
+          .toLowerCase();
+      case "amount":
+        return transaction.amount_cents;
+      case "running_balance":
+        return runningBalanceByTransactionId.get(transaction.id) ?? 0;
+      default:
+        return "";
+    }
+  }
+
+  // The sorted copy rendered by the grid. `transactions` (the prop) is never
+  // mutated -- when `sortState` is null this is just the original,
+  // already-date-desc-loaded order the screen passed in.
+  const sortedTransactions = useMemo(() => {
+    if (!sortState) return transactions;
+    const { column, direction } = sortState;
+    const factor = direction === "asc" ? 1 : -1;
+    return [...transactions].sort((a, b) => {
+      const av = sortValue(a, column);
+      const bv = sortValue(b, column);
+      if (typeof av === "number" && typeof bv === "number") {
+        return (av - bv) * factor;
+      }
+      return String(av).localeCompare(String(bv)) * factor;
+    });
+  }, [
+    transactions,
+    sortState,
+    categoryNameById,
+    accountNameById,
+    tagsByTransactionId,
+    runningBalanceByTransactionId,
+  ]);
+
+  const orderedIds = useMemo(
+    () => sortedTransactions.map((t) => t.id),
+    [sortedTransactions],
+  );
+
+  const rowCount = sortedTransactions.length;
   const colCount = EDITABLE_COLUMNS.length;
+
+  function handleHeaderClick(column: ColumnKey) {
+    setSortState((prev) => {
+      if (!prev || prev.column !== column) return { column, direction: "asc" };
+      if (prev.direction === "asc") return { column, direction: "desc" };
+      return null;
+    });
+  }
 
   useEffect(() => {
     if (focusedCell && !editingCell) {
@@ -203,7 +288,7 @@ export function TransactionsGrid({
   }
 
   function startEdit(row: number, col: number) {
-    const transaction = transactions[row];
+    const transaction = sortedTransactions[row];
     if (!transaction) return;
     editingRef.current = { row, col };
     setFocusedCell({ row, col });
@@ -217,7 +302,7 @@ export function TransactionsGrid({
   }
 
   function commitEdit(row: number, col: number, value: string) {
-    const transaction = transactions[row];
+    const transaction = sortedTransactions[row];
     editingRef.current = null;
     setEditingCell(null);
     if (!transaction) return;
@@ -653,7 +738,20 @@ export function TransactionsGrid({
             />
           </span>
           {visibleColumns.map((column) => (
-            <span key={column}>{COLUMN_LABELS[column]}</span>
+            <span
+              key={column}
+              className={
+                sortState?.column === column ? `sort-${sortState.direction}` : undefined
+              }
+              onClick={() => handleHeaderClick(column)}
+            >
+              {COLUMN_LABELS[column]}
+              {sortState?.column === column && (
+                <span className="sort-arrow" aria-hidden="true">
+                  {sortState.direction === "asc" ? " ▲" : " ▼"}
+                </span>
+              )}
+            </span>
           ))}
           <span></span>
         </div>
@@ -694,7 +792,7 @@ export function TransactionsGrid({
         </div>
       )}
 
-      {transactions.map((transaction, row) =>
+      {sortedTransactions.map((transaction, row) =>
         isMobile ? renderCard(transaction, row) : renderRow(transaction, row),
       )}
     </div>

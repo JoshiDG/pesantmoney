@@ -468,6 +468,142 @@ describe("TransactionsGrid Column Management", () => {
   });
 });
 
+describe("TransactionsGrid click-to-sort columns", () => {
+  function sortableTransactions(): Transaction[] {
+    return [
+      {
+        id: 1,
+        account_id: 1,
+        date: "2026-08-01",
+        amount_cents: -1250,
+        description: "Coffee shop",
+        category_id: null,
+        merchant_name: null,
+        hidden: false,
+      },
+      {
+        id: 2,
+        account_id: 1,
+        date: "2026-08-02",
+        amount_cents: 300000,
+        description: "Paycheck",
+        category_id: null,
+        merchant_name: null,
+        hidden: false,
+      },
+      {
+        id: 3,
+        account_id: 1,
+        date: "2026-08-03",
+        amount_cents: -500,
+        description: "Groceries",
+        category_id: null,
+        merchant_name: null,
+        hidden: false,
+      },
+    ];
+  }
+
+  function memoOrder() {
+    return Array.from(document.querySelectorAll(".cell-memo")).map((el) => el.textContent);
+  }
+
+  function payeeOrder() {
+    return Array.from(document.querySelectorAll(".passbook-payee-name")).map((el) => el.textContent);
+  }
+
+  it("clicking the Amount header sorts ascending by amount", () => {
+    renderGrid({ transactions: sortableTransactions() });
+
+    fireEvent.click(screen.getByText("Amount", { selector: ".ledger-head span" }));
+
+    expect(memoOrder()).toEqual(["Coffee shop", "Groceries", "Paycheck"]);
+  });
+
+  it("clicking the Amount header a second time reverses to descending", () => {
+    renderGrid({ transactions: sortableTransactions() });
+
+    const header = screen.getByText("Amount", { selector: ".ledger-head span" });
+    fireEvent.click(header);
+    fireEvent.click(header);
+
+    expect(memoOrder()).toEqual(["Paycheck", "Groceries", "Coffee shop"]);
+  });
+
+  it("clicking the Amount header a third time clears back to the default order", () => {
+    const transactions = sortableTransactions();
+    renderGrid({ transactions });
+
+    const header = screen.getByText("Amount", { selector: ".ledger-head span" });
+    fireEvent.click(header);
+    fireEvent.click(header);
+    fireEvent.click(header);
+
+    expect(memoOrder()).toEqual(transactions.map((t) => t.description));
+  });
+
+  it("clicking the Payee header sorts ascending, then descending, then clears (text column)", () => {
+    const transactions = sortableTransactions();
+    renderGrid({ transactions });
+
+    const header = screen.getByText("Payee", { selector: ".ledger-head span" });
+
+    fireEvent.click(header);
+    expect(payeeOrder()).toEqual(["Coffee shop", "Groceries", "Paycheck"]);
+
+    fireEvent.click(header);
+    expect(payeeOrder()).toEqual(["Paycheck", "Groceries", "Coffee shop"]);
+
+    fireEvent.click(header);
+    expect(payeeOrder()).toEqual(transactions.map((t) => t.description));
+  });
+
+  it("clicking a different header resets the cycle to ascending on the new column", () => {
+    renderGrid({ transactions: sortableTransactions() });
+
+    fireEvent.click(screen.getByText("Amount", { selector: ".ledger-head span" }));
+    expect(memoOrder()).toEqual(["Coffee shop", "Groceries", "Paycheck"]);
+
+    fireEvent.click(screen.getByText("Payee", { selector: ".ledger-head span" }));
+    expect(payeeOrder()).toEqual(["Coffee shop", "Groceries", "Paycheck"]);
+  });
+
+  it("shows a visual indicator of the active sort column and direction in the header", () => {
+    renderGrid({ transactions: sortableTransactions() });
+
+    const header = screen.getByText("Amount", { selector: ".ledger-head span" });
+    expect(header.className).not.toMatch(/sort-/);
+
+    fireEvent.click(header);
+    expect(header.className).toMatch(/sort-asc/);
+
+    fireEvent.click(header);
+    expect(header.className).toMatch(/sort-desc/);
+
+    fireEvent.click(header);
+    expect(header.className).not.toMatch(/sort-/);
+  });
+
+  it("sorting does not affect row selection state", () => {
+    renderGrid({ transactions: sortableTransactions() });
+
+    fireEvent.click(screen.getByLabelText("Select Coffee shop"));
+    fireEvent.click(screen.getByText("Amount", { selector: ".ledger-head span" }));
+
+    expect(screen.getByLabelText("Select Coffee shop")).toBeChecked();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
+  it("right-click column management still works after clicking a header to sort", () => {
+    renderGrid({ transactions: sortableTransactions() });
+
+    fireEvent.click(screen.getByText("Amount", { selector: ".ledger-head span" }));
+    fireEvent.contextMenu(document.querySelector(".ledger-head") as HTMLElement);
+
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+});
+
 describe("TransactionsGrid layout across Breakpoint Tiers", () => {
   it("renders the grid/table row layout at Expanded tier", () => {
     renderGrid({}, "expanded");
