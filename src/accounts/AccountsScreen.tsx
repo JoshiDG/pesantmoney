@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { AccountForm } from "./AccountForm";
 import { ACCOUNT_TYPE_LABELS, Account, AccountFields } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
+import { useBreakpoint } from "../ui/BreakpointProvider";
 
 interface AccountsScreenProps {
   // Opens the account's existing per-Account ledger screen (unchanged from
@@ -28,6 +29,8 @@ export function AccountsScreen({
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { confirm } = useConfirmation();
+  const tier = useBreakpoint();
+  const isMobile = tier === "mobile";
 
   async function refresh() {
     try {
@@ -98,7 +101,7 @@ export function AccountsScreen({
         </p>
       )}
 
-      <ul className="account-list">
+      <ul className={isMobile ? "account-list account-list--cards" : "account-list"}>
         {accounts.map((account) =>
           editingId === account.id ? (
             <li key={account.id}>
@@ -109,10 +112,16 @@ export function AccountsScreen({
               />
             </li>
           ) : (
-            <li key={account.id} className="account-row" onClick={() => onSelectAccount(account)}>
+            <li
+              key={account.id}
+              className={isMobile ? "account-card" : "account-row"}
+              onClick={() => onSelectAccount(account)}
+            >
               <div>
-                <div className="account-row-name">{account.name}</div>
-                <div className="account-row-meta">
+                <div className={isMobile ? "account-card-name" : "account-row-name"}>
+                  {account.name}
+                </div>
+                <div className={isMobile ? "account-card-meta" : "account-row-meta"}>
                   {ACCOUNT_TYPE_LABELS[account.account_type]}
                   {account.institution_name ? ` · ${account.institution_name}` : ""}
                 </div>
