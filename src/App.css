@@ -505,6 +505,26 @@ body {
   color: var(--paper-text);
 }
 
+/* ---------- settings tab strip ---------- */
+
+.settings-tab-strip {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+}
+
+.settings-tab-strip button {
+  background: none;
+  border-color: transparent;
+  color: var(--text-tertiary);
+}
+
+.settings-tab-strip button.active {
+  background-color: var(--credit-soft);
+  border-color: var(--credit);
+  color: var(--paper-text);
+}
+
 /* ---------- recurring items ---------- */
 
 .recurring-section-title {

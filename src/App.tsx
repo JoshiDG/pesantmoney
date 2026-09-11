@@ -4,13 +4,10 @@ import "./App.css";
 import { AccountsScreen } from "./accounts/AccountsScreen";
 import { Account } from "./accounts/types";
 import { BudgetScreen } from "./budget/BudgetScreen";
-import { CategoriesScreen } from "./categories/CategoriesScreen";
 import { DashboardScreen } from "./dashboard/DashboardScreen";
 import { GoalsScreen } from "./goals/GoalsScreen";
 import { ImportScreen } from "./import/ImportScreen";
-import { MerchantsScreen } from "./merchants/MerchantsScreen";
 import { NavRail } from "./ui/NavRail";
-import { RulesScreen } from "./rules/RulesScreen";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { TransactionsScreen } from "./transactions/TransactionsScreen";
 import { ConfirmationProvider } from "./ui/ConfirmationProvider";
@@ -22,18 +19,14 @@ import { ConfirmationProvider } from "./ui/ConfirmationProvider";
 // runs once immediately on launch rather than waiting a full interval.
 const NOTIFICATION_CHECK_INTERVAL_MS = 60_000;
 
-// Categories/Rules/Merchants remain reachable as their own view states for
-// now (their screens/routes are unchanged) even though the nav rail no
-// longer links to them directly -- per issue #50, they move under Settings
-// as tabs in a later slice (#58), at which point these view states go away.
+// Categories/Rules/Merchants are no longer distinct App-level view states --
+// per issue #58, they're reachable only as tabs inside Settings' own tab
+// state now.
 type ContentView =
   | { type: "dashboard" }
   | { type: "accounts" }
-  | { type: "categories" }
   | { type: "budget" }
   | { type: "goals" }
-  | { type: "rules" }
-  | { type: "merchants" }
   | { type: "settings" }
   | { type: "account"; account: Account }
   | { type: "import"; account: Account }
@@ -88,11 +81,8 @@ function App() {
               }
             />
           )}
-          {view.type === "categories" && <CategoriesScreen />}
           {view.type === "budget" && <BudgetScreen />}
           {view.type === "goals" && <GoalsScreen />}
-          {view.type === "rules" && <RulesScreen />}
-          {view.type === "merchants" && <MerchantsScreen />}
           {view.type === "settings" && <SettingsScreen />}
           {view.type === "account" && (
             <TransactionsScreen

@@ -1,10 +1,23 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
+import { CategoriesScreen } from "../categories/CategoriesScreen";
+import { MerchantsScreen } from "../merchants/MerchantsScreen";
+import { RulesScreen } from "../rules/RulesScreen";
 import { useCsvExport } from "../ui/useCsvExport";
 import { BackupStatus, Settings, UpdateCheckResult } from "./types";
 
+type SettingsTab = "general" | "categories" | "rules" | "merchants";
+
+const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
+  { key: "general", label: "General" },
+  { key: "categories", label: "Categories" },
+  { key: "rules", label: "Rules" },
+  { key: "merchants", label: "Merchants" },
+];
+
 export function SettingsScreen() {
+  const [tab, setTab] = useState<SettingsTab>("general");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -127,9 +140,30 @@ export function SettingsScreen() {
         </div>
       </div>
 
-      {error && <p role="alert">{error}</p>}
+      <div className="settings-tab-strip" role="tablist" aria-label="Settings sections">
+        {SETTINGS_TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            className={tab === key ? "active" : ""}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      <div className="settings-panel">
+      {tab === "categories" && <CategoriesScreen />}
+      {tab === "rules" && <RulesScreen />}
+      {tab === "merchants" && <MerchantsScreen />}
+
+      {tab === "general" && (
+        <>
+          {error && <p role="alert">{error}</p>}
+
+          <div className="settings-panel">
         <div className="settings-row">
           <div>
             <div className="settings-row-label">Enable automatic update checks</div>
@@ -270,7 +304,9 @@ export function SettingsScreen() {
           makes a network call to GitHub Releases to look for new versions. Turn off the toggle above
           if you want zero network access.
         </p>
-      </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
