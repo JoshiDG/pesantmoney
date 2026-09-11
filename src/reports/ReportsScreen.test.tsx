@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { currentMonth } from "../budget/types";
+import { withBreakpoint } from "../ui/withBreakpoint";
 import { ReportsScreen } from "./ReportsScreen";
 import { CategoryIncome, CategorySpending, MonthlyCashFlow } from "./types";
 
@@ -316,5 +317,42 @@ describe("ReportsScreen Spending tab", () => {
     await openSpendingTab();
 
     expect(await screen.findByText("No spending in the selected range.")).toBeInTheDocument();
+  });
+});
+
+describe("ReportsScreen at the Mobile tier", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_monthly_cash_flow_for_range":
+          return [monthlyCashFlow(currentMonth(), 5_000_00, 2_000_00)];
+        case "get_spending_by_category_for_range":
+          return [categorySpending(1, "Groceries", 3_000_00)];
+        case "get_income_by_category_for_range":
+          return [categoryIncome("Paycheck", 5_000_00)];
+        default:
+          return null;
+      }
+    });
+  });
+
+  // Reports is chart/summary-based, not a dense row grid, so per ADR-0018 it
+  // gets cosmetic CSS reflow at Mobile tier (asserted separately in
+  // ReportsScreen.responsive.test.ts) rather than a useBreakpoint()-driven
+  // structural swap. This just confirms tab switching and every tab's
+  // content still render and stay usable when forced to the Mobile tier.
+  it("still switches tabs and shows each tab's content at the Mobile tier", async () => {
+    render(<ReportsScreen />, { wrapper: withBreakpoint("mobile") });
+
+    const cashFlowTab = await screen.findByRole("tab", { name: "Cash Flow" });
+    expect(cashFlowTab).toHaveAttribute("aria-selected", "true");
+    expect(cashFlowSummary().getByText("Income")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Spending" }));
+    expect(await screen.findByText("Groceries")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Income" }));
+    expect(incomeCategoryList().getByText("Paycheck")).toBeInTheDocument();
   });
 });

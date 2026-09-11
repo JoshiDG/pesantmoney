@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { withBreakpoint } from "../ui/withBreakpoint";
 import { AllRecurringScreen } from "./AllRecurringScreen";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -43,11 +44,12 @@ const allItems = [
   },
 ];
 
-function renderScreen() {
+function renderScreen(tier: "expanded" | "compact" | "mobile" = "expanded") {
   render(
     <ConfirmationProvider>
       <AllRecurringScreen />
     </ConfirmationProvider>,
+    { wrapper: withBreakpoint(tier) },
   );
 }
 
@@ -124,6 +126,67 @@ describe("AllRecurringScreen", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "update_recurring_item",
+        expect.objectContaining({ id: 1, description: "Streaming service" }),
+      ),
+    );
+  });
+});
+
+describe("AllRecurringScreen at the Mobile tier", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_accounts":
+          return accounts;
+        case "list_categories":
+          return categories;
+        case "detect_recurring_items":
+          return [];
+        case "list_all_recurring_items":
+          return allItems;
+        case "confirm_recurring_item":
+          return null;
+        case "delete_recurring_item":
+          return null;
+        case "update_recurring_item":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("renders each Recurring Item as a card with the same key fields as the desktop row", async () => {
+    renderScreen("mobile");
+
+    await screen.findByText("Streaming service");
+    const cards = document.querySelectorAll(".recurring-card");
+    expect(cards.length).toBe(2);
+
+    const confirmedCard = screen.getByText("Streaming service").closest(".recurring-card") as HTMLElement;
+    expect(within(confirmedCard).getByText("Checking")).toBeInTheDocument();
+    expect(within(confirmedCard).getByText("-$15.00")).toBeInTheDocument();
+
+    const detectedCard = screen.getByText("Gym membership").closest(".recurring-card") as HTMLElement;
+    expect(within(detectedCard).getByText("Savings")).toBeInTheDocument();
+  });
+
+  it("Confirm/Edit/Delete keep working identically in card view", async () => {
+    renderScreen("mobile");
+    await screen.findByText("Gym membership");
+
+    const detectedCard = screen.getByText("Gym membership").closest(".recurring-card") as HTMLElement;
+    await userEvent.click(within(detectedCard).getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("confirm_recurring_item", { id: 2 }));
+
+    const confirmedCard = screen.getByText("Streaming service").closest(".recurring-card") as HTMLElement;
+    await userEvent.click(within(confirmedCard).getByRole("button", { name: "Edit" }));
+    expect(screen.getByDisplayValue("Streaming service")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith(
         "update_recurring_item",

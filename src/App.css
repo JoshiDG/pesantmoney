@@ -823,6 +823,55 @@ body {
   width: 100%;
 }
 
+/* Compact tier (768-1279px, ADR-0018): cosmetic reflow only -- same grid
+   row structure as Expanded, tighter spacing/density, per issue #65. */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .recurring-row > * {
+    padding: 0.5rem 0;
+    font-size: 0.85rem;
+  }
+}
+
+/* Mobile tier (<768px, ADR-0018, issue #65): stacked cards instead of grid
+   rows. Structural swap is driven by useBreakpoint() in AllRecurringScreen
+   -- this CSS only styles the card markup once JS has already chosen to
+   render it. All per-Recurring-Item interactions (detect/confirm/edit/
+   delete) are the same elements as the grid layout, just arranged as a
+   card. */
+.recurring-list--cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.recurring-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--paper-line);
+  border-radius: 8px;
+}
+
+.recurring-card-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.recurring-card-label {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.recurring-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--paper-line);
+}
+
 /* ---------- holdings ---------- */
 
 .holdings-total {
@@ -897,6 +946,54 @@ body {
   font-size: 0.82rem;
   color: var(--debit);
   font-style: italic;
+}
+
+/* Compact tier (768-1279px, ADR-0018): cosmetic reflow only -- same grid
+   row structure as Expanded, tighter spacing/density, per issue #65. */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .holdings-row > * {
+    padding: 0.5rem 0;
+    font-size: 0.85rem;
+  }
+}
+
+/* Mobile tier (<768px, ADR-0018, issue #65): stacked cards instead of grid
+   rows. Structural swap is driven by useBreakpoint() in InvestmentsScreen --
+   this CSS only styles the card markup once JS has already chosen to render
+   it. All per-Holding interactions (create/edit/delete/set-price) are the
+   same elements as the grid layout, just arranged as a card. */
+.holdings-list--cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.holdings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--paper-line);
+  border-radius: 8px;
+}
+
+.holdings-card-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.holdings-card-label {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.holdings-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--paper-line);
 }
 
 .holding-form > * {
@@ -1947,6 +2044,30 @@ button.danger:hover,
   color: var(--paper-text);
   border-bottom-color: var(--credit);
   font-weight: 600;
+}
+
+/* Compact tier (768-1279px, ADR-0018): cosmetic reflow only -- same tab
+   strip/chart layout as Expanded, tighter tab padding, per issue #65. */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .reports-screen .tab-strip-item {
+    padding: 0.45rem 0.75rem;
+  }
+}
+
+/* Mobile tier (<768px, ADR-0018, issue #65): Reports is chart/summary-based
+   (per ADR-0017), not a dense row grid, so it gets cosmetic single-column
+   reflow rather than a card swap. The Cash Flow income/expense/net stats and
+   the tab strip itself are the two elements wide enough to overflow a phone
+   viewport if left as a fixed-width row, so both wrap instead. */
+@media (max-width: 767px) {
+  .cash-flow-summary {
+    flex-wrap: wrap;
+    row-gap: 0.85rem;
+  }
+
+  .tab-strip {
+    flex-wrap: wrap;
+  }
 }
 
 .budget-rollup-ready-to-assign {

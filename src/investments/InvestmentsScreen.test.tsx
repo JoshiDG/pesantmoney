@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { withBreakpoint } from "../ui/withBreakpoint";
 import { InvestmentsScreen } from "./InvestmentsScreen";
 import { Account } from "../accounts/types";
 
@@ -43,12 +44,17 @@ const holdings = [
   },
 ];
 
-function renderScreen() {
+function renderScreen(tier: "expanded" | "compact" | "mobile" = "expanded") {
   render(
     <ConfirmationProvider>
       <InvestmentsScreen />
     </ConfirmationProvider>,
+    { wrapper: withBreakpoint(tier) },
   );
+}
+
+function renderScreenAtMobile() {
+  renderScreen("mobile");
 }
 
 describe("InvestmentsScreen", () => {
@@ -159,6 +165,65 @@ describe("InvestmentsScreen", () => {
     await userEvent.click(within(row).getByRole("button", { name: "Delete" }));
 
     expect(mockedInvoke).not.toHaveBeenCalledWith("delete_holding", expect.anything());
+    await userEvent.click(screen.getByRole("button", { name: "Delete Holding" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_holding", { id: 1 }));
+  });
+});
+
+describe("InvestmentsScreen at the Mobile tier", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_all_holdings_with_values":
+          return holdings;
+        case "list_accounts":
+          return accounts;
+        case "create_holding":
+        case "update_holding":
+        case "delete_holding":
+        case "set_security_price":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("renders each Holding as a card with the same key fields as the desktop row", async () => {
+    renderScreenAtMobile();
+
+    await screen.findByText("VTI");
+    const cards = document.querySelectorAll(".holdings-card");
+    expect(cards.length).toBe(2);
+
+    const firstCard = within(cards[0] as HTMLElement);
+    expect(firstCard.getByText("Brokerage")).toBeInTheDocument();
+    expect(firstCard.getByText("VTI")).toBeInTheDocument();
+    expect(firstCard.getByText("10")).toBeInTheDocument();
+    expect(firstCard.getByText("$2,500.00")).toBeInTheDocument();
+  });
+
+  it("Update price/Edit/Delete keep working identically in card view", async () => {
+    renderScreenAtMobile();
+    await screen.findByText("VTI");
+
+    const card = screen.getByText("VTI").closest(".holdings-card") as HTMLElement;
+    await userEvent.click(within(card).getByRole("button", { name: "Update price" }));
+
+    const priceFormRow = document.querySelector(".price-form-row") as HTMLElement;
+    await userEvent.type(within(priceFormRow).getByLabelText("Price for VTI"), "260");
+    await userEvent.click(within(priceFormRow).getByRole("button", { name: "Update price" }));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "set_security_price",
+        expect.objectContaining({ ticker: "VTI", price_cents: 26000 }),
+      ),
+    );
+
+    await userEvent.click(within(card).getByRole("button", { name: "Delete" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete Holding" }));
 
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_holding", { id: 1 }));

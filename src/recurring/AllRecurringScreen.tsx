@@ -5,6 +5,7 @@ import { Category } from "../categories/types";
 import { formatCents } from "../transactions/types";
 import { RecurringItemForm } from "./RecurringItemForm";
 import { FREQUENCY_LABELS, RecurringItemFields, RecurringItemWithAccount } from "./types";
+import { useBreakpoint } from "../ui/BreakpointProvider";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 
 // The all-Accounts Recurring screen (#52): every Recurring Item across every
@@ -23,6 +24,8 @@ export function AllRecurringScreen() {
   const [addAccountId, setAddAccountId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { confirm } = useConfirmation();
+  const tier = useBreakpoint();
+  const isMobile = tier === "mobile";
 
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
 
@@ -139,6 +142,50 @@ export function AllRecurringScreen() {
     );
   }
 
+  // Mobile tier (<768px, ADR-0018, issue #65): one card per Recurring Item
+  // instead of a grid row -- column headers don't apply to cards, so each
+  // field carries its own label. Same detect/confirm/edit/delete actions as
+  // the grid row, just arranged as a card.
+  function renderCard(item: RecurringItemWithAccount, actions: ReactNode) {
+    return (
+      <div className="recurring-card" key={item.id}>
+        <div className="recurring-card-field">
+          <span className="recurring-card-label">Account</span>
+          <span className="cell-account">{item.account_name}</span>
+        </div>
+        <div className="recurring-card-field">
+          <span className="recurring-card-label">Description</span>
+          <span className="cell-description">{item.description}</span>
+        </div>
+        <div className="recurring-card-field">
+          <span className="recurring-card-label">Amount</span>
+          <span className={`amount ${item.amount_cents < 0 ? "debit" : "credit"}`}>
+            {formatCents(item.amount_cents)}
+          </span>
+        </div>
+        <div className="recurring-card-field">
+          <span className="recurring-card-label">Frequency</span>
+          <span>{FREQUENCY_LABELS[item.frequency]}</span>
+        </div>
+        <div className="recurring-card-field">
+          <span className="recurring-card-label">Next expected</span>
+          <span>{item.next_expected_date}</span>
+        </div>
+        <div className="recurring-card-field">
+          <span className="recurring-card-label">Category</span>
+          <span className="cell-category">
+            {item.category_id != null ? categoryNameById.get(item.category_id) ?? "Uncategorized" : "Uncategorized"}
+          </span>
+        </div>
+        <div className="recurring-card-actions">{actions}</div>
+      </div>
+    );
+  }
+
+  function renderItem(item: RecurringItemWithAccount, actions: ReactNode) {
+    return isMobile ? renderCard(item, actions) : renderRow(item, actions);
+  }
+
   return (
     <section>
       <div className="content-header">
@@ -154,18 +201,20 @@ export function AllRecurringScreen() {
       {detected.length === 0 ? (
         <p className="empty-state">No newly-detected recurring patterns.</p>
       ) : (
-        <div className="recurring-list">
-          <div className="recurring-head">
-            <span>Account</span>
-            <span>Description</span>
-            <span>Amount</span>
-            <span>Frequency</span>
-            <span>Next expected</span>
-            <span>Category</span>
-            <span></span>
-          </div>
+        <div className={isMobile ? "recurring-list recurring-list--cards" : "recurring-list"}>
+          {!isMobile && (
+            <div className="recurring-head">
+              <span>Account</span>
+              <span>Description</span>
+              <span>Amount</span>
+              <span>Frequency</span>
+              <span>Next expected</span>
+              <span>Category</span>
+              <span></span>
+            </div>
+          )}
           {detected.map((item) =>
-            renderRow(
+            renderItem(
               item,
               <>
                 <button type="button" onClick={() => handleConfirm(item)}>
@@ -181,16 +230,18 @@ export function AllRecurringScreen() {
       )}
 
       <h3 className="recurring-section-title">Confirmed</h3>
-      <div className="recurring-list">
-        <div className="recurring-head">
-          <span>Account</span>
-          <span>Description</span>
-          <span>Amount</span>
-          <span>Frequency</span>
-          <span>Next expected</span>
-          <span>Category</span>
-          <span></span>
-        </div>
+      <div className={isMobile ? "recurring-list recurring-list--cards" : "recurring-list"}>
+        {!isMobile && (
+          <div className="recurring-head">
+            <span>Account</span>
+            <span>Description</span>
+            <span>Amount</span>
+            <span>Frequency</span>
+            <span>Next expected</span>
+            <span>Category</span>
+            <span></span>
+          </div>
+        )}
         {confirmed.map((item) =>
           editingId === item.id ? (
             <RecurringItemForm
@@ -201,7 +252,7 @@ export function AllRecurringScreen() {
               onCancel={() => setEditingId(null)}
             />
           ) : (
-            renderRow(
+            renderItem(
               item,
               <>
                 <button type="button" onClick={() => setEditingId(item.id)}>

@@ -4,6 +4,7 @@ import { Account } from "../accounts/types";
 import { HoldingForm } from "../holdings/HoldingForm";
 import { PriceForm } from "../holdings/PriceForm";
 import { formatCents, Holding, HoldingFields, HoldingWithAccount } from "../holdings/types";
+import { useBreakpoint } from "../ui/BreakpointProvider";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 
 // All-Accounts Investments screen (#53, part of the nav-rail IA restructuring
@@ -19,6 +20,8 @@ export function InvestmentsScreen() {
   const [pricingTicker, setPricingTicker] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { confirm } = useConfirmation();
+  const tier = useBreakpoint();
+  const isMobile = tier === "mobile";
 
   async function refresh() {
     try {
@@ -97,6 +100,93 @@ export function InvestmentsScreen() {
   const totalValueCents = holdings.reduce((sum, h) => sum + (h.value_cents ?? 0), 0);
   const hasUnpriced = holdings.some((h) => h.value_cents == null);
 
+  function renderRow(holding: HoldingWithAccount) {
+    return (
+      <div className="holdings-row" key={holding.id}>
+        <span className="cell-account">{holding.account_name}</span>
+        <span className="cell-ticker">{holding.ticker}</span>
+        <span>{holding.quantity}</span>
+        <span className="cell-price">
+          {holding.price_cents != null ? (
+            <>
+              {formatCents(holding.price_cents)}
+              <span className="price-as-of"> as of {holding.as_of_date}</span>
+            </>
+          ) : (
+            <span className="price-missing">No price yet</span>
+          )}
+        </span>
+        <span className="amount credit">
+          {holding.value_cents != null ? formatCents(holding.value_cents) : "—"}
+        </span>
+        <span className="row-actions">
+          <button type="button" onClick={() => setPricingTicker(holding.ticker)}>
+            Update price
+          </button>
+          <button type="button" onClick={() => setEditingId(holding.id)}>
+            Edit
+          </button>
+          <button type="button" onClick={() => handleDelete(holding)}>
+            Delete
+          </button>
+        </span>
+      </div>
+    );
+  }
+
+  // Mobile tier (<768px, ADR-0018, issue #65): one card per Holding instead
+  // of a grid row -- column headers don't apply to cards, so each field
+  // carries its own label. Same create/edit/delete/set-price actions as the
+  // grid row, just arranged as a card.
+  function renderCard(holding: HoldingWithAccount) {
+    return (
+      <div className="holdings-card" key={holding.id}>
+        <div className="holdings-card-field">
+          <span className="holdings-card-label">Account</span>
+          <span className="cell-account">{holding.account_name}</span>
+        </div>
+        <div className="holdings-card-field">
+          <span className="holdings-card-label">Ticker</span>
+          <span className="cell-ticker">{holding.ticker}</span>
+        </div>
+        <div className="holdings-card-field">
+          <span className="holdings-card-label">Quantity</span>
+          <span>{holding.quantity}</span>
+        </div>
+        <div className="holdings-card-field">
+          <span className="holdings-card-label">Price</span>
+          <span className="cell-price">
+            {holding.price_cents != null ? (
+              <>
+                {formatCents(holding.price_cents)}
+                <span className="price-as-of"> as of {holding.as_of_date}</span>
+              </>
+            ) : (
+              <span className="price-missing">No price yet</span>
+            )}
+          </span>
+        </div>
+        <div className="holdings-card-field">
+          <span className="holdings-card-label">Value</span>
+          <span className="amount credit">
+            {holding.value_cents != null ? formatCents(holding.value_cents) : "—"}
+          </span>
+        </div>
+        <div className="holdings-card-actions">
+          <button type="button" onClick={() => setPricingTicker(holding.ticker)}>
+            Update price
+          </button>
+          <button type="button" onClick={() => setEditingId(holding.id)}>
+            Edit
+          </button>
+          <button type="button" onClick={() => handleDelete(holding)}>
+            Delete
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <section>
       <div className="content-header">
@@ -120,15 +210,17 @@ export function InvestmentsScreen() {
           Add an investment Account to start tracking Holdings.
         </p>
       ) : (
-        <div className="holdings-list">
-          <div className="holdings-head">
-            <span>Account</span>
-            <span>Ticker</span>
-            <span>Quantity</span>
-            <span>Price</span>
-            <span>Value</span>
-            <span></span>
-          </div>
+        <div className={isMobile ? "holdings-list holdings-list--cards" : "holdings-list"}>
+          {!isMobile && (
+            <div className="holdings-head">
+              <span>Account</span>
+              <span>Ticker</span>
+              <span>Quantity</span>
+              <span>Price</span>
+              <span>Value</span>
+              <span></span>
+            </div>
+          )}
 
           {holdings.map((holding) =>
             editingId === holding.id ? (
@@ -138,36 +230,10 @@ export function InvestmentsScreen() {
                 onSubmit={(fields) => handleUpdate(holding.id, fields)}
                 onCancel={() => setEditingId(null)}
               />
+            ) : isMobile ? (
+              renderCard(holding)
             ) : (
-              <div className="holdings-row" key={holding.id}>
-                <span className="cell-account">{holding.account_name}</span>
-                <span className="cell-ticker">{holding.ticker}</span>
-                <span>{holding.quantity}</span>
-                <span className="cell-price">
-                  {holding.price_cents != null ? (
-                    <>
-                      {formatCents(holding.price_cents)}
-                      <span className="price-as-of"> as of {holding.as_of_date}</span>
-                    </>
-                  ) : (
-                    <span className="price-missing">No price yet</span>
-                  )}
-                </span>
-                <span className="amount credit">
-                  {holding.value_cents != null ? formatCents(holding.value_cents) : "—"}
-                </span>
-                <span className="row-actions">
-                  <button type="button" onClick={() => setPricingTicker(holding.ticker)}>
-                    Update price
-                  </button>
-                  <button type="button" onClick={() => setEditingId(holding.id)}>
-                    Edit
-                  </button>
-                  <button type="button" onClick={() => handleDelete(holding)}>
-                    Delete
-                  </button>
-                </span>
-              </div>
+              renderRow(holding)
             ),
           )}
 
