@@ -1,6 +1,9 @@
-// Pure row-selection helpers for the transactions grid's multi-row
-// selection + bulk Category assignment. Kept free of React so the selection
-// math is unit testable on its own.
+// Pure row-selection helpers for any list/grid-shaped view's multi-row
+// selection (e.g. for bulk actions). Kept free of React so the selection
+// math is unit testable on its own and reusable across screens (see
+// ADR-0020's "Grid keyboard navigation" section) -- currently consumed by
+// TransactionsGrid, and intended for future Accounts/Recurring/Goals/
+// Holdings/Categories/Rules grids.
 
 /** Toggles membership of `id` in `selected`, returning a new Set. */
 export function toggleRowSelection(selected: ReadonlySet<number>, id: number): Set<number> {
