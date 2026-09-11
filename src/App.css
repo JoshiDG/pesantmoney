@@ -1094,6 +1094,78 @@ body {
   font-size: 0.9rem;
 }
 
+/* SuggestionCombobox (#71) -- kept plain/functional; the Bloomberg-style
+   dark-theme visual pass for this tab is #74, done last. */
+.suggestion-combobox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: 100%;
+}
+
+.suggestion-combobox-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.suggestion-combobox-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  white-space: pre;
+  overflow: hidden;
+  font: inherit;
+  padding: 2px 4px;
+}
+
+.suggestion-ghost-typed {
+  visibility: hidden;
+}
+
+.suggestion-ghost-suffix {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.suggestion-combobox-input {
+  position: relative;
+  width: 100%;
+  background: transparent;
+  font: inherit;
+}
+
+.suggestion-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.05rem 0.3rem 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--paper-line);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.suggestion-chip-remove {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.bulk-tag-assign {
+  min-width: 180px;
+}
+
 .bulk-actions-bar {
   grid-column: 1 / -1;
   display: flex;

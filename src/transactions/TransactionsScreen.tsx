@@ -27,6 +27,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [tagsByTransactionId, setTagsByTransactionId] = useState<Record<number, Tag[]>>({});
+  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [balanceCents, setBalanceCents] = useState(0);
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +50,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
 
   async function refresh() {
     try {
-      const [transactionList, balance, categoryList, accountList, transferList, tagsByTransaction] =
+      const [transactionList, balance, categoryList, accountList, transferList, tagsByTransaction, tagList] =
         await Promise.all([
           invoke<Transaction[]>("list_visible_transactions", {
             account_id: account.id,
@@ -60,6 +61,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
           invoke<Account[]>("list_accounts"),
           invoke<Transfer[]>("list_transfers"),
           invoke<Record<number, Tag[]>>("list_tags_for_account", { account_id: account.id }),
+          invoke<Tag[]>("list_tags"),
         ]);
       setTransactions(transactionList);
       setBalanceCents(balance);
@@ -67,6 +69,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
       setAccounts(accountList);
       setTransfers(transferList);
       setTagsByTransactionId(tagsByTransaction);
+      setAllTags(tagList ?? []);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -193,6 +196,53 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
     }
   }
 
+  // Tag editing (#71): resolves a typed name to an existing Tag
+  // (case-insensitive, matching how Tags are compared elsewhere -- see
+  // `tags::get_or_create`) or creates one via `create_tag` (which is
+  // itself create-if-not-exists), then attaches it -- immediate and
+  // ungated, per #67's "Tags never route through" the create-new
+  // confirmation dialog.
+  async function resolveOrCreateTag(name: string): Promise<{ id: number }> {
+    const existing = allTags.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing;
+    return invoke<Tag>("create_tag", { name });
+  }
+
+  async function handleAddTag(transactionId: number, tagName: string) {
+    try {
+      const tag = await resolveOrCreateTag(tagName);
+      await invoke("attach_tag_to_transaction", { transaction_id: transactionId, tag_id: tag.id });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function handleRemoveTag(transactionId: number, tagId: number) {
+    try {
+      await invoke("detach_tag_from_transaction", { transaction_id: transactionId, tag_id: tagId });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  // Bulk tag assignment (#71): same create-if-needed-then-attach path as a
+  // single inline Tag add, applied to every selected Transaction.
+  async function handleBulkAssignTags(ids: number[], tagNames: string[]) {
+    try {
+      for (const tagName of tagNames) {
+        const tag = await resolveOrCreateTag(tagName);
+        await Promise.all(
+          ids.map((id) => invoke("attach_tag_to_transaction", { transaction_id: id, tag_id: tag.id })),
+        );
+      }
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   return (
     <section>
       <button type="button" className="back-link" onClick={onBack}>
@@ -268,6 +318,10 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
             onBulkAssignCategory={handleBulkAssignCategory}
             onDelete={handleDelete}
             onSetHidden={handleSetHidden}
+            tags={allTags}
+            onAddTag={handleAddTag}
+            onRemoveTag={handleRemoveTag}
+            onBulkAssignTags={handleBulkAssignTags}
           />
 
           <div className="ledger new-transaction-row">

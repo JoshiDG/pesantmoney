@@ -80,6 +80,8 @@ function mockInvokeDefaults() {
         return [];
       case "list_tags_for_account":
         return {};
+      case "list_tags":
+        return [{ id: 5, name: "Reimbursable" }];
       case "get_settings":
         return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
       case "update_transaction_column_visibility":
@@ -89,6 +91,12 @@ function mockInvokeDefaults() {
       case "update_transaction":
         return null;
       case "set_transaction_hidden":
+        return null;
+      case "create_tag":
+        return { id: 9, name: "NewTag" };
+      case "attach_tag_to_transaction":
+        return null;
+      case "detach_tag_from_transaction":
         return null;
       default:
         return null;
@@ -299,5 +307,123 @@ describe("AllTransactionsScreen Show hidden toggle (#70)", () => {
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("set_transaction_hidden", { id: 1, hidden: true }),
     );
+  });
+});
+
+describe("AllTransactionsScreen Tag editing wiring (#71)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockInvokeDefaults();
+  });
+
+  it("fetches list_tags and seeds the grid's Tags editor with it", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
+
+    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    expect(screen.getByLabelText("Tags for Coffee shop")).toBeInTheDocument();
+  });
+
+  it("adding an existing Tag name attaches it without creating a duplicate", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
+
+    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    const input = screen.getByLabelText("Tags for Coffee shop");
+    await userEvent.type(input, "Reimbursable");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("attach_tag_to_transaction", {
+        transaction_id: 1,
+        tag_id: 5,
+      }),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("create_tag", expect.anything());
+  });
+
+  it("adding a brand-new Tag name calls create_tag then attaches it, ungated", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
+
+    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    const input = screen.getByLabelText("Tags for Coffee shop");
+    await userEvent.type(input, "Brand New Tag");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("create_tag", { name: "Brand New Tag" }),
+    );
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("attach_tag_to_transaction", {
+        transaction_id: 1,
+        tag_id: 9,
+      }),
+    );
+  });
+
+  it("removing a chip calls detach_tag_from_transaction", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_all_transactions":
+          return allTransactions;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [checking, savings];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return { 1: [{ id: 5, name: "Reimbursable" }] };
+        case "list_tags":
+          return [{ id: 5, name: "Reimbursable" }];
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "detach_tag_from_transaction":
+          return null;
+        default:
+          return null;
+      }
+    });
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    await userEvent.click(screen.getByLabelText("Remove Reimbursable"));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("detach_tag_from_transaction", {
+        transaction_id: 1,
+        tag_id: 5,
+      }),
+    );
+  });
+
+  it("the bulk 'Add tag to selection' control attaches the tag to every selected transaction", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
+
+    fireEvent.click(screen.getByLabelText("Select Coffee shop"));
+    fireEvent.click(screen.getByLabelText("Select Interest"));
+
+    const bulkInput = screen.getByLabelText("Add tag to selection");
+    await userEvent.type(bulkInput, "Reimbursable");
+    fireEvent.keyDown(bulkInput, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("attach_tag_to_transaction", {
+        transaction_id: 1,
+        tag_id: 5,
+      }),
+    );
+    expect(mockedInvoke).toHaveBeenCalledWith("attach_tag_to_transaction", {
+      transaction_id: 2,
+      tag_id: 5,
+    });
   });
 });

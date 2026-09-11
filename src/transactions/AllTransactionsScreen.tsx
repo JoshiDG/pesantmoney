@@ -33,6 +33,7 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [tagsByTransactionId, setTagsByTransactionId] = useState<Record<number, Tag[]>>({});
+  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [accountFilter, setAccountFilter] = useState<number | null>(initialAccountId);
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +79,9 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
         ),
       );
       setTagsByTransactionId(Object.assign({}, ...tagMaps));
+
+      const tagList = await invoke<Tag[]>("list_tags");
+      setAllTags(tagList ?? []);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -192,6 +196,47 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
     }
   }
 
+  // Tag editing (#71) -- same create-if-needed-then-attach approach as
+  // TransactionsScreen, since Tags aren't scoped to a single Account.
+  async function resolveOrCreateTag(name: string): Promise<{ id: number }> {
+    const existing = allTags.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing;
+    return invoke<Tag>("create_tag", { name });
+  }
+
+  async function handleAddTag(transactionId: number, tagName: string) {
+    try {
+      const tag = await resolveOrCreateTag(tagName);
+      await invoke("attach_tag_to_transaction", { transaction_id: transactionId, tag_id: tag.id });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function handleRemoveTag(transactionId: number, tagId: number) {
+    try {
+      await invoke("detach_tag_from_transaction", { transaction_id: transactionId, tag_id: tagId });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function handleBulkAssignTags(ids: number[], tagNames: string[]) {
+    try {
+      for (const tagName of tagNames) {
+        const tag = await resolveOrCreateTag(tagName);
+        await Promise.all(
+          ids.map((id) => invoke("attach_tag_to_transaction", { transaction_id: id, tag_id: tag.id })),
+        );
+      }
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   const linkedTransactionIds = new Set(
     transfers.flatMap((transfer) => [transfer.from_transaction_id, transfer.to_transaction_id]),
   );
@@ -262,6 +307,10 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
           onBulkAssignCategory={handleBulkAssignCategory}
           onDelete={handleDelete}
           onSetHidden={handleSetHidden}
+          tags={allTags}
+          onAddTag={handleAddTag}
+          onRemoveTag={handleRemoveTag}
+          onBulkAssignTags={handleBulkAssignTags}
         />
       </div>
     </section>

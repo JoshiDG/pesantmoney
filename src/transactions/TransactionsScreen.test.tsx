@@ -192,6 +192,95 @@ describe("TransactionsScreen Show hidden toggle (#70)", () => {
   });
 });
 
+describe("TransactionsScreen Tag editing wiring (#71)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_visible_transactions":
+          return [
+            { id: 1, account_id: 1, date: "2026-09-01", amount_cents: -1250, description: "Coffee shop", category_id: null, hidden: false, merchant_name: null },
+          ];
+        case "account_balance_cents":
+          return -1250;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [account];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "list_tags":
+          return [{ id: 5, name: "Reimbursable" }];
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "update_transaction_column_visibility":
+          return null;
+        case "create_tag":
+          return { id: 9, name: "NewTag" };
+        case "attach_tag_to_transaction":
+          return null;
+        case "detach_tag_from_transaction":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("fetches list_tags and seeds the grid's Tags editor", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
+
+    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    expect(screen.getByLabelText("Tags for Coffee shop")).toBeInTheDocument();
+  });
+
+  it("adding a known Tag name attaches it without calling create_tag", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
+
+    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    const input = screen.getByLabelText("Tags for Coffee shop");
+    await userEvent.type(input, "Reimbursable");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("attach_tag_to_transaction", {
+        transaction_id: 1,
+        tag_id: 5,
+      }),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("create_tag", expect.anything());
+  });
+
+  it("adding an unmatched Tag name calls create_tag then attaches, ungated (no confirmation)", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
+
+    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    const input = screen.getByLabelText("Tags for Coffee shop");
+    await userEvent.type(input, "Brand New Tag");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("create_tag", { name: "Brand New Tag" }),
+    );
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("attach_tag_to_transaction", {
+        transaction_id: 1,
+        tag_id: 9,
+      }),
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
 describe("TransactionsScreen CSV export", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();

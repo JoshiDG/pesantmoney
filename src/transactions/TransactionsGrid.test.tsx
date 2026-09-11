@@ -59,6 +59,10 @@ function renderGrid(
     onBulkAssignCategory: vi.fn(),
     onDelete: vi.fn(),
     onSetHidden: vi.fn(),
+    tags: [],
+    onAddTag: vi.fn(),
+    onRemoveTag: vi.fn(),
+    onBulkAssignTags: vi.fn(),
     ...overrides,
   };
   render(<TransactionsGrid {...props} />, { wrapper: withBreakpoint(tier) });
@@ -274,6 +278,79 @@ describe("TransactionsGrid Tags column", () => {
 
     const paycheckRow = memoCell("Paycheck").closest(".ledger-row") as HTMLElement;
     expect(paycheckRow.querySelector(".tag-chip")).toBeNull();
+  });
+});
+
+// Shallow integration checks only (#67/#71 Testing Decisions): full
+// ghost-text/commit-key/chip behavior is covered in
+// SuggestionCombobox.test.tsx, not duplicated here.
+describe("TransactionsGrid Tags editing (#71)", () => {
+  it("clicking the Tags cell renders a SuggestionCombobox seeded with the known Tags list and current chips", () => {
+    renderGrid({
+      tags: [
+        { id: 5, name: "Reimbursable" },
+        { id: 6, name: "Trip" },
+      ],
+      tagsByTransactionId: { 1: [{ id: 5, name: "Reimbursable" }] },
+    });
+
+    const cell = document.querySelector(".cell-tags") as HTMLElement;
+    fireEvent.click(cell);
+
+    const input = screen.getByLabelText("Tags for Coffee shop");
+    expect(input).toBeInTheDocument();
+    expect(within(cell).getByText("Reimbursable", { selector: ".suggestion-chip" })).toBeInTheDocument();
+  });
+
+  it("committing a new tag name via the combobox calls onAddTag with the transaction id and typed name", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid({ tags: [{ id: 6, name: "Trip" }], onAddTag: vi.fn() });
+
+    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    const input = screen.getByLabelText("Tags for Coffee shop");
+    await user.type(input, "Trip");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(props.onAddTag).toHaveBeenCalledWith(1, "Trip");
+  });
+
+  it("removing a chip via the combobox calls onRemoveTag with the transaction id and tag id", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid({
+      tags: [{ id: 5, name: "Reimbursable" }],
+      tagsByTransactionId: { 1: [{ id: 5, name: "Reimbursable" }] },
+      onRemoveTag: vi.fn(),
+    });
+
+    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    await user.click(screen.getByLabelText("Remove Reimbursable"));
+
+    expect(props.onRemoveTag).toHaveBeenCalledWith(1, 5);
+  });
+});
+
+describe("TransactionsGrid bulk tag assignment (#71)", () => {
+  it("renders an 'Add tag to selection' control in the bulk-actions bar when rows are selected", () => {
+    renderGrid({ tags: [{ id: 6, name: "Trip" }] });
+
+    fireEvent.click(screen.getByLabelText("Select Coffee shop"));
+    fireEvent.click(screen.getByLabelText("Select Paycheck"));
+
+    expect(screen.getByLabelText("Add tag to selection")).toBeInTheDocument();
+  });
+
+  it("committing a tag in the bulk control fires onBulkAssignTags for every selected id", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid({ tags: [{ id: 6, name: "Trip" }], onBulkAssignTags: vi.fn() });
+
+    fireEvent.click(screen.getByLabelText("Select Coffee shop"));
+    fireEvent.click(screen.getByLabelText("Select Paycheck"));
+
+    const input = screen.getByLabelText("Add tag to selection");
+    await user.type(input, "Trip");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(props.onBulkAssignTags).toHaveBeenCalledWith([1, 2], ["Trip"]);
   });
 });
 

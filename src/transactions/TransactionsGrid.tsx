@@ -16,6 +16,7 @@ import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
 import { COLUMN_SET, CellPos, ColumnKey, EDITABLE_COLUMNS, nextCellForKey } from "./grid-nav";
 import { selectRowRange, toggleRowSelection } from "./selection";
+import { SuggestionCombobox } from "../ui/SuggestionCombobox";
 import {
   ColumnVisibility,
   centsToDollarInput,
@@ -92,6 +93,20 @@ interface TransactionsGridProps {
   // `set_transaction_hidden` and refresh -- the grid itself is unaware of
   // the persistence mechanism, same as onDelete/onUpdate.
   onSetHidden: (transaction: Transaction, hidden: boolean) => void;
+  // Tag editing (#71): `tags` is the full known-Tag-names list (from
+  // `list_tags`), seeding the SuggestionCombobox's `knownValues` for both
+  // the per-row Tags cell editor and the bulk-actions "Add tag to
+  // selection" control. `onAddTag`/`onRemoveTag`/`onBulkAssignTags` are
+  // caller-supplied, same as onUpdate/onSetHidden -- the grid never calls
+  // `invoke` itself. Whether the tag name already exists or needs
+  // `create_tag`-ing first is entirely the screen layer's call: the grid
+  // fires the same callback for both a matched known Tag and a brand-new
+  // one, since Tags are ungated (immediate create, no confirmation dialog
+  // -- see #67's Implementation Decisions).
+  tags?: Tag[];
+  onAddTag?: (transactionId: number, tagName: string) => void;
+  onRemoveTag?: (transactionId: number, tagId: number) => void;
+  onBulkAssignTags?: (ids: number[], tagNames: string[]) => void;
 }
 
 // Only these four columns are backed by EDITABLE_COLUMNS (see grid-nav.ts);
@@ -130,7 +145,12 @@ export function TransactionsGrid({
   onBulkAssignCategory,
   onDelete,
   onSetHidden,
+  tags = [],
+  onAddTag,
+  onRemoveTag,
+  onBulkAssignTags,
 }: TransactionsGridProps) {
+  const knownTagNames = useMemo(() => tags.map((tag) => tag.name), [tags]);
   const categoryNameById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
@@ -154,6 +174,13 @@ export function TransactionsGrid({
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; transaction: Transaction } | null>(
     null,
   );
+  // Tags cell editing (#71): a NEW interaction, deliberately kept outside
+  // the col-index-based focus/edit scheme in grid-nav.ts (EDITABLE_COLUMNS
+  // stays exactly ["date","memo","category","amount"] -- adding a fifth
+  // entry there would shift every existing keyboard-nav test's col index).
+  // Tracked by transaction id since Tags editing isn't part of a
+  // fixed-column-index row.
+  const [editingTagsId, setEditingTagsId] = useState<number | null>(null);
 
   const editingRef = useRef<CellPos | null>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -485,10 +512,48 @@ export function TransactionsGrid({
         );
       }
       case "tags": {
-        const tags = tagsByTransactionId[transaction.id] ?? [];
+        const attachedTags = tagsByTransactionId[transaction.id] ?? [];
+        if (editingTagsId === transaction.id) {
+          return (
+            <div
+              className="grid-cell cell-tags cell-tags-editing"
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setEditingTagsId(null);
+                }
+              }}
+            >
+              <SuggestionCombobox
+                mode="multi"
+                knownValues={knownTagNames}
+                values={attachedTags.map((tag) => tag.name)}
+                ariaLabel={`Tags for ${transaction.description}`}
+                onCommit={(name) => onAddTag?.(transaction.id, name)}
+                onCreateNew={(name) => onAddTag?.(transaction.id, name)}
+                onRemove={(name) => {
+                  const tag = attachedTags.find((t) => t.name === name);
+                  if (tag) onRemoveTag?.(transaction.id, tag.id);
+                }}
+                onCancel={() => setEditingTagsId(null)}
+                autoFocus
+              />
+            </div>
+          );
+        }
         return (
-          <div className="grid-cell cell-tags">
-            {tags.map((tag) => (
+          <div
+            className="grid-cell cell-tags"
+            tabIndex={0}
+            role="button"
+            onClick={() => setEditingTagsId(transaction.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "F2") {
+                e.preventDefault();
+                setEditingTagsId(transaction.id);
+              }
+            }}
+          >
+            {attachedTags.map((tag) => (
               <span key={tag.id} className="tag-chip">
                 {tag.name}
               </span>
@@ -824,6 +889,19 @@ export function TransactionsGrid({
               </option>
             ))}
           </select>
+          <div className="bulk-tag-assign">
+            <SuggestionCombobox
+              mode="multi"
+              knownValues={knownTagNames}
+              values={[]}
+              ariaLabel="Add tag to selection"
+              placeholder="Add tag to selection…"
+              autoFocus={false}
+              onCommit={(name) => onBulkAssignTags?.(Array.from(selected), [name])}
+              onCreateNew={(name) => onBulkAssignTags?.(Array.from(selected), [name])}
+              onCancel={() => {}}
+            />
+          </div>
           <button
             type="button"
             onClick={() => {
