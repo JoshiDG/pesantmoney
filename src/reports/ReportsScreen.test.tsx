@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { currentMonth } from "../budget/types";
 import { ReportsScreen } from "./ReportsScreen";
-import { MonthlyCashFlow } from "./types";
+import { CategorySpending, MonthlyCashFlow } from "./types";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -20,6 +20,14 @@ function monthlyCashFlow(
   return { month, income_cents, expense_cents, net_cents: income_cents - expense_cents };
 }
 
+function categorySpending(
+  category_id: number | null,
+  category_name: string,
+  amount_cents: number,
+): CategorySpending {
+  return { category_id, category_name, amount_cents };
+}
+
 /** Scopes queries to the Cash Flow tab's income/expense/net summary, since
  * "Income"/"Expenses" also appear as tab and chart-legend labels, which
  * would otherwise make plain `screen.getByText` ambiguous. */
@@ -33,6 +41,7 @@ describe("ReportsScreen tab strip", () => {
     mockedInvoke.mockImplementation(async (cmd: string) => {
       switch (cmd) {
         case "get_monthly_cash_flow_for_range":
+        case "get_spending_by_category_for_range":
           return [];
         default:
           return null;
@@ -49,14 +58,16 @@ describe("ReportsScreen tab strip", () => {
     expect(screen.getByRole("tab", { name: "Income" })).toHaveAttribute("aria-selected", "false");
   });
 
-  it("switches tabs on click, showing stubbed content for Spending and Income", async () => {
+  it("switches tabs on click, showing the Spending breakdown and stubbed Income content", async () => {
     render(<ReportsScreen />);
 
     await screen.findByRole("tab", { name: "Cash Flow" });
 
     await userEvent.click(screen.getByRole("tab", { name: "Spending" }));
     expect(screen.getByRole("tab", { name: "Spending" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("Spending by Category is coming soon.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("No spending in the selected range."),
+    ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("tab", { name: "Income" }));
     expect(screen.getByRole("tab", { name: "Income" })).toHaveAttribute("aria-selected", "true");
@@ -139,5 +150,89 @@ describe("ReportsScreen Cash Flow tab", () => {
 
     const zeroAmounts = await screen.findAllByText("$0.00");
     expect(zeroAmounts.length).toBeGreaterThan(0);
+  });
+});
+
+describe("ReportsScreen Spending tab", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+  });
+
+  async function openSpendingTab() {
+    render(<ReportsScreen />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Spending" }));
+  }
+
+  it("renders per-Category expense totals from mocked data, including an Uncategorized bucket", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_spending_by_category_for_range":
+          return [
+            categorySpending(1, "Groceries", 5_000_00),
+            categorySpending(null, "Uncategorized", 1_500_00),
+          ];
+        case "get_monthly_cash_flow_for_range":
+          return [];
+        default:
+          return null;
+      }
+    });
+
+    await openSpendingTab();
+
+    expect(await screen.findByText("Groceries")).toBeInTheDocument();
+    expect(screen.getByText("-$5,000.00")).toBeInTheDocument();
+    expect(screen.getByText("Uncategorized")).toBeInTheDocument();
+    expect(screen.getByText("-$1,500.00")).toBeInTheDocument();
+    expect(screen.getByText("-$6,500.00")).toBeInTheDocument();
+  });
+
+  it("respects the date-range control, re-fetching and re-rendering totals", async () => {
+    const month = currentMonth();
+    mockedInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      switch (cmd) {
+        case "get_spending_by_category_for_range": {
+          const startMonth = (args as { start_month?: string } | undefined)?.start_month;
+          if (startMonth === month) {
+            // "This month" (range = 1).
+            return [categorySpending(1, "Groceries", 1_000_00)];
+          }
+          // Wider ranges (the default range = 3).
+          return [categorySpending(1, "Groceries", 4_000_00)];
+        }
+        case "get_monthly_cash_flow_for_range":
+          return [];
+        default:
+          return null;
+      }
+    });
+
+    await openSpendingTab();
+
+    expect((await screen.findAllByText("-$4,000.00")).length).toBeGreaterThan(0);
+
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Spending date range" }),
+      "1",
+    );
+
+    expect((await screen.findAllByText("-$1,000.00")).length).toBeGreaterThan(0);
+  });
+
+  it("shows a well-defined empty state for a range with no spending", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "get_spending_by_category_for_range":
+          return [];
+        case "get_monthly_cash_flow_for_range":
+          return [];
+        default:
+          return null;
+      }
+    });
+
+    await openSpendingTab();
+
+    expect(await screen.findByText("No spending in the selected range.")).toBeInTheDocument();
   });
 });
