@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { EDITABLE_COLUMNS, nextCellForKey } from "./grid-nav";
+import { isTextInputTarget, nextCellForKey } from "./grid-nav";
 
 describe("nextCellForKey", () => {
   const rowCount = 3;
-  const colCount = EDITABLE_COLUMNS.length; // date, memo, category, amount = 4
+  // 4 columns, matching the editable-column count TransactionsGrid uses
+  // (date, memo, category, amount) -- kept as a plain literal here since
+  // this module has no knowledge of any particular screen's columns.
+  const colCount = 4;
 
   it("moves down on ArrowDown, clamped at the last row", () => {
     expect(nextCellForKey({ row: 0, col: 1 }, "ArrowDown", rowCount, colCount)).toEqual({
@@ -117,5 +120,25 @@ describe("nextCellForKey", () => {
       col: 0,
     });
     expect(nextCellForKey({ row: 0, col: 3 }, "Tab", 1, colCount)).toEqual({ row: 0, col: 3 });
+  });
+});
+
+describe("isTextInputTarget", () => {
+  it("returns false for null/non-element targets", () => {
+    expect(isTextInputTarget(null)).toBe(false);
+  });
+
+  it("returns false for a plain element like a div", () => {
+    expect(isTextInputTarget(document.createElement("div"))).toBe(false);
+  });
+
+  it.each(["input", "textarea", "select"])("returns true for a %s element", (tagName) => {
+    expect(isTextInputTarget(document.createElement(tagName))).toBe(true);
+  });
+
+  it("returns true for a contenteditable element", () => {
+    const el = document.createElement("div");
+    el.setAttribute("contenteditable", "true");
+    expect(isTextInputTarget(el)).toBe(true);
   });
 });
