@@ -16,8 +16,9 @@ import { ConfirmCreateDialog } from "../ui/ConfirmCreateDialog";
 import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
-import { COLUMN_SET, CellPos, ColumnKey, EDITABLE_COLUMNS, nextCellForKey } from "./grid-nav";
-import { selectRowRange, toggleRowSelection } from "./selection";
+import { CellPos, nextCellForKey } from "../ui/grid-nav";
+import { selectRowRange, toggleRowSelection } from "../ui/selection";
+import { COLUMN_SET, ColumnKey, EDITABLE_COLUMNS } from "./grid-nav";
 import { SuggestionCombobox } from "../ui/SuggestionCombobox";
 import {
   ColumnVisibility,
