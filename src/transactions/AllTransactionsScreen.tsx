@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
+import { Merchant } from "../merchants/types";
 import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
 import { TransactionsGrid } from "./TransactionsGrid";
@@ -34,6 +35,7 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [tagsByTransactionId, setTagsByTransactionId] = useState<Record<number, Tag[]>>({});
   const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [allMerchants, setAllMerchants] = useState<Merchant[]>([]);
   const [accountFilter, setAccountFilter] = useState<number | null>(initialAccountId);
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +84,9 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
 
       const tagList = await invoke<Tag[]>("list_tags");
       setAllTags(tagList ?? []);
+
+      const merchantList = await invoke<Merchant[]>("list_merchants");
+      setAllMerchants(merchantList ?? []);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -237,6 +242,29 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
     }
   }
 
+  // Payee editing (#72, ADR-0019): same approach as TransactionsScreen --
+  // `set_transaction_merchant_name` for a single-Transaction Payee set, plus
+  // `create_merchant` (keyed on the transaction's full raw description
+  // verbatim) on confirmed dictionary-add, before the same Payee set. Not
+  // scoped to a single Account, so it needs no account_id.
+  async function handleSetPayee(transactionId: number, payeeName: string) {
+    try {
+      await invoke("set_transaction_merchant_name", { id: transactionId, merchant_name: payeeName });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function handleCreateMerchant(transactionId: number, description: string, payeeName: string) {
+    try {
+      await invoke("create_merchant", { keyword: description, merchant_name: payeeName });
+    } catch (err) {
+      setError(String(err));
+    }
+    await handleSetPayee(transactionId, payeeName);
+  }
+
   const linkedTransactionIds = new Set(
     transfers.flatMap((transfer) => [transfer.from_transaction_id, transfer.to_transaction_id]),
   );
@@ -311,6 +339,9 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
           onAddTag={handleAddTag}
           onRemoveTag={handleRemoveTag}
           onBulkAssignTags={handleBulkAssignTags}
+          merchants={allMerchants}
+          onSetPayee={handleSetPayee}
+          onCreateMerchant={handleCreateMerchant}
         />
       </div>
     </section>

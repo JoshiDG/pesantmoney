@@ -82,6 +82,8 @@ function mockInvokeDefaults() {
         return {};
       case "list_tags":
         return [{ id: 5, name: "Reimbursable" }];
+      case "list_merchants":
+        return [];
       case "get_settings":
         return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
       case "update_transaction_column_visibility":
@@ -92,6 +94,10 @@ function mockInvokeDefaults() {
         return null;
       case "set_transaction_hidden":
         return null;
+      case "set_transaction_merchant_name":
+        return null;
+      case "create_merchant":
+        return { id: 9, keyword: "Coffee shop", merchant_name: "New Merchant" };
       case "create_tag":
         return { id: 9, name: "NewTag" };
       case "attach_tag_to_transaction":
@@ -425,5 +431,115 @@ describe("AllTransactionsScreen Tag editing wiring (#71)", () => {
       transaction_id: 2,
       tag_id: 5,
     });
+  });
+});
+
+describe("AllTransactionsScreen Payee editing wiring (#72)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_all_transactions":
+          return allTransactions;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [checking, savings];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "list_tags":
+          return [];
+        case "list_merchants":
+          return [{ id: 3, keyword: "Interest", merchant_name: "Bank Interest" }];
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "update_transaction_column_visibility":
+          return null;
+        case "set_transaction_merchant_name":
+          return null;
+        case "create_merchant":
+          return { id: 9, keyword: "Coffee shop", merchant_name: "Neighborhood Cafe" };
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("fetches list_merchants and seeds the grid's Payee editor with it", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
+
+    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    expect(screen.getByLabelText("Payee for Coffee shop")).toBeInTheDocument();
+  });
+
+  it("committing a value matching a known Merchant calls set_transaction_merchant_name only", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
+
+    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    const input = screen.getByLabelText("Payee for Coffee shop");
+    await userEvent.type(input, "Bank Interest");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("set_transaction_merchant_name", {
+        id: 1,
+        merchant_name: "Bank Interest",
+      }),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("create_merchant", expect.anything());
+  });
+
+  it("confirming an unmatched value calls create_merchant keyed on the full raw description, then sets the Payee", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
+
+    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    const input = screen.getByLabelText("Payee for Coffee shop");
+    await userEvent.type(input, "Neighborhood Cafe");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Yes" }));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("create_merchant", {
+        keyword: "Coffee shop",
+        merchant_name: "Neighborhood Cafe",
+      }),
+    );
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("set_transaction_merchant_name", {
+        id: 1,
+        merchant_name: "Neighborhood Cafe",
+      }),
+    );
+  });
+
+  it("declining an unmatched value sets the Payee without calling create_merchant", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
+
+    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    const input = screen.getByLabelText("Payee for Coffee shop");
+    await userEvent.type(input, "Neighborhood Cafe");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await userEvent.click(screen.getByRole("button", { name: "No" }));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("set_transaction_merchant_name", {
+        id: 1,
+        merchant_name: "Neighborhood Cafe",
+      }),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("create_merchant", expect.anything());
   });
 });

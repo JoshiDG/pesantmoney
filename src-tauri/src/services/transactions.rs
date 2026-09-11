@@ -782,6 +782,32 @@ mod tests {
         assert_eq!(updated.description, "WHOLEFDS #4521");
     }
 
+    // Grid-editable Payee (#72, ADR-0019): a Payee edit sets `merchant_name`
+    // on exactly the one Transaction being edited, even when another
+    // Transaction shares the identical raw `description` -- the edit must
+    // never retroactively rename anything else. Only the explicit, separate
+    // "add to Merchant dictionary" confirmation path (services::merchants,
+    // applied at a future Import) is allowed to affect other Transactions,
+    // and even then only future ones, not existing rows like this second
+    // Transaction.
+    #[test]
+    fn set_merchant_name_does_not_affect_other_transactions_with_identical_description() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let account_id = create_test_account(&conn);
+        let first = create(&conn, account_id, "2026-08-01", -1_250, "SQ *BLUE BOTTLE COF", None)
+            .expect("create first transaction");
+        let second = create(&conn, account_id, "2026-08-02", -1_400, "SQ *BLUE BOTTLE COF", None)
+            .expect("create second transaction with identical description");
+
+        set_merchant_name(&conn, first.id, Some("Blue Bottle Coffee")).expect("set merchant name");
+
+        let first_after = get(&conn, first.id).unwrap().unwrap();
+        let second_after = get(&conn, second.id).unwrap().unwrap();
+        assert_eq!(first_after.merchant_name, Some("Blue Bottle Coffee".to_string()));
+        assert_eq!(second_after.merchant_name, None);
+        assert_eq!(second_after.description, "SQ *BLUE BOTTLE COF");
+    }
+
     #[test]
     fn income_expense_totals_can_scope_to_a_single_account() {
         let conn = db::open_in_memory().expect("open in-memory test database");

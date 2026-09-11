@@ -784,6 +784,25 @@ pub fn delete_merchant(state: tauri::State<AppState>, id: i64) -> CommandResult<
     merchants::delete(&conn, id).map_err(to_command_error)
 }
 
+/// Grid-editable Payee (#72, ADR-0019): a new, on-demand, single-Transaction
+/// writer to `merchant_name`, alongside (not replacing) the existing
+/// import-time-only writers -- Merchant-dictionary match and Categorization
+/// Rule rename (ADR-0011/ADR-0012). Kept as its own command rather than
+/// folded into `update_transaction` so that command's existing callers
+/// (date/amount/description/category edits) are unaffected by this new
+/// field -- they don't need to start passing a `merchant_name` they have no
+/// opinion about. `merchant_name: None` clears the Payee override, falling
+/// back to `description` per the Payee glossary entry.
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_transaction_merchant_name(
+    state: tauri::State<AppState>,
+    id: i64,
+    merchant_name: Option<String>,
+) -> CommandResult<Transaction> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    transactions::set_merchant_name(&conn, id, merchant_name.as_deref()).map_err(to_command_error)
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub fn set_transaction_hidden(
     state: tauri::State<AppState>,

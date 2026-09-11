@@ -9,8 +9,10 @@ import {
 } from "react";
 import { Account } from "../accounts/types";
 import { Category } from "../categories/types";
+import { Merchant } from "../merchants/types";
 import { Tag } from "../tags/types";
 import { useBreakpoint } from "../ui/BreakpointProvider";
+import { ConfirmCreateDialog } from "../ui/ConfirmCreateDialog";
 import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
@@ -107,6 +109,18 @@ interface TransactionsGridProps {
   onAddTag?: (transactionId: number, tagName: string) => void;
   onRemoveTag?: (transactionId: number, tagId: number) => void;
   onBulkAssignTags?: (ids: number[], tagNames: string[]) => void;
+  // Payee editing (#72, ADR-0019): `merchants` is the full Merchant
+  // dictionary (from `list_merchants`), seeding the SuggestionCombobox's
+  // `knownValues` the same way `tags` seeds the Tags editor. Committing a
+  // value matching a known Merchant name fires `onSetPayee` directly; an
+  // unmatched value opens a confirm dialog (owned by this component, not the
+  // screen) before firing either `onCreateMerchant` (Yes: dictionary entry +
+  // Payee set) or `onSetPayee` (No: Payee set only) -- see #67's "Create-new
+  // flow" Implementation Decision. The grid never calls `invoke` itself;
+  // screens own the persistence, same as onAddTag/onSetHidden.
+  merchants?: Merchant[];
+  onSetPayee?: (transactionId: number, payeeName: string) => void;
+  onCreateMerchant?: (transactionId: number, description: string, payeeName: string) => void;
 }
 
 // Only these four columns are backed by EDITABLE_COLUMNS (see grid-nav.ts);
@@ -149,8 +163,15 @@ export function TransactionsGrid({
   onAddTag,
   onRemoveTag,
   onBulkAssignTags,
+  merchants = [],
+  onSetPayee,
+  onCreateMerchant,
 }: TransactionsGridProps) {
   const knownTagNames = useMemo(() => tags.map((tag) => tag.name), [tags]);
+  const knownMerchantNames = useMemo(
+    () => merchants.map((merchant) => merchant.merchant_name),
+    [merchants],
+  );
   const categoryNameById = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
@@ -181,6 +202,17 @@ export function TransactionsGrid({
   // Tracked by transaction id since Tags editing isn't part of a
   // fixed-column-index row.
   const [editingTagsId, setEditingTagsId] = useState<number | null>(null);
+  // Payee cell editing (#72): same "outside the fixed-column-index scheme"
+  // approach as editingTagsId above -- tracked by transaction id, not a
+  // EDITABLE_COLUMNS col index. `payeeConfirm` holds the pending unmatched
+  // value while the create-new confirmation dialog (ADR-0019) is open; it's
+  // cleared as soon as the user answers Yes or No.
+  const [editingPayeeId, setEditingPayeeId] = useState<number | null>(null);
+  const [payeeConfirm, setPayeeConfirm] = useState<{
+    transactionId: number;
+    description: string;
+    name: string;
+  } | null>(null);
 
   const editingRef = useRef<CellPos | null>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -500,8 +532,53 @@ export function TransactionsGrid({
       }
       case "payee": {
         const payee = transaction.merchant_name || transaction.description;
+        if (editingPayeeId === transaction.id) {
+          return (
+            <div
+              className="grid-cell cell-payee cell-payee-editing"
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setEditingPayeeId(null);
+                }
+              }}
+            >
+              <SuggestionCombobox
+                mode="single"
+                knownValues={knownMerchantNames}
+                values={transaction.merchant_name ? [transaction.merchant_name] : []}
+                ariaLabel={`Payee for ${transaction.description}`}
+                onCommit={(name) => {
+                  onSetPayee?.(transaction.id, name);
+                  setEditingPayeeId(null);
+                }}
+                onCreateNew={(name) => {
+                  setPayeeConfirm({
+                    transactionId: transaction.id,
+                    description: transaction.description,
+                    name,
+                  });
+                  setEditingPayeeId(null);
+                }}
+                onCancel={() => setEditingPayeeId(null)}
+                onAdvance={() => setEditingPayeeId(null)}
+                autoFocus
+              />
+            </div>
+          );
+        }
         return (
-          <div className="grid-cell cell-payee">
+          <div
+            className="grid-cell cell-payee"
+            tabIndex={0}
+            role="button"
+            onClick={() => setEditingPayeeId(transaction.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "F2") {
+                e.preventDefault();
+                setEditingPayeeId(transaction.id);
+              }
+            }}
+          >
             {linkedTransactionIds.has(transaction.id) && (
               <span className="transfer-badge" title="Part of a transfer">
                 ⇄
@@ -872,6 +949,21 @@ export function TransactionsGrid({
           y={rowMenu.y}
           items={rowMenuItems(rowMenu.transaction)}
           onClose={() => setRowMenu(null)}
+        />
+      )}
+
+      {payeeConfirm && (
+        <ConfirmCreateDialog
+          title="Add to Merchant dictionary?"
+          message={`Add "${payeeConfirm.name}" to your Merchant dictionary for future imports?`}
+          onConfirm={() => {
+            onCreateMerchant?.(payeeConfirm.transactionId, payeeConfirm.description, payeeConfirm.name);
+            setPayeeConfirm(null);
+          }}
+          onCancel={() => {
+            onSetPayee?.(payeeConfirm.transactionId, payeeConfirm.name);
+            setPayeeConfirm(null);
+          }}
         />
       )}
 

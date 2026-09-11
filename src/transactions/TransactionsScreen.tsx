@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account, ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { Category } from "../categories/types";
+import { Merchant } from "../merchants/types";
 import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
 import { TransactionForm } from "./TransactionForm";
@@ -28,6 +29,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [tagsByTransactionId, setTagsByTransactionId] = useState<Record<number, Tag[]>>({});
   const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [allMerchants, setAllMerchants] = useState<Merchant[]>([]);
   const [balanceCents, setBalanceCents] = useState(0);
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,19 +52,28 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
 
   async function refresh() {
     try {
-      const [transactionList, balance, categoryList, accountList, transferList, tagsByTransaction, tagList] =
-        await Promise.all([
-          invoke<Transaction[]>("list_visible_transactions", {
-            account_id: account.id,
-            include_hidden: showHidden,
-          }),
-          invoke<number>("account_balance_cents", { account_id: account.id }),
-          invoke<Category[]>("list_categories"),
-          invoke<Account[]>("list_accounts"),
-          invoke<Transfer[]>("list_transfers"),
-          invoke<Record<number, Tag[]>>("list_tags_for_account", { account_id: account.id }),
-          invoke<Tag[]>("list_tags"),
-        ]);
+      const [
+        transactionList,
+        balance,
+        categoryList,
+        accountList,
+        transferList,
+        tagsByTransaction,
+        tagList,
+        merchantList,
+      ] = await Promise.all([
+        invoke<Transaction[]>("list_visible_transactions", {
+          account_id: account.id,
+          include_hidden: showHidden,
+        }),
+        invoke<number>("account_balance_cents", { account_id: account.id }),
+        invoke<Category[]>("list_categories"),
+        invoke<Account[]>("list_accounts"),
+        invoke<Transfer[]>("list_transfers"),
+        invoke<Record<number, Tag[]>>("list_tags_for_account", { account_id: account.id }),
+        invoke<Tag[]>("list_tags"),
+        invoke<Merchant[]>("list_merchants"),
+      ]);
       setTransactions(transactionList);
       setBalanceCents(balance);
       setCategories(categoryList);
@@ -70,6 +81,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
       setTransfers(transferList);
       setTagsByTransactionId(tagsByTransaction);
       setAllTags(tagList ?? []);
+      setAllMerchants(merchantList ?? []);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -243,6 +255,35 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
     }
   }
 
+  // Payee editing (#72, ADR-0019): a new, on-demand, single-Transaction
+  // writer to `merchant_name`, via the new `set_transaction_merchant_name`
+  // command -- deliberately not folded into `update_transaction` so this
+  // edit never touches date/amount/description/category_id.
+  async function handleSetPayee(transactionId: number, payeeName: string) {
+    try {
+      await invoke("set_transaction_merchant_name", { id: transactionId, merchant_name: payeeName });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  // Confirmed "add to Merchant dictionary" path (ADR-0019): creates a
+  // Merchant entry keyed on the transaction's full raw `description`
+  // verbatim (not a derived/shortened substring) -> the typed Payee name,
+  // for future imports only, then sets `merchant_name` on the edited
+  // Transaction the same way a decline would. Never touches any other
+  // Transaction, even one sharing the identical raw description -- the
+  // dictionary write only affects *future* imports, per ADR-0012.
+  async function handleCreateMerchant(transactionId: number, description: string, payeeName: string) {
+    try {
+      await invoke("create_merchant", { keyword: description, merchant_name: payeeName });
+    } catch (err) {
+      setError(String(err));
+    }
+    await handleSetPayee(transactionId, payeeName);
+  }
+
   return (
     <section>
       <button type="button" className="back-link" onClick={onBack}>
@@ -322,6 +363,9 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
             onAddTag={handleAddTag}
             onRemoveTag={handleRemoveTag}
             onBulkAssignTags={handleBulkAssignTags}
+            merchants={allMerchants}
+            onSetPayee={handleSetPayee}
+            onCreateMerchant={handleCreateMerchant}
           />
 
           <div className="ledger new-transaction-row">

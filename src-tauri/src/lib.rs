@@ -133,6 +133,7 @@ pub fn run() {
             commands::update_merchant,
             commands::delete_merchant,
             commands::set_transaction_hidden,
+            commands::set_transaction_merchant_name,
             commands::list_visible_transactions,
             commands::list_tags,
             commands::list_tags_for_transaction,

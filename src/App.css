@@ -3018,6 +3018,57 @@ button.danger:hover,
   font-weight: 600;
 }
 
+.confirm-create-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(28, 36, 48, 0.4);
+}
+
+.confirm-create-panel {
+  width: min(24rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(28, 36, 48, 0.25);
+}
+
+.confirm-create-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.confirm-create-message {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.confirm-create-extra-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.confirm-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+}
+
+.confirm-create-cancel {
+  border: 2px solid var(--focus);
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
+  font-weight: 600;
+}
+
 /* ---------- motion: functional/confirmatory only, never decorative ---------- */
 /* All transitions/animations below are inert unless the user has not asked
    for reduced motion. Nothing here should be a "moment of charm" -- each

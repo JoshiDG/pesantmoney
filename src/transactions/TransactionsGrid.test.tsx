@@ -63,6 +63,9 @@ function renderGrid(
     onAddTag: vi.fn(),
     onRemoveTag: vi.fn(),
     onBulkAssignTags: vi.fn(),
+    merchants: [],
+    onSetPayee: vi.fn(),
+    onCreateMerchant: vi.fn(),
     ...overrides,
   };
   render(<TransactionsGrid {...props} />, { wrapper: withBreakpoint(tier) });
@@ -225,12 +228,17 @@ describe("TransactionsGrid Payee/Memo split", () => {
     expect(memoCell("Coffee shop")).toBeInTheDocument();
   });
 
-  it("Payee is read-only: clicking it does not open an inline editor", () => {
+  // Payee became editable in #72 (ADR-0019); it stays a display-derived
+  // field with its own dedicated editor (SuggestionCombobox, see the
+  // "TransactionsGrid Payee editing (#72)" suite below) rather than joining
+  // EDITABLE_COLUMNS' col-index-based date/memo/category/amount editing --
+  // it never becomes a plain text input like Memo's.
+  it("Payee editing opens the SuggestionCombobox editor, not the plain-input Memo editor", () => {
     renderGrid();
 
     fireEvent.click(payeeName("Coffee shop"));
 
-    expect(screen.queryByLabelText("Payee for Coffee shop")).toBeNull();
+    expect(screen.getByLabelText("Payee for Coffee shop")).toBeInTheDocument();
   });
 
   it("Memo edits go through the same onUpdate path Payee never touches (merchant_name untouched)", () => {
@@ -326,6 +334,86 @@ describe("TransactionsGrid Tags editing (#71)", () => {
     await user.click(screen.getByLabelText("Remove Reimbursable"));
 
     expect(props.onRemoveTag).toHaveBeenCalledWith(1, 5);
+  });
+});
+
+// Shallow integration checks only (#67/#72 Testing Decisions): full
+// ghost-text/commit-key behavior is covered in SuggestionCombobox.test.tsx.
+// This suite covers the Payee-specific wiring: seeding from the Merchant
+// dictionary, and both the confirm and decline paths for an unmatched value
+// (see ADR-0019).
+describe("TransactionsGrid Payee editing (#72)", () => {
+  it("clicking the Payee cell renders a SuggestionCombobox seeded with the known Merchant names", () => {
+    renderGrid({
+      merchants: [
+        { id: 1, keyword: "SQ *BLUE BOTTLE COF", merchant_name: "Blue Bottle Coffee" },
+        { id: 2, keyword: "WHOLEFDS", merchant_name: "Whole Foods" },
+      ],
+    });
+
+    fireEvent.click(payeeName("Coffee shop"));
+
+    const input = screen.getByLabelText("Payee for Coffee shop");
+    expect(input).toBeInTheDocument();
+  });
+
+  it("committing a value matching an existing Merchant sets the Payee via onSetPayee, with no dictionary write", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid({
+      merchants: [{ id: 1, keyword: "SQ *BLUE BOTTLE COF", merchant_name: "Blue Bottle Coffee" }],
+    });
+
+    fireEvent.click(payeeName("Coffee shop"));
+    const input = screen.getByLabelText("Payee for Coffee shop");
+    await user.type(input, "Blue Bottle Coffee");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(props.onSetPayee).toHaveBeenCalledWith(1, "Blue Bottle Coffee");
+    expect(props.onCreateMerchant).not.toHaveBeenCalled();
+  });
+
+  it("committing an unmatched value opens a confirmation dialog instead of committing directly", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid();
+
+    fireEvent.click(payeeName("Coffee shop"));
+    const input = screen.getByLabelText("Payee for Coffee shop");
+    await user.type(input, "My Local Cafe");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(
+      screen.getByText('Add "My Local Cafe" to your Merchant dictionary for future imports?'),
+    ).toBeInTheDocument();
+    expect(props.onSetPayee).not.toHaveBeenCalled();
+    expect(props.onCreateMerchant).not.toHaveBeenCalled();
+  });
+
+  it("confirming the dialog calls onCreateMerchant keyed on the transaction's full raw description, and sets the Payee", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid();
+
+    fireEvent.click(payeeName("Coffee shop"));
+    const input = screen.getByLabelText("Payee for Coffee shop");
+    await user.type(input, "My Local Cafe");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+
+    expect(props.onCreateMerchant).toHaveBeenCalledWith(1, "Coffee shop", "My Local Cafe");
+    expect(props.onSetPayee).not.toHaveBeenCalled();
+  });
+
+  it("declining the dialog still sets the Payee on just that transaction, with no dictionary write", async () => {
+    const user = userEvent.setup();
+    const props = renderGrid();
+
+    fireEvent.click(payeeName("Coffee shop"));
+    const input = screen.getByLabelText("Payee for Coffee shop");
+    await user.type(input, "My Local Cafe");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await user.click(screen.getByRole("button", { name: "No" }));
+
+    expect(props.onSetPayee).toHaveBeenCalledWith(1, "My Local Cafe");
+    expect(props.onCreateMerchant).not.toHaveBeenCalled();
   });
 });
 

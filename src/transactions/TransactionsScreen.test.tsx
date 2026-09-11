@@ -281,6 +281,120 @@ describe("TransactionsScreen Tag editing wiring (#71)", () => {
   });
 });
 
+describe("TransactionsScreen Payee editing wiring (#72)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_visible_transactions":
+          return [
+            { id: 1, account_id: 1, date: "2026-09-01", amount_cents: -1250, description: "SQ *BLUE BOTTLE COF", category_id: null, hidden: false, merchant_name: null },
+          ];
+        case "account_balance_cents":
+          return -1250;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [account];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "list_tags":
+          return [];
+        case "list_merchants":
+          return [{ id: 3, keyword: "WHOLEFDS", merchant_name: "Whole Foods" }];
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        case "update_transaction_column_visibility":
+          return null;
+        case "set_transaction_merchant_name":
+          return null;
+        case "create_merchant":
+          return { id: 9, keyword: "SQ *BLUE BOTTLE COF", merchant_name: "Blue Bottle Coffee" };
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("fetches list_merchants and seeds the grid's Payee editor", async () => {
+    renderScreen();
+    await findMemoCell("SQ *BLUE BOTTLE COF");
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
+
+    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    expect(screen.getByLabelText("Payee for SQ *BLUE BOTTLE COF")).toBeInTheDocument();
+  });
+
+  it("committing a value matching a known Merchant calls set_transaction_merchant_name only", async () => {
+    renderScreen();
+    await findMemoCell("SQ *BLUE BOTTLE COF");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
+
+    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    const input = screen.getByLabelText("Payee for SQ *BLUE BOTTLE COF");
+    await userEvent.type(input, "Whole Foods");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("set_transaction_merchant_name", {
+        id: 1,
+        merchant_name: "Whole Foods",
+      }),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("create_merchant", expect.anything());
+  });
+
+  it("confirming an unmatched value calls create_merchant keyed on the full raw description, then sets the Payee", async () => {
+    renderScreen();
+    await findMemoCell("SQ *BLUE BOTTLE COF");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
+
+    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    const input = screen.getByLabelText("Payee for SQ *BLUE BOTTLE COF");
+    await userEvent.type(input, "Blue Bottle Coffee");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Yes" }));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("create_merchant", {
+        keyword: "SQ *BLUE BOTTLE COF",
+        merchant_name: "Blue Bottle Coffee",
+      }),
+    );
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("set_transaction_merchant_name", {
+        id: 1,
+        merchant_name: "Blue Bottle Coffee",
+      }),
+    );
+  });
+
+  it("declining an unmatched value sets the Payee without calling create_merchant", async () => {
+    renderScreen();
+    await findMemoCell("SQ *BLUE BOTTLE COF");
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
+
+    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    const input = screen.getByLabelText("Payee for SQ *BLUE BOTTLE COF");
+    await userEvent.type(input, "Blue Bottle Coffee");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await userEvent.click(screen.getByRole("button", { name: "No" }));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("set_transaction_merchant_name", {
+        id: 1,
+        merchant_name: "Blue Bottle Coffee",
+      }),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("create_merchant", expect.anything());
+  });
+});
+
 describe("TransactionsScreen CSV export", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();
