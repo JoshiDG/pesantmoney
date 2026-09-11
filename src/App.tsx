@@ -7,6 +7,7 @@ import { BudgetScreen } from "./budget/BudgetScreen";
 import { DashboardScreen } from "./dashboard/DashboardScreen";
 import { GoalsScreen } from "./goals/GoalsScreen";
 import { ImportScreen } from "./import/ImportScreen";
+import { InvestmentsScreen } from "./investments/InvestmentsScreen";
 import { NavRail } from "./ui/NavRail";
 import { ReportsScreen } from "./reports/ReportsScreen";
 import { SettingsScreen } from "./settings/SettingsScreen";
@@ -36,6 +37,7 @@ type ContentView =
   | { type: "reports" }
   | { type: "budget" }
   | { type: "goals" }
+  | { type: "investments" }
   | { type: "settings" }
   | { type: "import"; account: Account };
 
@@ -66,6 +68,7 @@ function App() {
           onOpenReports={() => setView({ type: "reports" })}
           onOpenBudget={() => setView({ type: "budget" })}
           onOpenGoals={() => setView({ type: "goals" })}
+          onOpenInvestments={() => setView({ type: "investments" })}
           onOpenSettings={() => setView({ type: "settings" })}
         />
         <main className="content">
@@ -88,6 +91,7 @@ function App() {
           {view.type === "reports" && <ReportsScreen />}
           {view.type === "budget" && <BudgetScreen />}
           {view.type === "goals" && <GoalsScreen />}
+          {view.type === "investments" && <InvestmentsScreen />}
           {view.type === "settings" && <SettingsScreen />}
           {view.type === "import" && (
             <ImportScreen account={view.account} onBack={() => setView({ type: "accounts" })} />

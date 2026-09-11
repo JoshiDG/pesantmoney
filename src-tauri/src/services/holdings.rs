@@ -1,6 +1,8 @@
 use rusqlite::{OptionalExtension, Connection};
 use serde::{Deserialize, Serialize};
 
+use crate::services::accounts::{self, AccountType};
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Holding {
     pub id: i64,
@@ -26,6 +28,24 @@ pub struct SecurityPrice {
 pub struct HoldingWithValue {
     pub id: i64,
     pub account_id: i64,
+    pub ticker: String,
+    pub quantity: f64,
+    pub cost_basis_cents: Option<i64>,
+    pub price_cents: Option<i64>,
+    pub as_of_date: Option<String>,
+    pub value_cents: Option<i64>,
+}
+
+/// A `HoldingWithValue` plus the identifying metadata of the investment
+/// Account it belongs to -- for the all-Accounts Investments screen (#53),
+/// where rows from multiple Accounts are shown together and the Account
+/// needs to be legible per-row (mirrors the `account_name` join pattern used
+/// by `csv_export`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HoldingWithAccount {
+    pub id: i64,
+    pub account_id: i64,
+    pub account_name: String,
     pub ticker: String,
     pub quantity: f64,
     pub cost_basis_cents: Option<i64>,
@@ -216,6 +236,39 @@ pub fn list_holdings_with_values(conn: &Connection, account_id: i64) -> rusqlite
             as_of_date,
             value_cents,
         });
+    }
+    Ok(result)
+}
+
+/// All Holdings across every investment Account (not just one), joined with
+/// value the same way `list_holdings_with_values` is, plus each row's
+/// Account id/name -- for the all-Accounts Investments screen (#53). The
+/// existing per-Account `list_holdings_for_account`/`list_holdings_with_values`
+/// are untouched and remain the per-Account query, e.g. for the Import flow.
+/// Non-investment Accounts (checking, savings, etc.) never hold Holdings in
+/// practice, but this filters to `AccountType::Investment` explicitly rather
+/// than relying on that invariant.
+pub fn list_all_holdings_with_values(conn: &Connection) -> rusqlite::Result<Vec<HoldingWithAccount>> {
+    let investment_accounts: Vec<(i64, String)> = accounts::list(conn)?
+        .into_iter()
+        .filter(|account| account.account_type == AccountType::Investment)
+        .map(|account| (account.id, account.name))
+        .collect();
+
+    let mut result = Vec::new();
+    for (account_id, account_name) in investment_accounts {
+        let holdings = list_holdings_with_values(conn, account_id)?;
+        result.extend(holdings.into_iter().map(|h| HoldingWithAccount {
+            id: h.id,
+            account_id: h.account_id,
+            account_name: account_name.clone(),
+            ticker: h.ticker,
+            quantity: h.quantity,
+            cost_basis_cents: h.cost_basis_cents,
+            price_cents: h.price_cents,
+            as_of_date: h.as_of_date,
+            value_cents: h.value_cents,
+        }));
     }
     Ok(result)
 }
@@ -420,5 +473,61 @@ mod tests {
         assert_eq!(unpriced.price_cents, None);
         assert_eq!(unpriced.as_of_date, None);
         assert_eq!(unpriced.value_cents, None);
+    }
+
+    #[test]
+    fn list_all_holdings_with_values_aggregates_across_multiple_investment_accounts() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let brokerage_id = accounts::create(&conn, "Brokerage", AccountType::Investment, None)
+            .expect("create account")
+            .id;
+        let retirement_id = accounts::create(&conn, "401k", AccountType::Investment, None)
+            .expect("create account")
+            .id;
+        create_holding(&conn, brokerage_id, "VTI", 10.0, None).expect("create holding");
+        create_holding(&conn, retirement_id, "VOO", 3.0, None).expect("create holding");
+        set_price(&conn, "VTI", 25000, "2026-09-01").expect("set price");
+
+        let holdings = list_all_holdings_with_values(&conn).expect("list all holdings");
+
+        assert_eq!(holdings.len(), 2);
+        let vti = holdings.iter().find(|h| h.ticker == "VTI").unwrap();
+        assert_eq!(vti.account_id, brokerage_id);
+        assert_eq!(vti.account_name, "Brokerage");
+        assert_eq!(vti.value_cents, Some(250000));
+
+        let voo = holdings.iter().find(|h| h.ticker == "VOO").unwrap();
+        assert_eq!(voo.account_id, retirement_id);
+        assert_eq!(voo.account_name, "401k");
+        assert_eq!(voo.value_cents, None);
+    }
+
+    #[test]
+    fn list_all_holdings_with_values_excludes_non_investment_accounts() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+        let investment_id = accounts::create(&conn, "Brokerage", AccountType::Investment, None)
+            .expect("create account")
+            .id;
+        let checking_id = accounts::create(&conn, "Checking", AccountType::Checking, None)
+            .expect("create account")
+            .id;
+        create_holding(&conn, investment_id, "VTI", 10.0, None).expect("create holding");
+        // A Holding row under a non-investment Account shouldn't occur in
+        // practice, but the query must still filter it out defensively.
+        create_holding(&conn, checking_id, "BOGUS", 1.0, None).expect("create holding");
+
+        let holdings = list_all_holdings_with_values(&conn).expect("list all holdings");
+
+        assert_eq!(holdings.len(), 1);
+        assert_eq!(holdings[0].ticker, "VTI");
+    }
+
+    #[test]
+    fn list_all_holdings_with_values_is_empty_with_no_data() {
+        let conn = db::open_in_memory().expect("open in-memory test database");
+
+        let holdings = list_all_holdings_with_values(&conn).expect("list all holdings");
+
+        assert_eq!(holdings, Vec::new());
     }
 }
