@@ -61,7 +61,7 @@ export function BudgetScreen() {
 
   return (
     <section>
-      <div className="content-header">
+      <div className="content-header budget-header">
         <div>
           <h2 className="account-title">Budget</h2>
           <div className="account-title-meta">Assign every dollar of income to a Category</div>
