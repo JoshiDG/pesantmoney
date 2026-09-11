@@ -10,7 +10,7 @@ use crate::services::categories::{self, Category, CategoryGroup};
 use crate::services::categorization_rules::{self, CategorizationRule, MatchType, RuleActions, RuleField};
 use crate::services::csv_export;
 use crate::services::goals::{self, Goal, GoalWithProgress, PayoffProjection};
-use crate::services::holdings::{self, Holding, HoldingWithValue, SecurityPrice};
+use crate::services::holdings::{self, Holding, HoldingWithAccount, HoldingWithValue, SecurityPrice};
 use crate::services::import_profiles::{self, ImportProfile};
 use crate::services::merchants::{self, Merchant};
 use crate::services::notifications;
@@ -650,6 +650,16 @@ pub fn list_holdings_with_values(
 ) -> CommandResult<Vec<HoldingWithValue>> {
     let conn = state.db.lock().map_err(to_command_error)?;
     holdings::list_holdings_with_values(&conn, account_id).map_err(to_command_error)
+}
+
+/// All-Accounts sibling of `list_holdings_with_values` for the top-level
+/// Investments screen (#53) -- returns Holdings from every investment
+/// Account with Account-identifying metadata per row, alongside (not
+/// replacing) the existing per-Account query above.
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_all_holdings_with_values(state: tauri::State<AppState>) -> CommandResult<Vec<HoldingWithAccount>> {
+    let conn = state.db.lock().map_err(to_command_error)?;
+    holdings::list_all_holdings_with_values(&conn).map_err(to_command_error)
 }
 
 #[tauri::command(rename_all = "snake_case")]

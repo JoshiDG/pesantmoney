@@ -4,7 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 import { NavRail } from "./NavRail";
 import { withBreakpoint } from "./withBreakpoint";
 
-const ALL_LABELS = ["Dashboard", "Accounts", "Transactions", "Reports", "Budget", "Goals", "Settings"];
+const ALL_LABELS = [
+  "Dashboard",
+  "Accounts",
+  "Transactions",
+  "Reports",
+  "Budget",
+  "Goals",
+  "Investments",
+  "Settings",
+];
 
 function noopProps(overrides: Partial<Record<string, () => void>> = {}) {
   return {
@@ -14,6 +23,7 @@ function noopProps(overrides: Partial<Record<string, () => void>> = {}) {
     onOpenReports: () => {},
     onOpenBudget: () => {},
     onOpenGoals: () => {},
+    onOpenInvestments: () => {},
     onOpenSettings: () => {},
     ...overrides,
   };
@@ -60,6 +70,17 @@ describe("NavRail", () => {
     expect(onOpenTransactions).toHaveBeenCalledTimes(1);
   });
 
+  it("clicking Investments invokes its handler", async () => {
+    const onOpenInvestments = vi.fn();
+    render(<NavRail active="dashboard" {...noopProps({ onOpenInvestments })} />, {
+      wrapper: withBreakpoint("expanded"),
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Investments" }));
+
+    expect(onOpenInvestments).toHaveBeenCalledTimes(1);
+  });
+
   it("shows icon + visible label for every destination at the Expanded tier", () => {
     render(<NavRail active="dashboard" {...noopProps()} />, { wrapper: withBreakpoint("expanded") });
 
@@ -94,7 +115,7 @@ describe("NavRail", () => {
   describe("at the Mobile tier", () => {
     // Primary tab-bar destinations per PRIMARY_TAB_KEYS in NavRail.tsx:
     // dashboard, transactions, budget, accounts. Everything else (reports,
-    // goals, settings) collapses under "More".
+    // goals, investments, settings) collapses under "More".
     function renderMobile(overrides: Partial<Record<string, unknown>> = {}) {
       const handlers = noopProps();
       const spies = {
@@ -104,6 +125,7 @@ describe("NavRail", () => {
         onOpenReports: vi.fn(),
         onOpenBudget: vi.fn(),
         onOpenGoals: vi.fn(),
+        onOpenInvestments: vi.fn(),
         onOpenSettings: vi.fn(),
       };
       render(<NavRail active="dashboard" {...handlers} {...spies} {...overrides} />, {
@@ -127,6 +149,7 @@ describe("NavRail", () => {
       // Overflow destinations are not directly on the bar until "More" opens.
       expect(screen.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Goals" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Investments" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
     });
 
@@ -147,6 +170,7 @@ describe("NavRail", () => {
 
       expect(screen.getByRole("button", { name: "Reports" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Goals" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Investments" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole("button", { name: "Settings" }));

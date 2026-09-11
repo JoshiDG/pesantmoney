@@ -6,6 +6,7 @@ import {
   BarChart3,
   PiggyBank,
   Target,
+  TrendingUp,
   Settings,
   MoreHorizontal,
 } from "lucide-react";
@@ -14,11 +15,10 @@ import { useBreakpoint } from "./BreakpointProvider";
 // Pure navigation rail: icon + label only, no inline data (e.g. no Account
 // list). Per issue #50 (first slice of the nav-rail IA restructuring, ADR-0017
 // / #49), this slice's rail was intentionally limited to destinations that
-// already had a working screen. #51 added Transactions as the first
-// all-Accounts destination and #54 added Reports; Recurring and Investments
-// land as their own nav items in later slices once their all-Accounts views
-// exist. Categories/Rules/Merchants move under Settings in a later slice
-// (#58) and are not top-level items here.
+// already had a working screen. #51 added Transactions, #54 added Reports,
+// and #53 added Investments; Recurring lands as its own nav item once its
+// all-Accounts view exists (#52). Categories/Rules/Merchants move under
+// Settings in a later slice (#58) and are not top-level items here.
 export type NavRailKey =
   | "dashboard"
   | "accounts"
@@ -26,6 +26,7 @@ export type NavRailKey =
   | "reports"
   | "budget"
   | "goals"
+  | "investments"
   | "settings";
 
 interface NavRailItem {
@@ -41,6 +42,7 @@ const NAV_ITEMS: NavRailItem[] = [
   { key: "reports", label: "Reports", Icon: BarChart3 },
   { key: "budget", label: "Budget", Icon: PiggyBank },
   { key: "goals", label: "Goals", Icon: Target },
+  { key: "investments", label: "Investments", Icon: TrendingUp },
   { key: "settings", label: "Settings", Icon: Settings },
 ];
 
@@ -62,6 +64,7 @@ interface NavRailProps {
   onOpenReports: () => void;
   onOpenBudget: () => void;
   onOpenGoals: () => void;
+  onOpenInvestments: () => void;
   onOpenSettings: () => void;
 }
 
@@ -73,6 +76,7 @@ export function NavRail({
   onOpenReports,
   onOpenBudget,
   onOpenGoals,
+  onOpenInvestments,
   onOpenSettings,
 }: NavRailProps) {
   const tier = useBreakpoint();
@@ -83,6 +87,7 @@ export function NavRail({
     reports: onOpenReports,
     budget: onOpenBudget,
     goals: onOpenGoals,
+    investments: onOpenInvestments,
     settings: onOpenSettings,
   };
 

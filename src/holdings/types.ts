@@ -21,6 +21,14 @@ export interface HoldingWithValue extends HoldingFields {
   value_cents: number | null;
 }
 
+/// A `HoldingWithValue` plus the identifying Account it belongs to, as
+/// returned by `list_all_holdings_with_values` -- the all-Accounts
+/// Investments screen's query. `account_name` lets a mixed list of rows from
+/// multiple Accounts stay legible.
+export interface HoldingWithAccount extends HoldingWithValue {
+  account_name: string;
+}
+
 export interface SecurityPrice {
   id: number;
   ticker: string;

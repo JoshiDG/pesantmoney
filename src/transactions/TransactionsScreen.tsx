@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account, ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { Category } from "../categories/types";
-import { HoldingsScreen } from "../holdings/HoldingsScreen";
 import { RecurringItemsScreen } from "../recurring/RecurringItemsScreen";
 import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
@@ -18,10 +17,9 @@ interface TransactionsScreenProps {
   onImport: () => void;
 }
 
-type LedgerView = "holdings" | "transactions" | "recurring";
+type LedgerView = "transactions" | "recurring";
 
 export function TransactionsScreen({ account, onBack, onImport }: TransactionsScreenProps) {
-  const isInvestment = account.account_type === "investment";
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -30,7 +28,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
   const [balanceCents, setBalanceCents] = useState(0);
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [ledgerView, setLedgerView] = useState<LedgerView>(isInvestment ? "holdings" : "transactions");
+  const [ledgerView, setLedgerView] = useState<LedgerView>("transactions");
   const { confirm } = useConfirmation();
   const { exportCsv, exporting: exportingCsv, result: csvExportResult, error: csvExportError } = useCsvExport();
 
@@ -68,7 +66,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
 
   useEffect(() => {
     refresh();
-    setLedgerView(isInvestment ? "holdings" : "transactions");
+    setLedgerView("transactions");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id]);
 
@@ -190,15 +188,6 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
       )}
 
       <div className="ledger-view-toggle">
-        {isInvestment && (
-          <button
-            type="button"
-            className={ledgerView === "holdings" ? "active" : ""}
-            onClick={() => setLedgerView("holdings")}
-          >
-            Holdings
-          </button>
-        )}
         <button
           type="button"
           className={ledgerView === "transactions" ? "active" : ""}
@@ -217,9 +206,7 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
 
       {error && <p role="alert">{error}</p>}
 
-      {ledgerView === "holdings" ? (
-        <HoldingsScreen account={account} />
-      ) : ledgerView === "recurring" ? (
+      {ledgerView === "recurring" ? (
         <RecurringItemsScreen account={account} categories={categories} />
       ) : (
         <div className="ledger-container">
