@@ -10,6 +10,7 @@ const ALL_LABELS = [
   "Transactions",
   "Reports",
   "Budget",
+  "Recurring",
   "Goals",
   "Investments",
   "Settings",
@@ -22,6 +23,7 @@ function noopProps(overrides: Partial<Record<string, () => void>> = {}) {
     onOpenTransactions: () => {},
     onOpenReports: () => {},
     onOpenBudget: () => {},
+    onOpenRecurring: () => {},
     onOpenGoals: () => {},
     onOpenInvestments: () => {},
     onOpenSettings: () => {},
@@ -81,6 +83,17 @@ describe("NavRail", () => {
     expect(onOpenInvestments).toHaveBeenCalledTimes(1);
   });
 
+  it("clicking Recurring invokes its handler", async () => {
+    const onOpenRecurring = vi.fn();
+    render(<NavRail active="dashboard" {...noopProps({ onOpenRecurring })} />, {
+      wrapper: withBreakpoint("expanded"),
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Recurring" }));
+
+    expect(onOpenRecurring).toHaveBeenCalledTimes(1);
+  });
+
   it("shows icon + visible label for every destination at the Expanded tier", () => {
     render(<NavRail active="dashboard" {...noopProps()} />, { wrapper: withBreakpoint("expanded") });
 
@@ -115,7 +128,7 @@ describe("NavRail", () => {
   describe("at the Mobile tier", () => {
     // Primary tab-bar destinations per PRIMARY_TAB_KEYS in NavRail.tsx:
     // dashboard, transactions, budget, accounts. Everything else (reports,
-    // goals, investments, settings) collapses under "More".
+    // recurring, goals, investments, settings) collapses under "More".
     function renderMobile(overrides: Partial<Record<string, unknown>> = {}) {
       const handlers = noopProps();
       const spies = {
@@ -124,6 +137,7 @@ describe("NavRail", () => {
         onOpenTransactions: vi.fn(),
         onOpenReports: vi.fn(),
         onOpenBudget: vi.fn(),
+        onOpenRecurring: vi.fn(),
         onOpenGoals: vi.fn(),
         onOpenInvestments: vi.fn(),
         onOpenSettings: vi.fn(),
@@ -148,6 +162,7 @@ describe("NavRail", () => {
 
       // Overflow destinations are not directly on the bar until "More" opens.
       expect(screen.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Recurring" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Goals" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Investments" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
@@ -169,6 +184,7 @@ describe("NavRail", () => {
       await userEvent.click(screen.getByRole("button", { name: "More" }));
 
       expect(screen.getByRole("button", { name: "Reports" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Recurring" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Goals" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Investments" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();

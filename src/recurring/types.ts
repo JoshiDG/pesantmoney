@@ -14,6 +14,13 @@ export interface RecurringItem extends RecurringItemFields {
   is_confirmed: boolean;
 }
 
+// A RecurringItem carrying its Account's name alongside it, returned by the
+// `list_all_recurring_items` command backing the all-Accounts Recurring
+// screen (#52).
+export interface RecurringItemWithAccount extends RecurringItem {
+  account_name: string;
+}
+
 export const FREQUENCY_LABELS: Record<Frequency, string> = {
   weekly: "Weekly",
   biweekly: "Biweekly",

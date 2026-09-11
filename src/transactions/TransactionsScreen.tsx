@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account, ACCOUNT_TYPE_LABELS } from "../accounts/types";
 import { Category } from "../categories/types";
-import { RecurringItemsScreen } from "../recurring/RecurringItemsScreen";
 import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
 import { TransactionForm } from "./TransactionForm";
@@ -17,7 +16,10 @@ interface TransactionsScreenProps {
   onImport: () => void;
 }
 
-type LedgerView = "transactions" | "recurring";
+// Recurring and Holdings are no longer tabs here -- Recurring Item and
+// Holding management moved to their own top-level all-Accounts screens (#52,
+// #53); this ledger is purely the Transaction grid now.
+type LedgerView = "transactions";
 
 export function TransactionsScreen({ account, onBack, onImport }: TransactionsScreenProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -195,20 +197,11 @@ export function TransactionsScreen({ account, onBack, onImport }: TransactionsSc
         >
           Transactions
         </button>
-        <button
-          type="button"
-          className={ledgerView === "recurring" ? "active" : ""}
-          onClick={() => setLedgerView("recurring")}
-        >
-          Recurring
-        </button>
       </div>
 
       {error && <p role="alert">{error}</p>}
 
-      {ledgerView === "recurring" ? (
-        <RecurringItemsScreen account={account} categories={categories} />
-      ) : (
+      {ledgerView === "transactions" && (
         <div className="ledger-container">
           <TransactionsGrid
             transactions={transactions}

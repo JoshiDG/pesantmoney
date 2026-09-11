@@ -95,6 +95,7 @@ pub fn run() {
             commands::get_ready_to_assign,
             commands::create_recurring_item,
             commands::list_recurring_items,
+            commands::list_all_recurring_items,
             commands::update_recurring_item,
             commands::delete_recurring_item,
             commands::confirm_recurring_item,
