@@ -1,4 +1,5 @@
 import { LayoutDashboard, Landmark, PiggyBank, Target, Settings } from "lucide-react";
+import { useBreakpoint } from "./BreakpointProvider";
 
 // Pure navigation rail: icon + label only, no inline data (e.g. no Account
 // list). Per issue #50 (first slice of the nav-rail IA restructuring, ADR-0017
@@ -48,9 +49,20 @@ export function NavRail({
     settings: onOpenSettings,
   };
 
+  // Structural swap per ADR-0018 / issue #60: Expanded tier shows icon +
+  // label; Compact (and, until the bottom-tab-bar of #61 lands, Mobile) tier
+  // collapses to icon-only. The label is still exposed for icon-only items
+  // via aria-label (accessible name) and title (hover/focus tooltip), since
+  // there's no dedicated Tooltip component in the codebase yet.
+  const tier = useBreakpoint();
+  const isIconOnly = tier !== "expanded";
+
   return (
-    <nav className="sidebar nav-rail" aria-label="Main navigation">
-      <div className="sidebar-brand">PesantMoney</div>
+    <nav
+      className={`sidebar nav-rail${isIconOnly ? " nav-rail-icon-only" : ""}`}
+      aria-label="Main navigation"
+    >
+      <div className="sidebar-brand">{isIconOnly ? "PM" : "PesantMoney"}</div>
       <ul className="nav-list">
         {NAV_ITEMS.map(({ key, label, Icon }) => {
           const isActive = active === key;
@@ -60,10 +72,12 @@ export function NavRail({
                 type="button"
                 className={`nav-rail-item${isActive ? " selected" : ""}`}
                 aria-current={isActive ? "page" : undefined}
+                aria-label={isIconOnly ? label : undefined}
+                title={isIconOnly ? label : undefined}
                 onClick={handlers[key]}
               >
                 <Icon size={18} aria-hidden="true" />
-                <span className="nav-rail-label">{label}</span>
+                {!isIconOnly && <span className="nav-rail-label">{label}</span>}
               </button>
             </li>
           );
