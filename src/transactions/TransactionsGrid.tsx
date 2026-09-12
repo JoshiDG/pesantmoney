@@ -1,5 +1,6 @@
 import {
   ChangeEvent,
+  DragEvent,
   Fragment,
   KeyboardEvent,
   useEffect,
@@ -18,7 +19,7 @@ import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
 import { CellPos, isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
-import { COLUMN_LABELS, COLUMN_SET, ColumnKey, EDITABLE_COLUMNS } from "./grid-nav";
+import { COLUMN_LABELS, COLUMN_SET, ColumnKey, EDITABLE_COLUMNS, moveColumnBefore } from "./grid-nav";
 import { isFilterableColumn } from "./filters";
 import { dateGroupLabel } from "./dateGroups";
 import { SuggestionCombobox } from "../ui/SuggestionCombobox";
@@ -72,6 +73,16 @@ interface TransactionsGridProps {
   linkingId: number | null;
   columnVisibility: ColumnVisibility;
   onColumnVisibilityChange: (next: ColumnVisibility) => void;
+  // Column reorder (#94, ADR-0021 phase 5): the Column Set's user-chosen
+  // left-to-right order (every column, not just currently-visible ones --
+  // see `visibleColumns` below, which filters this by `columnVisibility`).
+  // Defaults to `COLUMN_SET`'s own declaration order so existing callers
+  // (and every pre-#94 test) that don't pass it keep today's behavior
+  // unchanged. Drag-reordering a header calls `onColumnOrderChange` the
+  // same way the Columns chip panel's Move Up/Down controls do -- the grid
+  // never persists this itself, same separation as onColumnVisibilityChange.
+  columnOrder?: ColumnKey[];
+  onColumnOrderChange?: (next: ColumnKey[]) => void;
   onStartLink: (transactionId: number) => void;
   onCancelLink: () => void;
   onLink: (fromTransactionId: number, toTransactionId: number) => void;
@@ -180,6 +191,8 @@ export function TransactionsGrid({
   linkingId,
   columnVisibility,
   onColumnVisibilityChange,
+  columnOrder = COLUMN_SET,
+  onColumnOrderChange,
   onStartLink,
   onCancelLink,
   onLink,
@@ -269,6 +282,42 @@ export function TransactionsGrid({
   // Shortcuts overlay (#92): `?` while a grid cell has focus opens a
   // read-only list of the grid's own shortcuts (see ShortcutsOverlay).
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // Column drag-to-reorder (#94, ADR-0021 phase 5): native HTML5 drag-and-
+  // drop, tracked by column key rather than `dataTransfer` payload -- the
+  // drag never leaves this component, so component state is simpler and
+  // (unlike `dataTransfer.getData`, which jsdom doesn't fully implement)
+  // trivially testable via plain `fireEvent.dragStart`/`drop`.
+  const [draggedColumn, setDraggedColumn] = useState<ColumnKey | null>(null);
+
+  function handleColumnDragStart(column: ColumnKey) {
+    return (e: DragEvent<HTMLSpanElement>) => {
+      setDraggedColumn(column);
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", column);
+      }
+    };
+  }
+
+  function handleColumnDragOver(e: DragEvent<HTMLSpanElement>) {
+    if (draggedColumn) {
+      e.preventDefault();
+    }
+  }
+
+  function handleColumnDrop(column: ColumnKey) {
+    return (e: DragEvent<HTMLSpanElement>) => {
+      e.preventDefault();
+      if (draggedColumn && draggedColumn !== column) {
+        onColumnOrderChange?.(moveColumnBefore(columnOrder, draggedColumn, column));
+      }
+      setDraggedColumn(null);
+    };
+  }
+
+  function handleColumnDragEnd() {
+    setDraggedColumn(null);
+  }
 
   const editingRef = useRef<CellPos | null>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -294,10 +343,10 @@ export function TransactionsGrid({
 
   const visibleColumns = useMemo(
     () =>
-      COLUMN_SET.filter((column) =>
+      columnOrder.filter((column) =>
         column === "account" ? columnVisibility.account && !isSingleAccount : columnVisibility[column],
       ),
-    [columnVisibility, isSingleAccount],
+    [columnOrder, columnVisibility, isSingleAccount],
   );
 
   const runningBalanceByTransactionId = useMemo(() => {
@@ -664,7 +713,7 @@ export function TransactionsGrid({
   }
 
   function columnMenuItems(): ContextMenuItem[] {
-    return COLUMN_SET.map((column) => ({
+    return columnOrder.map((column) => ({
       label: COLUMN_LABELS[column],
       checked: columnVisibility[column],
       // Multiple columns can be toggled in one right-click interaction --
@@ -1076,6 +1125,7 @@ export function TransactionsGrid({
             const classNames = [
               sortState?.column === column ? `sort-${sortState.direction}` : "",
               isFilterActive ? "header-filter-active" : "",
+              draggedColumn === column ? "header-dragging" : "",
             ]
               .filter(Boolean)
               .join(" ");
@@ -1100,7 +1150,24 @@ export function TransactionsGrid({
                     handleHeaderClick(column);
                   }
                 }}
+                onDragOver={handleColumnDragOver}
+                onDrop={handleColumnDrop(column)}
               >
+                {/* Drag handle (#94): a dedicated grip, draggable on its own,
+                    so dragging a column doesn't also fire the header's own
+                    click (sort) or right-click (filter) handlers -- those
+                    stay on the label span above/around it. */}
+                <span
+                  className="column-drag-handle"
+                  draggable
+                  aria-label={`Reorder ${COLUMN_LABELS[column]} column`}
+                  role="button"
+                  onClick={(e) => e.stopPropagation()}
+                  onDragStart={handleColumnDragStart(column)}
+                  onDragEnd={handleColumnDragEnd}
+                >
+                  ⠿
+                </span>
                 {COLUMN_LABELS[column]}
                 {sortState?.column === column && (
                   <span className="sort-arrow" aria-hidden="true">

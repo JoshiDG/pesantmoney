@@ -919,6 +919,23 @@ pub fn update_transaction_column_visibility(
     Ok(new_settings)
 }
 
+/// Column reorder (#94, ADR-0021 phase 5): persists the Transactions grid's
+/// Column Set left-to-right order, alongside `transaction_column_visibility`
+/// above. Same load-mutate-save pattern as
+/// `update_transaction_column_visibility` -- a separate command since it's
+/// set from drag-reorder on the grid's own headers or the Columns chip's
+/// up/down controls, not the Settings screen.
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_transaction_column_order(
+    state: tauri::State<AppState>,
+    transaction_column_order: Vec<String>,
+) -> CommandResult<Settings> {
+    let mut new_settings = settings::load(&state.app_data_dir);
+    new_settings.transaction_column_order = transaction_column_order;
+    settings::save(&state.app_data_dir, &new_settings).map_err(to_command_error)?;
+    Ok(new_settings)
+}
+
 /// Evaluates the upcoming-bill and category-overspend conditions (see
 /// `services::notifications`) and fires a native OS notification for each
 /// one that just became true and hasn't already been notified. Intended to

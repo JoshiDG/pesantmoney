@@ -8,11 +8,12 @@ import { Transfer } from "../transfers/types";
 import { TransactionsGrid } from "./TransactionsGrid";
 import { TransactionForm } from "./TransactionForm";
 import { ContextBar } from "./chrome/ContextBar";
+import { ColumnsPanel } from "./chrome/ColumnsPanel";
 import { FunctionBar } from "./chrome/FunctionBar";
 import { FiltersPopover } from "./chrome/FiltersPopover";
 import { QuoteStrip } from "./chrome/QuoteStrip";
 import { StatusBar } from "./chrome/StatusBar";
-import { COLUMN_LABELS, COLUMN_SET, ColumnKey } from "./grid-nav";
+import { ColumnKey, moveColumnByOffset, resolveColumnOrder } from "./grid-nav";
 import {
   ChecklistColumn,
   CHECKLIST_COLUMNS,
@@ -92,6 +93,14 @@ export function AllTransactionsScreen({
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(DEFAULT_COLUMN_VISIBILITY);
+  // Column reorder (#94, ADR-0021 phase 5): the Column Set's user-chosen
+  // left-to-right order, alongside `columnVisibility` above -- loaded once
+  // on mount from the same `get_settings` call, persisted through the
+  // sibling `update_transaction_column_order` command. `resolveColumnOrder`
+  // (see grid-nav.ts) is the single place that validates a stored order and
+  // falls back to `COLUMN_SET`'s declaration order, so this starts there
+  // too rather than duplicating that fallback.
+  const [columnOrder, setColumnOrder] = useState<ColumnKey[]>(() => resolveColumnOrder(undefined));
   // New Transaction panel (#77/#78): this screen previously had no manual
   // "create a Transaction" entry point at all (only Import produced
   // Transactions here -- see the per-Account TransactionsScreen.tsx, no
@@ -213,8 +222,14 @@ export function AllTransactionsScreen({
   // Column Management (#68): one global config for the whole app, so it's
   // loaded once on mount, independent of the Account filter.
   useEffect(() => {
-    invoke<{ transaction_column_visibility: ColumnVisibility }>("get_settings")
-      .then((settings) => setColumnVisibility(settings.transaction_column_visibility))
+    invoke<{
+      transaction_column_visibility: ColumnVisibility;
+      transaction_column_order?: string[];
+    }>("get_settings")
+      .then((settings) => {
+        setColumnVisibility(settings.transaction_column_visibility);
+        setColumnOrder(resolveColumnOrder(settings.transaction_column_order));
+      })
       .catch((err) => setError(String(err)));
   }, []);
 
@@ -229,14 +244,23 @@ export function AllTransactionsScreen({
     }
   }
 
-  function columnMenuItems(): ContextMenuItem[] {
-    return COLUMN_SET.map((column) => ({
-      label: COLUMN_LABELS[column],
-      checked: columnVisibility[column],
-      closeOnClick: false,
-      onClick: () =>
-        handleColumnVisibilityChange({ ...columnVisibility, [column]: !columnVisibility[column] }),
-    }));
+  // Column reorder (#94): shared by the grid's own header drag-reorder
+  // (TransactionsGrid's `onColumnOrderChange`) and the Columns chip panel's
+  // Move Up/Down controls below -- both funnel through this one persist
+  // path, same separation as `handleColumnVisibilityChange` above.
+  async function handleColumnOrderChange(next: ColumnKey[]) {
+    setColumnOrder(next);
+    try {
+      await invoke("update_transaction_column_order", {
+        transaction_column_order: next,
+      });
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  function handleColumnsPanelMove(column: ColumnKey, direction: "up" | "down") {
+    handleColumnOrderChange(moveColumnByOffset(columnOrder, column, direction));
   }
 
   function openColumnsMenu() {
@@ -707,10 +731,15 @@ export function AllTransactionsScreen({
       />
 
       {columnsMenuPos && (
-        <ContextMenu
+        <ColumnsPanel
           x={columnsMenuPos.x}
           y={columnsMenuPos.y}
-          items={columnMenuItems()}
+          columns={columnOrder}
+          visibility={columnVisibility}
+          onToggleVisibility={(column) =>
+            handleColumnVisibilityChange({ ...columnVisibility, [column]: !columnVisibility[column] })
+          }
+          onMove={handleColumnsPanelMove}
           onClose={() => setColumnsMenuPos(null)}
         />
       )}
@@ -798,6 +827,8 @@ export function AllTransactionsScreen({
           linkingId={linkingId}
           columnVisibility={columnVisibility}
           onColumnVisibilityChange={handleColumnVisibilityChange}
+          columnOrder={columnOrder}
+          onColumnOrderChange={handleColumnOrderChange}
           onStartLink={setLinkingId}
           onCancelLink={() => setLinkingId(null)}
           onLink={handleLink}

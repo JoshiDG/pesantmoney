@@ -26,6 +26,18 @@ pub struct Settings {
     /// chips it always showed).
     #[serde(default)]
     pub transaction_column_visibility: TransactionColumnVisibility,
+    /// Column reorder (#94, ADR-0021 phase 5): the Transactions grid's
+    /// Column Set in user-chosen left-to-right order, alongside
+    /// `transaction_column_visibility` above. Stored as plain strings
+    /// (column keys, e.g. "date", "payee") rather than a typed enum so an
+    /// unrecognized/stale value here never fails deserialization -- the
+    /// frontend's `resolveColumnOrder` is the single place that validates
+    /// and falls back. `#[serde(default)]` defaults to an empty `Vec`,
+    /// which both a pre-#94 settings.json and a freshly-created one share --
+    /// the frontend treats empty the same as "no custom order", falling
+    /// back to the Column Set's declaration order.
+    #[serde(default)]
+    pub transaction_column_order: Vec<String>,
 }
 
 fn default_true() -> bool {
@@ -39,6 +51,7 @@ impl Default for Settings {
             bill_notifications_enabled: true,
             overspend_notifications_enabled: true,
             transaction_column_visibility: TransactionColumnVisibility::default(),
+            transaction_column_order: Vec::new(),
         }
     }
 }
@@ -132,6 +145,7 @@ mod tests {
             bill_notifications_enabled: false,
             overspend_notifications_enabled: true,
             transaction_column_visibility: TransactionColumnVisibility::default(),
+            transaction_column_order: Vec::new(),
         };
 
         save(dir.path(), &settings).expect("save settings");
@@ -172,6 +186,7 @@ mod tests {
             bill_notifications_enabled: false,
             overspend_notifications_enabled: false,
             transaction_column_visibility: TransactionColumnVisibility::default(),
+            transaction_column_order: Vec::new(),
         };
 
         save(&nested, &settings).expect("save settings into missing directory");
@@ -220,5 +235,44 @@ mod tests {
         let settings = load(dir.path());
 
         assert_eq!(settings.transaction_column_visibility, TransactionColumnVisibility::default());
+    }
+
+    #[test]
+    fn transaction_column_order_defaults_to_empty() {
+        let settings = Settings::default();
+
+        assert!(settings.transaction_column_order.is_empty());
+    }
+
+    #[test]
+    fn save_then_load_round_trips_a_custom_column_order() {
+        let dir = tempfile::tempdir().expect("create tempdir");
+        let mut settings = Settings::default();
+        settings.transaction_column_order =
+            vec!["amount".to_string(), "date".to_string(), "payee".to_string()];
+
+        save(dir.path(), &settings).expect("save settings");
+        let loaded = load(dir.path());
+
+        assert_eq!(loaded, settings);
+        assert_eq!(
+            loaded.transaction_column_order,
+            vec!["amount".to_string(), "date".to_string(), "payee".to_string()]
+        );
+    }
+
+    #[test]
+    fn load_defaults_column_order_to_empty_for_a_settings_file_predating_it() {
+        let dir = tempfile::tempdir().expect("create tempdir");
+        std::fs::write(
+            settings_path(dir.path()),
+            r#"{"update_checks_enabled":false,"transaction_column_visibility":{"tags":false}}"#,
+        )
+        .expect("write old-shape settings file");
+
+        let settings = load(dir.path());
+
+        assert!(settings.transaction_column_order.is_empty());
+        assert!(!settings.transaction_column_visibility.tags);
     }
 }

@@ -988,6 +988,109 @@ describe("AllTransactionsScreen Bloomberg chrome (#90)", () => {
       ),
     );
   });
+
+  // Column reorder (#94, ADR-0021 phase 5): drag handles on the grid's own
+  // headers, and the Columns chip panel's Move Up/Down controls, both
+  // funnel through `update_transaction_column_order` -- the sibling
+  // command to `update_transaction_column_visibility` above -- so a
+  // restarted app loads back the same order via `get_settings`.
+  it("dragging a column header handle reorders the grid and persists the order", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    const amountHandle = screen.getByRole("button", { name: "Reorder Amount column" });
+    const dateHeader = screen
+      .getByRole("button", { name: "Reorder Date column" })
+      .closest("span") as HTMLElement;
+
+    fireEvent.dragStart(amountHandle);
+    fireEvent.dragOver(dateHeader);
+    fireEvent.drop(dateHeader);
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "update_transaction_column_order",
+        expect.objectContaining({
+          transaction_column_order: expect.arrayContaining(["amount", "date"]),
+        }),
+      ),
+    );
+    const call = mockedInvoke.mock.calls.find(([cmd]) => cmd === "update_transaction_column_order");
+    const order = (call?.[1] as { transaction_column_order: string[] }).transaction_column_order;
+    expect(order.indexOf("amount")).toBeLessThan(order.indexOf("date"));
+
+    const headers = Array.from(document.querySelectorAll(".ledger-head > span")).map((el) =>
+      el.textContent?.replace("⠿", ""),
+    );
+    expect(headers.indexOf("Amount")).toBeLessThan(headers.indexOf("Date"));
+  });
+
+  it("loads a persisted column order on mount and reflects it in the Columns chip panel", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") {
+        return {
+          transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY,
+          transaction_column_order: ["amount", "date", "account", "payee", "memo", "category", "tags", "running_balance"],
+        };
+      }
+      switch (cmd) {
+        case "list_all_transactions":
+          return allTransactions;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [checking, savings];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "list_tags":
+          return [];
+        case "list_merchants":
+          return [];
+        default:
+          return null;
+      }
+    });
+
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    const headers = Array.from(document.querySelectorAll(".ledger-head > span")).map((el) =>
+      el.textContent?.replace("⠿", ""),
+    );
+    expect(headers.indexOf("Amount")).toBeLessThan(headers.indexOf("Date"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Columns" }));
+    const panel = screen.getByRole("menu", { name: "Column Management" });
+    const rowLabels = within(panel)
+      .getAllByRole("menuitemcheckbox")
+      .map((el) => el.textContent?.replace("✓", "").trim());
+    expect(rowLabels[0]).toBe("Amount");
+    expect(rowLabels[1]).toBe("Date");
+  });
+
+  it("the Columns chip panel's Move Down control reorders and persists", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByRole("button", { name: "Columns" }));
+    const panel = screen.getByRole("menu", { name: "Column Management" });
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Move Date down" }));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "update_transaction_column_order",
+        expect.objectContaining({
+          transaction_column_order: expect.arrayContaining(["date", "account"]),
+        }),
+      ),
+    );
+    const call = mockedInvoke.mock.calls.find(([cmd]) => cmd === "update_transaction_column_order");
+    const order = (call?.[1] as { transaction_column_order: string[] }).transaction_column_order;
+    expect(order.indexOf("account")).toBeLessThan(order.indexOf("date"));
+  });
 });
 
 // Column filtering (#91): right-click a filterable column header for a

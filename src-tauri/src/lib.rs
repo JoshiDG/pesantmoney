@@ -144,6 +144,7 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::update_transaction_column_visibility,
+            commands::update_transaction_column_order,
             commands::check_for_update,
             commands::get_backup_status,
             commands::export_data,

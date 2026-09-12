@@ -65,3 +65,69 @@ export const COLUMN_LABELS: Record<ColumnKey, string> = {
 // Re-exported for existing consumers -- the type itself is generic and now
 // lives in `src/ui/grid-nav.ts` alongside the nav math that operates on it.
 export type { CellPos } from "../ui/grid-nav";
+
+// Column reorder (#94, ADR-0021 phase 5): pure helpers over a full Column
+// Set ordering (every column, not just the currently-visible ones -- see
+// TransactionsGrid's `visibleColumns`, which filters this order down by
+// `columnVisibility` rather than the other way around). Kept alongside
+// COLUMN_SET/COLUMN_LABELS above so column vocabulary and column-order math
+// live in one module.
+
+/**
+ * Resolves a stored column order (as persisted -- see
+ * `services::settings::Settings.transaction_column_order`, plain strings so
+ * an unrecognized value never fails backend deserialization) into a valid,
+ * complete `ColumnKey[]` the grid can render from.
+ *
+ * - `undefined`/empty (a pre-#94 settings.json, or a user who's never
+ *   reordered) falls back to `COLUMN_SET`'s declaration order.
+ * - Unrecognized entries (a stale column key from a future/older version)
+ *   are dropped.
+ * - Any `COLUMN_SET` member missing from `stored` (a column added after the
+ *   user's order was saved, or dropped by the rule above) is appended at
+ *   the end, in `COLUMN_SET`'s own order -- so a newly-introduced column
+ *   always appears rather than silently vanishing from the grid.
+ */
+export function resolveColumnOrder(stored: string[] | null | undefined): ColumnKey[] {
+  if (!stored || stored.length === 0) return [...COLUMN_SET];
+  const isColumnKey = (value: string): value is ColumnKey =>
+    (COLUMN_SET as string[]).includes(value);
+  const known = stored.filter(isColumnKey);
+  const deduped = Array.from(new Set(known));
+  const missing = COLUMN_SET.filter((column) => !deduped.includes(column));
+  return [...deduped, ...missing];
+}
+
+/**
+ * Drag-to-reorder (#94): moves `dragged` to just before `target` in `order`,
+ * used when a column header's drag handle is dropped onto another header.
+ * A no-op (returns `order` unchanged, same reference) when `dragged`/
+ * `target` are the same column or `target` isn't present.
+ */
+export function moveColumnBefore(order: ColumnKey[], dragged: ColumnKey, target: ColumnKey): ColumnKey[] {
+  if (dragged === target) return order;
+  const without = order.filter((column) => column !== dragged);
+  const targetIndex = without.indexOf(target);
+  if (targetIndex === -1) return order;
+  return [...without.slice(0, targetIndex), dragged, ...without.slice(targetIndex)];
+}
+
+/**
+ * Up/down reordering (#94): the Columns chip panel's move controls swap
+ * `column` with its immediate neighbor in the given direction. A no-op at
+ * either end of `order` (already first and moving up, or already last and
+ * moving down).
+ */
+export function moveColumnByOffset(
+  order: ColumnKey[],
+  column: ColumnKey,
+  direction: "up" | "down",
+): ColumnKey[] {
+  const index = order.indexOf(column);
+  if (index === -1) return order;
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= order.length) return order;
+  const next = [...order];
+  [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+  return next;
+}

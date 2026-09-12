@@ -1290,6 +1290,68 @@ body {
   margin-left: 0.25rem;
 }
 
+/* Column drag-to-reorder (#94, ADR-0021 phase 5) */
+.column-drag-handle {
+  display: inline-flex;
+  cursor: grab;
+  margin-right: 0.35rem;
+  opacity: 0.5;
+  font-size: 0.85em;
+}
+
+.column-drag-handle:hover {
+  opacity: 0.9;
+}
+
+.column-drag-handle:active {
+  cursor: grabbing;
+}
+
+.ledger-head > span.header-dragging {
+  opacity: 0.5;
+}
+
+/* Columns chip panel (#90/#94): checklist + Move Up/Down controls per row */
+.columns-panel {
+  min-width: 220px;
+}
+
+.columns-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.columns-panel-toggle {
+  flex: 1;
+}
+
+.columns-panel-move {
+  display: flex;
+  flex-direction: column;
+}
+
+.columns-panel-move-btn {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--paper-text);
+  cursor: pointer;
+  font-size: 0.65rem;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.columns-panel-move-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.columns-panel-move-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .ledger-row > * {
   display: flex;
   align-items: center;

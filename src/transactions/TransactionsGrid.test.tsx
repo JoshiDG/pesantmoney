@@ -57,6 +57,7 @@ function renderGrid(
     linkingId: null,
     columnVisibility: DEFAULT_COLUMN_VISIBILITY,
     onColumnVisibilityChange: vi.fn(),
+    onColumnOrderChange: vi.fn(),
     onStartLink: vi.fn(),
     onCancelLink: vi.fn(),
     onLink: vi.fn(),
@@ -649,7 +650,10 @@ describe("TransactionsGrid full Column Set rendering", () => {
     renderGrid();
 
     const headers = Array.from(document.querySelectorAll(".ledger-head > span")).map(
-      (el) => el.textContent,
+      // Strips the column drag-reorder handle glyph (#94, ADR-0021 phase 5)
+      // prepended to each header's textContent -- these assertions care
+      // about the label text, not the handle.
+      (el) => el.textContent?.replace("⠿", ""),
     );
     expect(headers).toEqual([
       "", // select-all checkbox column
@@ -668,11 +672,73 @@ describe("TransactionsGrid full Column Set rendering", () => {
     renderGrid({ columnVisibility: { ...DEFAULT_COLUMN_VISIBILITY, tags: false, memo: false } });
 
     const headers = Array.from(document.querySelectorAll(".ledger-head > span")).map(
-      (el) => el.textContent,
+      (el) => el.textContent?.replace("⠿", ""),
     );
     expect(headers).not.toContain("Tags");
     expect(headers).not.toContain("Memo");
     expect(headers).toContain("Payee");
+  });
+});
+
+// Column drag-to-reorder (#94, ADR-0021 phase 5): native HTML5 drag-and-drop
+// on each header's drag handle. AllTransactionsScreen.test.tsx covers the
+// resulting order persisting through the Tauri settings command and the
+// Columns chip panel reflecting it -- these cover the grid-level interaction
+// and its `onColumnOrderChange` callback contract in isolation.
+describe("TransactionsGrid column drag-to-reorder", () => {
+  function headerLabels() {
+    return Array.from(document.querySelectorAll(".ledger-head > span")).map(
+      (el) => el.textContent?.replace("⠿", ""),
+    );
+  }
+
+  function dragHandle(columnLabel: string) {
+    return screen.getByRole("button", { name: `Reorder ${columnLabel} column` });
+  }
+
+  function headerSpan(columnLabel: string) {
+    return dragHandle(columnLabel).closest("span") as HTMLElement;
+  }
+
+  it("dragging a header's handle onto another header reorders the grid's columns immediately", () => {
+    const props = renderGrid();
+
+    fireEvent.dragStart(dragHandle("Amount"));
+    const targetHeader = headerSpan("Date");
+    fireEvent.dragOver(targetHeader);
+    fireEvent.drop(targetHeader);
+
+    expect(props.onColumnOrderChange).toHaveBeenCalledWith([
+      "amount",
+      "date",
+      "account",
+      "payee",
+      "memo",
+      "category",
+      "tags",
+      "running_balance",
+    ]);
+  });
+
+  it("dropping a dragged column onto itself is a no-op", () => {
+    const props = renderGrid();
+
+    const handle = dragHandle("Date");
+    fireEvent.dragStart(handle);
+    const header = headerSpan("Date");
+    fireEvent.dragOver(header);
+    fireEvent.drop(header);
+
+    expect(props.onColumnOrderChange).not.toHaveBeenCalled();
+  });
+
+  it("renders columns in the order given by columnOrder", () => {
+    renderGrid({
+      columnOrder: ["amount", "date", "account", "payee", "memo", "category", "tags", "running_balance"],
+    });
+
+    const headers = headerLabels();
+    expect(headers.slice(1, 3)).toEqual(["Amount", "Date"]);
   });
 });
 
