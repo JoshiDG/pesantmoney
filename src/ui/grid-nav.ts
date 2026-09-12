@@ -14,13 +14,20 @@ export interface CellPos {
   col: number;
 }
 
+// How many rows PageUp/PageDown jump by -- a screenful-ish stride rather
+// than a literal page measurement, since the nav math is DOM-free.
+const PAGE_STRIDE = 10;
+
 /**
- * Given a focused cell and a key event's `key` (plus whether Shift was
- * held), returns the cell that should become focused next. Movement is
- * clamped to the grid's bounds rather than wrapping past the first/last
- * row, so repeated presses at an edge are no-ops. Tab/Shift+Tab wrap
- * within a row (last column -> first column of next row, and back).
- * Unrecognized keys leave the position unchanged.
+ * Given a focused cell and a key event's `key` (plus the Shift/Ctrl
+ * modifiers), returns the cell that should become focused next. Movement
+ * is clamped to the grid's bounds rather than wrapping past the
+ * first/last row, so repeated presses at an edge are no-ops. Tab/Shift+Tab
+ * wrap within a row (last column -> first column of next row, and back).
+ * Home/End jump to the first/last column of the current row; Ctrl+Home/
+ * Ctrl+End jump to the first/last cell of the whole grid. PageUp/PageDown
+ * step a fixed stride of rows in the same column. Unrecognized keys leave
+ * the position unchanged.
  */
 export function nextCellForKey(
   pos: CellPos,
@@ -28,6 +35,7 @@ export function nextCellForKey(
   rowCount: number,
   colCount: number,
   shiftKey = false,
+  ctrlKey = false,
 ): CellPos {
   const { row, col } = pos;
 
@@ -40,6 +48,14 @@ export function nextCellForKey(
       return { row, col: Math.max(0, col - 1) };
     case "ArrowRight":
       return { row, col: Math.min(colCount - 1, col + 1) };
+    case "Home":
+      return ctrlKey ? { row: 0, col: 0 } : { row, col: 0 };
+    case "End":
+      return ctrlKey ? { row: rowCount - 1, col: colCount - 1 } : { row, col: colCount - 1 };
+    case "PageUp":
+      return { row: Math.max(0, row - PAGE_STRIDE), col };
+    case "PageDown":
+      return { row: Math.min(rowCount - 1, row + PAGE_STRIDE), col };
     case "Tab":
       return shiftKey ? previousCell(pos, colCount) : nextCell(pos, rowCount, colCount);
     case "Enter":

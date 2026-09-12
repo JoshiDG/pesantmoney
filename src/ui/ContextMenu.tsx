@@ -14,6 +14,10 @@ export interface ContextMenuItem {
   // false so multiple columns can be toggled in one right-click
   // interaction without the menu closing after each click.
   closeOnClick?: boolean;
+  // Renders the item disabled: still visible (and still reachable by
+  // keyboard for discoverability) but inert. Used for actions that don't
+  // apply to the menu's target (e.g. Unlink on an unlinked Transaction).
+  disabled?: boolean;
   onClick: () => void;
 }
 
@@ -26,6 +30,7 @@ interface ContextMenuProps {
 
 export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -48,6 +53,38 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     };
   }, [onClose]);
 
+  // Keyboard support: focus roves across items with ArrowUp/ArrowDown
+  // (wrapping), Home/End jump to the first/last item, and Enter/Space
+  // activate the focused item natively (each item is a real <button>).
+  // The menu opens with the first item already focused, so a right-click +
+  // ArrowDown + Enter performs a menu action without touching the mouse.
+  useEffect(() => {
+    itemRefs.current[0]?.focus();
+  }, []);
+
+  function focusItem(index: number) {
+    const clamped = (index + items.length) % items.length;
+    itemRefs.current[clamped]?.focus();
+  }
+
+  function handleMenuKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const current = itemRefs.current.findIndex((el) => el === document.activeElement);
+      focusItem(current + 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const current = itemRefs.current.findIndex((el) => el === document.activeElement);
+      focusItem(current === -1 ? items.length - 1 : current - 1);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      focusItem(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      focusItem(items.length - 1);
+    }
+  }
+
   const menuWidth = 185;
   const menuHeight = items.length * 36 + 12;
   const adjustedX = Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8));
@@ -60,17 +97,23 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       style={{ top: `${adjustedY}px`, left: `${adjustedX}px` }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
+      onKeyDown={handleMenuKeyDown}
       role="menu"
     >
       {items.map((item, index) => (
         <button
           key={index}
+          ref={(el) => {
+            itemRefs.current[index] = el;
+          }}
           type="button"
           role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
           aria-checked={item.checked !== undefined ? item.checked : undefined}
+          disabled={item.disabled ?? false}
           className={`context-menu-item ${item.danger ? "context-menu-item--danger" : ""}`}
           onClick={(e) => {
             e.stopPropagation();
+            if (item.disabled) return;
             if (item.closeOnClick !== false) {
               onClose();
             }

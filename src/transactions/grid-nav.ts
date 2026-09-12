@@ -38,12 +38,12 @@ export const COLUMN_SET: ColumnKey[] = [
 ];
 
 /**
- * Columns that support inline keyboard edit/nav. Payee, Account, Tags, and
- * Running Balance are read-only in this slice (Payee/Tags editing lands in
- * later issues; Account and Running Balance are always derived/computed),
- * so they're rendered as plain display cells and take no part in the
- * focus/edit grid navigation below -- only these four columns occupy a
- * `col` index in `CellPos`.
+ * Columns that support inline keyboard *editing*. Every visible column --
+ * including these -- occupies a `col` index in `CellPos` for focus/navigation
+ * (a `col` is an index into the caller's `visibleColumns`), but only these
+ * four open the plain draft-input editor on Enter/F2. Payee and Tags are
+ * edited through their own id-tracked SuggestionCombobox editors; Account
+ * and Running Balance are always derived/computed and hold focus only.
  */
 export const EDITABLE_COLUMNS: ColumnKey[] = ["date", "memo", "category", "amount"];
 

@@ -814,6 +814,16 @@ body {
   color: var(--paper-text);
 }
 
+.context-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.context-menu-item:disabled:hover {
+  background: transparent;
+  color: inherit;
+}
+
 .context-menu-item--danger {
   color: var(--debit, #c0392b);
 }
@@ -1032,6 +1042,11 @@ body {
   border-bottom: 2px double var(--paper-line);
   cursor: pointer;
   user-select: none;
+  /* The label and its sort arrow (a nested inline span) must never wrap to
+     a second line, even in a narrow column -- the arrow stays on the same
+     line as the label, clipped by the column edge if truly out of room. */
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .ledger-head > span:hover {
@@ -1045,6 +1060,7 @@ body {
 
 .sort-arrow {
   font-size: 0.7em;
+  margin-left: 0.25rem;
 }
 
 .ledger-row > * {

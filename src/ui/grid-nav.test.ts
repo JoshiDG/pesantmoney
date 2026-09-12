@@ -114,6 +114,48 @@ describe("nextCellForKey", () => {
     });
   });
 
+  it("Home/End jump to the first/last column of the current row", () => {
+    expect(nextCellForKey({ row: 1, col: 2 }, "Home", rowCount, colCount)).toEqual({
+      row: 1,
+      col: 0,
+    });
+    expect(nextCellForKey({ row: 1, col: 2 }, "End", rowCount, colCount)).toEqual({
+      row: 1,
+      col: 3,
+    });
+  });
+
+  it("Ctrl+Home/Ctrl+End jump to the corners of the whole grid", () => {
+    expect(nextCellForKey({ row: 1, col: 2 }, "Home", rowCount, colCount, false, true)).toEqual({
+      row: 0,
+      col: 0,
+    });
+    expect(nextCellForKey({ row: 1, col: 2 }, "End", rowCount, colCount, false, true)).toEqual({
+      row: 2,
+      col: 3,
+    });
+  });
+
+  it("PageUp/PageDown step a stride of rows in the same column, clamped at the edges", () => {
+    const pageRowCount = 30;
+    expect(nextCellForKey({ row: 12, col: 1 }, "PageUp", pageRowCount, colCount)).toEqual({
+      row: 2,
+      col: 1,
+    });
+    expect(nextCellForKey({ row: 5, col: 1 }, "PageUp", pageRowCount, colCount)).toEqual({
+      row: 0,
+      col: 1,
+    });
+    expect(nextCellForKey({ row: 25, col: 1 }, "PageDown", pageRowCount, colCount)).toEqual({
+      row: 29,
+      col: 1,
+    });
+    expect(nextCellForKey({ row: 29, col: 1 }, "PageDown", pageRowCount, colCount)).toEqual({
+      row: 29,
+      col: 1,
+    });
+  });
+
   it("handles a single-row grid without going out of bounds", () => {
     expect(nextCellForKey({ row: 0, col: 0 }, "ArrowDown", 1, colCount)).toEqual({
       row: 0,

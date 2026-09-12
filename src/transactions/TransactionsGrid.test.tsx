@@ -147,17 +147,70 @@ describe("TransactionsGrid inline editing", () => {
 });
 
 describe("TransactionsGrid keyboard navigation", () => {
-  it("ArrowRight moves focus from the date cell to the memo cell", () => {
+  it("ArrowRight moves focus across every visible column, read-only ones included", () => {
     renderGrid();
 
     const dateCell = screen.getByText("2026-08-01");
     dateCell.focus();
     fireEvent.keyDown(dateCell, { key: "ArrowRight" });
 
+    // Single-Account fixture suppresses the Account column, so the visible
+    // order is date -> payee -> memo -> ...
+    const payeeCell = payeeName("Coffee shop").closest('[role="gridcell"]') as HTMLElement;
+    expect(payeeCell).toHaveFocus();
+
+    fireEvent.keyDown(payeeCell, { key: "ArrowRight" });
     expect(memoCell("Coffee shop").closest('[role="gridcell"]')).toHaveFocus();
   });
 
-  it("Enter on a focused (non-editing) cell opens it for editing", () => {
+  it("ArrowLeft moves focus back to the previous visible column", () => {
+    renderGrid();
+
+    const memo = memoCell("Coffee shop").closest('[role="gridcell"]') as HTMLElement;
+    memo.focus();
+    fireEvent.keyDown(memo, { key: "ArrowLeft" });
+
+    expect(payeeName("Coffee shop").closest('[role="gridcell"]')).toHaveFocus();
+  });
+
+  it("ArrowDown/ArrowUp move between rows in the same column, clamped at the edges", () => {
+    renderGrid();
+
+    const dateCell = screen.getByText("2026-08-01");
+    dateCell.focus();
+    fireEvent.keyDown(dateCell, { key: "ArrowDown" });
+    expect(screen.getByText("2026-08-02")).toHaveFocus();
+
+    fireEvent.keyDown(screen.getByText("2026-08-02"), { key: "ArrowDown" });
+    expect(screen.getByText("2026-08-02")).toHaveFocus();
+
+    fireEvent.keyDown(screen.getByText("2026-08-02"), { key: "ArrowUp" });
+    expect(screen.getByText("2026-08-01")).toHaveFocus();
+  });
+
+  it("Home/End jump to the first/last visible column of the row", () => {
+    renderGrid();
+
+    const memo = memoCell("Coffee shop").closest('[role="gridcell"]') as HTMLElement;
+    memo.focus();
+    fireEvent.keyDown(memo, { key: "Home" });
+    expect(screen.getByText("2026-08-01")).toHaveFocus();
+
+    fireEvent.keyDown(screen.getByText("2026-08-01"), { key: "End" });
+    expect(document.querySelector(".cell-running-balance")).toHaveFocus();
+  });
+
+  it("Enter on a focused read-only Payee cell opens its combobox editor", () => {
+    renderGrid();
+
+    const payeeCell = payeeName("Coffee shop").closest('[role="gridcell"]') as HTMLElement;
+    payeeCell.focus();
+    fireEvent.keyDown(payeeCell, { key: "Enter" });
+
+    expect(screen.getByLabelText("Payee for Coffee shop")).toBeInTheDocument();
+  });
+
+  it("Enter on a focused (non-editing) editable cell opens it for editing", () => {
     renderGrid();
 
     const dateCell = screen.getByText("2026-08-01");
@@ -970,6 +1023,57 @@ describe("TransactionsGrid Hidden transactions (#70)", () => {
     const menu = screen.getByRole("menu");
     expect(within(menu).queryByText("Hide")).toBeNull();
     expect(within(menu).getAllByRole("menuitemcheckbox").length).toBeGreaterThan(0);
+  });
+});
+
+describe("TransactionsGrid row context menu actions", () => {
+  function openRowMenu() {
+    fireEvent.contextMenu(memoCell("Coffee shop").closest(".ledger-row") as HTMLElement);
+    return screen.getByRole("menu");
+  }
+
+  it("offers Link transfer alongside Hide for an unlinked transaction", () => {
+    const props = renderGrid();
+
+    const menu = openRowMenu();
+    expect(within(menu).getByText("Link transfer")).toBeInTheDocument();
+    expect(within(menu).queryByText("Unlink transfer")).toBeNull();
+
+    fireEvent.click(within(menu).getByText("Link transfer"));
+    expect(props.onStartLink).toHaveBeenCalledWith(1);
+  });
+
+  it("offers Unlink transfer for a linked transaction, calling onUnlink with its transfer", () => {
+    const transfer = {
+      id: 7,
+      from_transaction_id: 1,
+      to_transaction_id: 2,
+      created_at: "2026-08-01T00:00:00Z",
+    };
+    const props = renderGrid({
+      linkedTransactionIds: new Set([1, 2]),
+      transferByTransactionId: new Map([[1, transfer], [2, transfer]]),
+    });
+
+    const menu = openRowMenu();
+    expect(within(menu).getByText("Unlink transfer")).toBeInTheDocument();
+    expect(within(menu).queryByText("Link transfer")).toBeNull();
+
+    fireEvent.click(within(menu).getByText("Unlink transfer"));
+    expect(props.onUnlink).toHaveBeenCalledWith(transfer);
+  });
+
+  it("offers Delete as a danger item that calls onDelete for the row's transaction", () => {
+    const props = renderGrid();
+
+    const menu = openRowMenu();
+    const deleteItem = within(menu).getByText("Delete");
+    expect(deleteItem.closest("button")?.className).toMatch(/context-menu-item--danger/);
+
+    fireEvent.click(deleteItem);
+    expect(props.onDelete).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1, description: "Coffee shop" }),
+    );
   });
 });
 

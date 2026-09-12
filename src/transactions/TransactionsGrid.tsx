@@ -225,17 +225,16 @@ export function TransactionsGrid({
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; transaction: Transaction } | null>(
     null,
   );
-  // Tags cell editing (#71): a NEW interaction, deliberately kept outside
-  // the col-index-based focus/edit scheme in grid-nav.ts (EDITABLE_COLUMNS
-  // stays exactly ["date","memo","category","amount"] -- adding a fifth
-  // entry there would shift every existing keyboard-nav test's col index).
-  // Tracked by transaction id since Tags editing isn't part of a
-  // fixed-column-index row.
+  // Tags cell editing (#71): the Tags *editor* is tracked by transaction
+  // id, not an editingCell {row, col} position -- its SuggestionCombobox
+  // (multi-mode, chip-based) doesn't fit the plain-input draft scheme
+  // EDITABLE_COLUMNS' editors use. The Tags *cell itself* is fully part of
+  // the visible-column keyboard navigation, though: startEdit routes
+  // Enter/F2 on it here, same as Payee below.
   const [editingTagsId, setEditingTagsId] = useState<number | null>(null);
-  // Payee cell editing (#72): same "outside the fixed-column-index scheme"
-  // approach as editingTagsId above -- tracked by transaction id, not a
-  // EDITABLE_COLUMNS col index. `payeeConfirm` holds the pending unmatched
-  // value while the create-new confirmation dialog (ADR-0019) is open; it's
+  // Payee cell editing (#72): same id-tracked editor approach as
+  // editingTagsId above. `payeeConfirm` holds the pending unmatched value
+  // while the create-new confirmation dialog (ADR-0019) is open; it's
   // cleared as soon as the user answers Yes or No.
   const [editingPayeeId, setEditingPayeeId] = useState<number | null>(null);
   const [payeeConfirm, setPayeeConfirm] = useState<{
@@ -373,7 +372,15 @@ export function TransactionsGrid({
   );
 
   const rowCount = sortedTransactions.length;
-  const colCount = EDITABLE_COLUMNS.length;
+  // Keyboard navigation spans EVERY visible column (read-only ones
+  // included): a `col` index is an index into `visibleColumns`, not into
+  // EDITABLE_COLUMNS, so arrow keys traverse the row exactly as it renders
+  // instead of skipping over Payee/Tags/Account/Running Balance and
+  // desyncing from the Tab order. Only EDITABLE_COLUMNS' members actually
+  // open an inline editor on Enter/F2 (see startEdit); read-only columns
+  // still take focus, and Payee/Tags route to their id-tracked combobox
+  // editors there.
+  const colCount = visibleColumns.length;
 
   function handleHeaderClick(column: ColumnKey) {
     setSortState((prev) => {
@@ -393,8 +400,21 @@ export function TransactionsGrid({
       if (el && document.activeElement !== el) {
         el.focus();
       }
+      // Keep the focused cell on screen during long arrow-key/PgUp/PgDn
+      // traversals. jsdom doesn't implement scrollIntoView, hence the
+      // optional call.
+      el?.scrollIntoView?.({ block: "nearest" });
     }
   }, [focusedCell, editingCell]);
+
+  // Column Management / Account auto-suppression / data refresh can shrink
+  // the grid out from under a held focus -- drop it rather than point at a
+  // cell that no longer exists.
+  useEffect(() => {
+    setFocusedCell((prev) =>
+      prev && (prev.row >= rowCount || prev.col >= visibleColumns.length) ? null : prev,
+    );
+  }, [rowCount, visibleColumns.length]);
 
   function focusCell(row: number, col: number) {
     setFocusedCell((prev) => (prev && prev.row === row && prev.col === col ? prev : { row, col }));
@@ -403,10 +423,23 @@ export function TransactionsGrid({
   function startEdit(row: number, col: number) {
     const transaction = sortedTransactions[row];
     if (!transaction) return;
+    const column = visibleColumns[col];
+    // Read-only columns: Payee and Tags open their id-tracked combobox
+    // editors; Account and Running Balance take focus only (nothing to
+    // edit). Only EDITABLE_COLUMNS enter the draft/editingCell scheme.
+    if (column === "payee") {
+      setEditingPayeeId(transaction.id);
+      return;
+    }
+    if (column === "tags") {
+      setEditingTagsId(transaction.id);
+      return;
+    }
+    if (!EDITABLE_COLUMNS.includes(column)) return;
     editingRef.current = { row, col };
     setFocusedCell({ row, col });
     setEditingCell({ row, col });
-    setDraftValue(cellValue(transaction, EDITABLE_COLUMNS[col]));
+    setDraftValue(cellValue(transaction, column));
   }
 
   function cancelEdit() {
@@ -420,7 +453,8 @@ export function TransactionsGrid({
     setEditingCell(null);
     if (!transaction) return;
 
-    const column = EDITABLE_COLUMNS[col];
+    const column = visibleColumns[col];
+    if (!EDITABLE_COLUMNS.includes(column)) return;
     if ((column === "date" || column === "memo") && value.trim() === "") {
       // Required fields: silently revert rather than saving an empty value.
       return;
@@ -478,7 +512,12 @@ export function TransactionsGrid({
     }
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(e.key)) {
       e.preventDefault();
-      setFocusedCell(nextCellForKey({ row, col }, e.key, rowCount, colCount, e.shiftKey));
+      setFocusedCell(nextCellForKey({ row, col }, e.key, rowCount, colCount, e.shiftKey, e.ctrlKey));
+      return;
+    }
+    if (["Home", "End", "PageUp", "PageDown"].includes(e.key)) {
+      e.preventDefault();
+      setFocusedCell(nextCellForKey({ row, col }, e.key, rowCount, colCount, e.shiftKey, e.ctrlKey));
     }
   }
 
@@ -528,10 +567,11 @@ export function TransactionsGrid({
     setColumnMenu({ x: e.clientX, y: e.clientY });
   }
 
-  // Row-level right-click context menu (#70): a single Hide/Unhide action
-  // reflecting the Transaction's current `hidden` state. Distinct from the
-  // header's Column Management menu above -- this is scoped to a data row,
-  // not the header row.
+  // Row-level right-click context menu (#70): every row action lives here,
+  // alongside the pre-existing Hide/Unhide -- Link/Unlink transfer (same
+  // handlers as the row's visible action buttons) and Delete (danger-
+  // styled). Distinct from the header's Column Management menu above --
+  // this is scoped to a data row, not the header row.
   function handleRowContextMenu(e: React.MouseEvent, transaction: Transaction) {
     e.preventDefault();
     e.stopPropagation();
@@ -539,11 +579,15 @@ export function TransactionsGrid({
   }
 
   function rowMenuItems(transaction: Transaction): ContextMenuItem[] {
+    const transfer = transferByTransactionId.get(transaction.id);
     return [
-      {
-        label: transaction.hidden ? "Unhide" : "Hide",
-        onClick: () => onSetHidden(transaction, !transaction.hidden),
-      },
+      transaction.hidden
+        ? { label: "Unhide", onClick: () => onSetHidden(transaction, false) }
+        : { label: "Hide", onClick: () => onSetHidden(transaction, true) },
+      transfer
+        ? { label: "Unlink transfer", onClick: () => onUnlink(transfer) }
+        : { label: "Link transfer", onClick: () => onStartLink(transaction.id) },
+      { label: "Delete", danger: true, onClick: () => onDelete(transaction) },
     ];
   }
 
@@ -560,14 +604,30 @@ export function TransactionsGrid({
   }
 
   // Read-only columns (Account, Payee, Tags, Running Balance) render as
-  // plain display cells -- they take no part in the focus/edit keyboard
-  // grid navigation, which is scoped to EDITABLE_COLUMNS only (see
-  // grid-nav.ts).
-  function renderReadOnlyCell(transaction: Transaction, column: ColumnKey) {
+  // display cells, but they still take part in the focus/edit keyboard
+  // grid navigation -- every visible column occupies a `col` index (see
+  // `colCount` above). Enter/F2 on Payee/Tags opens their id-tracked
+  // combobox editors via startEdit; Account/Running Balance just hold
+  // focus.
+  function navCellProps(row: number, col: number) {
+    return {
+      ref: (el: HTMLDivElement | null) => {
+        cellRefs.current[`${row}-${col}`] = el;
+      },
+      tabIndex: 0,
+      role: "gridcell",
+      onFocus: () => focusCell(row, col),
+      onClick: () => startEdit(row, col),
+      onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => handleCellKeyDown(e, row, col),
+    };
+  }
+
+  function renderReadOnlyCell(transaction: Transaction, row: number, col: number, column: ColumnKey) {
+    const className = `grid-cell${focusedCell?.row === row && focusedCell?.col === col ? " grid-cell-focused" : ""}`;
     switch (column) {
       case "account": {
         const name = transaction.account_name ?? accountNameById.get(transaction.account_id) ?? "";
-        return <div className="grid-cell cell-account">{name}</div>;
+        return <div {...navCellProps(row, col)} className={`${className} cell-account`}>{name}</div>;
       }
       case "payee": {
         const payee = transaction.merchant_name || transaction.description;
@@ -606,18 +666,7 @@ export function TransactionsGrid({
           );
         }
         return (
-          <div
-            className="grid-cell cell-payee"
-            tabIndex={0}
-            role="button"
-            onClick={() => setEditingPayeeId(transaction.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === "F2") {
-                e.preventDefault();
-                setEditingPayeeId(transaction.id);
-              }
-            }}
-          >
+          <div {...navCellProps(row, col)} className={`${className} cell-payee`}>
             {linkedTransactionIds.has(transaction.id) && (
               <span className="transfer-badge" title="Part of a transfer">
                 ⇄
@@ -657,18 +706,7 @@ export function TransactionsGrid({
           );
         }
         return (
-          <div
-            className="grid-cell cell-tags"
-            tabIndex={0}
-            role="button"
-            onClick={() => setEditingTagsId(transaction.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === "F2") {
-                e.preventDefault();
-                setEditingTagsId(transaction.id);
-              }
-            }}
-          >
+          <div {...navCellProps(row, col)} className={`${className} cell-tags`}>
             {attachedTags.map((tag) => (
               <span key={tag.id} className="tag-chip">
                 {tag.name}
@@ -680,7 +718,7 @@ export function TransactionsGrid({
       case "running_balance": {
         const balance = runningBalanceByTransactionId.get(transaction.id);
         return (
-          <div className="grid-cell amount cell-running-balance">
+          <div {...navCellProps(row, col)} className={`${className} amount cell-running-balance`}>
             {balance != null ? formatCents(balance) : NO_BALANCE}
           </div>
         );
@@ -694,15 +732,8 @@ export function TransactionsGrid({
     const isFocused = focusedCell?.row === row && focusedCell?.col === col;
     const isFlashed = flashCell?.row === row && flashCell?.col === col;
     const commonProps = {
-      ref: (el: HTMLDivElement | null) => {
-        cellRefs.current[`${row}-${col}`] = el;
-      },
-      tabIndex: 0,
-      role: "gridcell",
+      ...navCellProps(row, col),
       className: `grid-cell${isFocused ? " grid-cell-focused" : ""}${isFlashed ? " grid-cell-flash" : ""}`,
-      onClick: () => startEdit(row, col),
-      onFocus: () => focusCell(row, col),
-      onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => handleCellKeyDown(e, row, col),
     };
 
     switch (column) {
@@ -812,15 +843,15 @@ export function TransactionsGrid({
   }
 
   function renderColumn(transaction: Transaction, row: number, column: ColumnKey) {
+    const col = visibleColumns.indexOf(column);
     if (EDITABLE_COLUMNS.includes(column)) {
-      const col = EDITABLE_COLUMNS.indexOf(column);
       return editingCell?.row === row && editingCell?.col === col ? (
         <Fragment key={column}>{renderEditingCell(transaction, row, col, column)}</Fragment>
       ) : (
         <Fragment key={column}>{renderDisplayCell(transaction, row, col, column)}</Fragment>
       );
     }
-    return <Fragment key={column}>{renderReadOnlyCell(transaction, column)}</Fragment>;
+    return <Fragment key={column}>{renderReadOnlyCell(transaction, row, col, column)}</Fragment>;
   }
 
   // Mobile tier (<768px, ADR-0018): one card per Transaction instead of a
@@ -973,12 +1004,19 @@ export function TransactionsGrid({
               className={
                 sortState?.column === column ? `sort-${sortState.direction}` : undefined
               }
+              tabIndex={0}
               onClick={() => handleHeaderClick(column)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleHeaderClick(column);
+                }
+              }}
             >
               {COLUMN_LABELS[column]}
               {sortState?.column === column && (
                 <span className="sort-arrow" aria-hidden="true">
-                  {sortState.direction === "asc" ? " ▲" : " ▼"}
+                  {sortState.direction === "asc" ? "▲" : "▼"}
                 </span>
               )}
             </span>
