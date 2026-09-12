@@ -34,6 +34,7 @@ import {
   toggleColumnValue,
   toggleTypeFacet,
 } from "./filters";
+import { applySearch } from "./search";
 import {
   ColumnVisibility,
   DEFAULT_COLUMN_VISIBILITY,
@@ -148,6 +149,17 @@ export function AllTransactionsScreen({
   // the deleted per-Account TransactionsScreen had. `null` when "All
   // accounts" is selected -- there is no single balance to show.
   const [accountBalanceCents, setAccountBalanceCents] = useState<number | null>(null);
+  // Live search (#92, ADR-0021): the Context Bar's search input, a
+  // substring match over Payee/description/Category/Tags (see
+  // src/transactions/search.ts) composed via AND with `filters` below.
+  // `searchInputRef` is focused both by Cmd+F (Reserved Shortcut Set,
+  // wired below) and by `/` from the grid (TransactionsGrid's
+  // onFocusSearch) -- the same function serves both entry points.
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  function focusSearch() {
+    searchInputRef.current?.focus();
+  }
 
   // Keeps the filter in sync with the Account the caller pre-selected, even
   // if this screen is already mounted showing a different filter (e.g. the
@@ -247,12 +259,12 @@ export function AllTransactionsScreen({
       .catch((err) => setError(String(err)));
   }, [accountFilter, transactions]);
 
-  // CANC (#90/#91): clears search + all filters in one action (ADR-0021).
-  // Search lands in #92 -- until then this resets every filter facet
-  // (column filters, Date preset, Type, Show Hidden) back to the empty
-  // state.
+  // CANC (#90/#91/#92): clears search + all filters in one action
+  // (ADR-0021) -- every filter facet (column filters, Date preset, Type,
+  // Show Hidden) back to the empty state, plus the search term.
   function handleCancel() {
     setFilters(emptyFilterState());
+    setSearchTerm("");
   }
 
   // Filters chip (#91): toggles the Filters popover (Type, Show Hidden,
@@ -309,16 +321,19 @@ export function AllTransactionsScreen({
   }, [autoOpenNew, accounts]);
 
   // Reserved Shortcut Set (#78): Cmd/Ctrl+N opens the New Transaction panel
-  // above; Cmd/Ctrl+W and Escape close whichever of this screen's own
-  // panels is open (the New Transaction panel, the transfer-link picker, or
-  // -- as of #90 -- the Import chip's Account picker); Delete/Backspace
-  // deletes the grid's current checkbox selection -- but only when exactly
-  // one row is selected, since `onDelete` shows its own confirmation per
-  // Transaction and firing it once per row for a large multi-select would
-  // stack that many confirmation dialogs. This screen has no search input
-  // yet (#92), so `onFocusSearch` is omitted.
+  // above; Cmd/Ctrl+F focuses the Context Bar's search input (#92, wired
+  // locally to this screen since #78's app-wide plumbing landed but this is
+  // the first screen with a search input to focus); Cmd/Ctrl+W and Escape
+  // close whichever of this screen's own panels is open (the New
+  // Transaction panel, the transfer-link picker, or -- as of #90 -- the
+  // Import chip's Account picker); Delete/Backspace deletes the grid's
+  // current checkbox selection -- but only when exactly one row is
+  // selected, since `onDelete` shows its own confirmation per Transaction
+  // and firing it once per row for a large multi-select would stack that
+  // many confirmation dialogs.
   useReservedShortcuts({
     onNew: accounts.length > 0 ? openCreateTransaction : undefined,
+    onFocusSearch: focusSearch,
     onCloseModal: () => {
       if (creatingTransaction) {
         setCreatingTransaction(false);
@@ -548,13 +563,19 @@ export function AllTransactionsScreen({
     [transactions, categoryNameById, tagsByTransactionId, linkedTransactionIds],
   );
 
-  // Account filter (pre-existing, #51) narrows first; the filter model's
-  // own facets (column filters, Date preset, Type, Show Hidden) then apply
-  // on top, all AND'd together (ADR-0021).
+  // Account filter (pre-existing, #51) narrows first; live search (#92)
+  // narrows next; the filter model's own facets (column filters, Date
+  // preset, Type, Show Hidden) then apply on top -- every stage AND'd
+  // together (ADR-0021).
   const accountFilteredRows = filterableRows.filter(
     (row) => accountFilter == null || row.transaction.account_id === accountFilter,
   );
-  const visibleRows = applyFilters(accountFilteredRows, filters);
+  const searchFilteredRows = useMemo(
+    () => applySearch(accountFilteredRows, searchTerm),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [accountFilteredRows, searchTerm],
+  );
+  const visibleRows = applyFilters(searchFilteredRows, filters);
   const filteredTransactions: Transaction[] = visibleRows.map((row) => row.transaction);
 
   // TransactionsGrid now owns Account-column suppression itself (#68):
@@ -596,7 +617,7 @@ export function AllTransactionsScreen({
       ...filters,
       columns: { ...filters.columns, [checklistColumn]: undefined },
     };
-    const candidateRows = applyFilters(accountFilteredRows, otherFilters);
+    const candidateRows = applyFilters(searchFilteredRows, otherFilters);
     const counts = distinctValueCounts(candidateRows, checklistColumn);
     const selected = filters.columns[checklistColumn] ?? new Set<string>();
     const items: ContextMenuItem[] = counts.map(({ value, count }) => ({
@@ -613,6 +634,21 @@ export function AllTransactionsScreen({
     }
     return items;
   }
+
+  // Status Bar summary (#92): the active search term, if any, leads --
+  // followed by `filterSummary`'s existing filter-facet summary (#91) --
+  // joined the same way filterSummary joins its own parts.
+  const statusBarSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (searchTerm.trim() !== "") {
+      parts.push(`Search: "${searchTerm.trim()}"`);
+    }
+    const filtersSummary = filterSummary(filters);
+    if (filtersSummary) {
+      parts.push(filtersSummary);
+    }
+    return parts.length > 0 ? parts.join(" · ") : undefined;
+  }, [searchTerm, filters]);
 
   const activeFilterColumns = useMemo(() => {
     const active = new Set<ColumnKey>();
@@ -652,7 +688,14 @@ export function AllTransactionsScreen({
         onToggleShowHidden={() => setFilters((prev) => setShowHidden(prev, !prev.showHidden))}
       />
 
-      <ContextBar accounts={accounts} accountFilter={accountFilter} onAccountFilterChange={setAccountFilter} />
+      <ContextBar
+        accounts={accounts}
+        accountFilter={accountFilter}
+        onAccountFilterChange={setAccountFilter}
+        searchTerm={searchTerm}
+        onSearchTermChange={setSearchTerm}
+        searchInputRef={searchInputRef}
+      />
 
       <QuoteStrip
         rowCount={filteredTransactions.length}
@@ -779,13 +822,14 @@ export function AllTransactionsScreen({
             }
           }}
           activeFilterColumns={activeFilterColumns}
+          onFocusSearch={focusSearch}
         />
       </div>
 
       <StatusBar
         visibleCount={filteredTransactions.length}
         totalCount={transactions.length}
-        summary={filterSummary(filters) ?? undefined}
+        summary={statusBarSummary}
       />
     </section>
   );

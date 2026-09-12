@@ -1141,6 +1141,23 @@ body {
   letter-spacing: 0.05em;
 }
 
+.context-bar-search {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.context-bar-search-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--paper);
+  color: var(--paper-text);
+  border: 1px solid var(--paper-line);
+  border-radius: 3px;
+  padding: 0.3rem 0.5rem;
+}
+
 .quote-strip {
   display: flex;
   flex-wrap: wrap;
@@ -3809,6 +3826,39 @@ button.danger:hover,
   outline: 1px solid var(--focus);
   outline-offset: 2px;
   font-weight: 600;
+}
+
+/* Grid shortcuts overlay (#92, ADR-0020): reuses .confirm-create-overlay/
+   .confirm-create-panel above for the modal chrome, adding only its own
+   two-column keys/description list. */
+.shortcuts-overlay-panel {
+  width: min(28rem, calc(100vw - 2rem));
+}
+
+.shortcuts-overlay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+}
+
+.shortcuts-overlay-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+}
+
+.shortcuts-overlay-keys {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.shortcuts-overlay-description {
+  margin: 0;
+  color: var(--paper-text);
+  text-align: right;
 }
 
 /* ---------- motion: functional/confirmatory only, never decorative ---------- */

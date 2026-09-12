@@ -1143,3 +1143,195 @@ describe("AllTransactionsScreen column filtering", () => {
     await waitFor(() => expect(screen.getByText(/Account: 1/)).toBeInTheDocument());
   });
 });
+
+// Live search + single-letter grid keyboard shortcuts (#92, ADR-0020/0021):
+// see src/transactions/search.test.ts for the underlying pure-module
+// coverage (substring matching across Payee/description/Category/Tags) --
+// these tests cover the Context Bar's live wiring, Cmd+F/Esc/CANC, the
+// Quote Strip/Status Bar recomputing against the combined search+filter
+// set, and the grid's j/k/x/'/'/? shortcuts (guarded against text-input
+// focus).
+describe("AllTransactionsScreen live search + single-letter grid shortcuts (#92)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockInvokeDefaults();
+  });
+
+  function renderWithShortcuts() {
+    render(
+      <ConfirmationProvider>
+        <ReservedShortcutProvider onOpenSettings={vi.fn()}>
+          <AllTransactionsScreen initialAccountId={null} />
+        </ReservedShortcutProvider>
+      </ConfirmationProvider>,
+      { wrapper: withBreakpoint("expanded") },
+    );
+  }
+
+  function searchInput() {
+    return screen.getByLabelText("Search transactions");
+  }
+
+  it("typing in the search input narrows the grid live by Payee/description", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.type(searchInput(), "coffee");
+
+    await waitFor(() => expect(screen.queryByText("Interest")).not.toBeInTheDocument());
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
+  });
+
+  it("composes search with an active column filter (AND)", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    // Narrow to Checking via the Account column filter first.
+    fireEvent.contextMenu(screen.getByText("Account", { selector: ".ledger-head span" }));
+    const menu = screen.getByRole("menu");
+    await userEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Checking (1)" }));
+    await waitFor(() => expect(screen.queryByText("Interest")).not.toBeInTheDocument());
+
+    // A search term matching only the Savings-Account row (already excluded
+    // by the column filter) leaves nothing visible.
+    await userEvent.type(searchInput(), "interest");
+
+    await waitFor(() => expect(screen.queryByText("Coffee shop")).not.toBeInTheDocument());
+    expect(screen.getByText("0 of 2")).toBeInTheDocument();
+  });
+
+  it("recomputes the Quote Strip and reflects the search term in the Status Bar summary", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.type(searchInput(), "coffee");
+
+    await waitFor(() => expect(screen.getByText("1 of 2")).toBeInTheDocument());
+    const quoteStrip = screen.getByRole("status", { name: "Transactions summary" });
+    expect(within(quoteStrip).getByText("1")).toBeInTheDocument();
+    expect(screen.getByText(/Search: "coffee"/)).toBeInTheDocument();
+  });
+
+  it("Cmd+F focuses the search input from anywhere on the screen", async () => {
+    renderWithShortcuts();
+    await findMemoCell("Coffee shop");
+
+    expect(document.activeElement).not.toBe(searchInput());
+    fireEvent.keyDown(window, { key: "f", metaKey: true });
+    expect(document.activeElement).toBe(searchInput());
+  });
+
+  it("Escape clears and blurs the search input", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    const input = searchInput();
+    await userEvent.type(input, "coffee");
+    expect(input).toHaveFocus();
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(input).toHaveValue("");
+    expect(input).not.toHaveFocus();
+    await waitFor(() => expect(memoCell("Interest")).toBeInTheDocument());
+  });
+
+  it("CANC also clears the search term", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.type(searchInput(), "coffee");
+    await waitFor(() => expect(screen.queryByText("Interest")).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("CANC"));
+
+    expect(searchInput()).toHaveValue("");
+    await waitFor(() => expect(memoCell("Interest")).toBeInTheDocument());
+  });
+
+  function accountCell(text: string) {
+    return screen.getByText(text, { selector: ".cell-account" });
+  }
+
+  it("j/k move the focused grid cell down/up a row", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(accountCell("Checking"));
+    expect(accountCell("Checking")).toHaveClass("grid-cell-focused");
+
+    fireEvent.keyDown(accountCell("Checking"), { key: "j" });
+    expect(accountCell("Savings")).toHaveClass("grid-cell-focused");
+
+    fireEvent.keyDown(accountCell("Savings"), { key: "k" });
+    expect(accountCell("Checking")).toHaveClass("grid-cell-focused");
+  });
+
+  it("x toggles the focused row's checkbox", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(accountCell("Checking"));
+    expect(screen.getByLabelText("Select Coffee shop")).not.toBeChecked();
+
+    fireEvent.keyDown(accountCell("Checking"), { key: "x" });
+    expect(screen.getByLabelText("Select Coffee shop")).toBeChecked();
+
+    fireEvent.keyDown(accountCell("Checking"), { key: "x" });
+    expect(screen.getByLabelText("Select Coffee shop")).not.toBeChecked();
+  });
+
+  it("/ focuses search from the grid", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(accountCell("Checking"));
+    fireEvent.keyDown(accountCell("Checking"), { key: "/" });
+
+    expect(document.activeElement).toBe(searchInput());
+  });
+
+  it("? opens an overlay listing the grid's shortcuts", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(accountCell("Checking"));
+    fireEvent.keyDown(accountCell("Checking"), { key: "?" });
+
+    const overlay = screen.getByRole("dialog", { name: "Keyboard shortcuts" });
+    expect(within(overlay).getByText("j / k")).toBeInTheDocument();
+    expect(within(overlay).getByText("x")).toBeInTheDocument();
+
+    await userEvent.click(within(overlay).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
+  });
+
+  it("typing inside a grid cell editor never triggers the single-letter shortcuts", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.click(memoCell("Coffee shop"));
+    const input = screen.getByLabelText("Memo for Coffee shop");
+    await userEvent.type(input, "x");
+
+    expect(screen.getByLabelText("Select Coffee shop")).not.toBeChecked();
+  });
+
+  it("typing inside the search input never triggers the single-letter shortcuts", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+    const checkbox = screen.getByLabelText("Select Coffee shop");
+    expect(checkbox).not.toBeChecked();
+
+    await userEvent.type(searchInput(), "jkx?");
+
+    // The letters land in the search input's value (narrowing the grid away
+    // to nothing, since no row matches "jkx?") rather than being
+    // interpreted as j/k/x/? grid shortcuts -- the Coffee shop checkbox
+    // (now unmounted, since its row no longer matches) was never toggled,
+    // and no shortcuts overlay opened.
+    expect(searchInput()).toHaveValue("jkx?");
+    expect(screen.queryByLabelText("Select Coffee shop")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
+  });
+});

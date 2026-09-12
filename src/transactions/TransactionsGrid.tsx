@@ -16,11 +16,12 @@ import { ConfirmCreateDialog } from "../ui/ConfirmCreateDialog";
 import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
-import { CellPos, nextCellForKey } from "../ui/grid-nav";
+import { CellPos, isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
 import { COLUMN_LABELS, COLUMN_SET, ColumnKey, EDITABLE_COLUMNS } from "./grid-nav";
 import { isFilterableColumn } from "./filters";
 import { SuggestionCombobox } from "../ui/SuggestionCombobox";
+import { ShortcutsOverlay } from "./chrome/ShortcutsOverlay";
 import {
   ColumnVisibility,
   centsToDollarInput,
@@ -142,6 +143,12 @@ interface TransactionsGridProps {
   // Columns with an active filter get a visual marker on their header cell
   // so an applied filter stays visible even when its menu is closed.
   activeFilterColumns?: Set<ColumnKey>;
+  // Scoped bare single-letter shortcuts (#92, ADR-0020): `/` while a grid
+  // cell has focus asks the caller (AllTransactionsScreen) to focus its
+  // Context Bar search input -- the same function Cmd+F focuses via
+  // useReservedShortcuts. This grid has no search state of its own, same
+  // separation as onColumnFilterRequest.
+  onFocusSearch?: () => void;
 }
 
 // Only these four columns are backed by EDITABLE_COLUMNS (see grid-nav.ts);
@@ -192,6 +199,7 @@ export function TransactionsGrid({
   onCreateCategory,
   onColumnFilterRequest,
   activeFilterColumns,
+  onFocusSearch,
 }: TransactionsGridProps) {
   const knownTagNames = useMemo(() => tags.map((tag) => tag.name), [tags]);
   const knownMerchantNames = useMemo(
@@ -257,6 +265,9 @@ export function TransactionsGrid({
     groupId: number;
   } | null>(null);
   const [lastUsedCategoryGroupId, setLastUsedCategoryGroupId] = useState<number | null>(null);
+  // Shortcuts overlay (#92): `?` while a grid cell has focus opens a
+  // read-only list of the grid's own shortcuts (see ShortcutsOverlay).
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const editingRef = useRef<CellPos | null>(null);
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -519,6 +530,42 @@ export function TransactionsGrid({
     if (["Home", "End", "PageUp", "PageDown"].includes(e.key)) {
       e.preventDefault();
       setFocusedCell(nextCellForKey({ row, col }, e.key, rowCount, colCount, e.shiftKey, e.ctrlKey));
+      return;
+    }
+
+    // Scoped bare single-letter shortcuts (#92, ADR-0020's "Scoped bare
+    // single-letter shortcuts"): only fire while a grid cell has focus (this
+    // handler is only ever attached to a cell's onKeyDown, so it can't fire
+    // while a cell editor, the Payee/Tags combobox, or the Context Bar
+    // search input has focus instead -- `isTextInputTarget` is a defensive
+    // second check, not the only guard), and only for bare keys with no
+    // Cmd/Ctrl/Alt modifier (which belong to the Reserved Shortcut Set or
+    // the browser).
+    if (e.metaKey || e.ctrlKey || e.altKey || isTextInputTarget(e.target)) {
+      return;
+    }
+    if (e.key === "j" || e.key === "k") {
+      e.preventDefault();
+      setFocusedCell(
+        nextCellForKey({ row, col }, e.key === "j" ? "ArrowDown" : "ArrowUp", rowCount, colCount),
+      );
+      return;
+    }
+    if (e.key === "x") {
+      e.preventDefault();
+      const transaction = sortedTransactions[row];
+      if (transaction) toggleSelectRow(transaction.id, false);
+      return;
+    }
+    if (e.key === "/") {
+      e.preventDefault();
+      onFocusSearch?.();
+      return;
+    }
+    if (e.key === "?") {
+      e.preventDefault();
+      setShortcutsOpen(true);
+      return;
     }
   }
 
@@ -1080,6 +1127,8 @@ export function TransactionsGrid({
           }}
         />
       )}
+
+      {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
       {categoryConfirm && (
         <ConfirmCreateDialog
