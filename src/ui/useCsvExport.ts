@@ -10,8 +10,10 @@ interface UseCsvExportResult {
 }
 
 // Shared save-dialog -> export_transactions_csv -> status-message flow, used
-// by both SettingsScreen and TransactionsScreen (see docs/adr and issue #21).
-// The export is always global and unfiltered, regardless of which screen
+// by SettingsScreen and (since #90) AllTransactionsScreen's Function Bar
+// Export chip -- the deleted per-Account TransactionsScreen used it too,
+// before this hook's export existed (see docs/adr and issue #21). The
+// export is always global and unfiltered, regardless of which screen
 // triggers it.
 export function useCsvExport(): UseCsvExportResult {
   const [exporting, setExporting] = useState(false);

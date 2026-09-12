@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account } from "../accounts/types";
 import { Category, CategoryGroup } from "../categories/types";
@@ -7,6 +7,11 @@ import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
 import { TransactionsGrid } from "./TransactionsGrid";
 import { TransactionForm } from "./TransactionForm";
+import { ContextBar } from "./chrome/ContextBar";
+import { FunctionBar } from "./chrome/FunctionBar";
+import { QuoteStrip } from "./chrome/QuoteStrip";
+import { StatusBar } from "./chrome/StatusBar";
+import { COLUMN_LABELS, COLUMN_SET } from "./grid-nav";
 import {
   ColumnVisibility,
   DEFAULT_COLUMN_VISIBILITY,
@@ -14,8 +19,10 @@ import {
   TransactionFields,
   TransactionWithAccount,
 } from "./types";
-import { useConfirmation } from "../ui/ConfirmationProvider";
+import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { CustomSelect } from "../ui/Dropdown";
+import { useConfirmation } from "../ui/ConfirmationProvider";
+import { useCsvExport } from "../ui/useCsvExport";
 import { useReservedShortcuts } from "../ui/ReservedShortcuts";
 
 interface AllTransactionsScreenProps {
@@ -29,6 +36,13 @@ interface AllTransactionsScreenProps {
   // re-render.
   autoOpenNew?: boolean;
   onAutoOpenNewHandled?: () => void;
+  // The Function Bar's Import chip (#90): the actual Import flow is a
+  // full-screen, App-level view keyed to one Account (`ImportScreen`,
+  // unchanged from before this screen absorbed the header that used to
+  // reach it only from AccountsScreen) -- this screen can't render it
+  // itself, so it asks App.tsx to switch views once the user has picked
+  // which Account to import into.
+  onImportAccount?: (account: Account) => void;
 }
 
 // The all-Accounts Transactions view (#51): defaults to every Transaction
@@ -41,6 +55,7 @@ export function AllTransactionsScreen({
   initialAccountId,
   autoOpenNew,
   onAutoOpenNewHandled,
+  onImportAccount,
 }: AllTransactionsScreenProps) {
   const [transactions, setTransactions] = useState<TransactionWithAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -75,6 +90,28 @@ export function AllTransactionsScreen({
   // same as its existing Account-filter logic below.
   const [showHidden, setShowHidden] = useState(false);
   const { confirm } = useConfirmation();
+  // Export chip (#90): the deleted per-Account TransactionsScreen's CSV
+  // export moves here unchanged -- `useCsvExport` was already a
+  // global/unfiltered export shared via a hook, not per-Account state, so
+  // there is nothing else to migrate.
+  const { exportCsv, exporting: exportingCsv, result: csvExportResult, error: csvExportError } = useCsvExport();
+  // Import chip (#90): Import is a full-screen, App-level view keyed to a
+  // single Account (see `onImportAccount`), so clicking the chip first asks
+  // which Account to import into via this small inline picker -- the same
+  // pattern the New Transaction panel below already uses for its own
+  // Account picker.
+  const [importPicking, setImportPicking] = useState(false);
+  const [importAccountId, setImportAccountId] = useState<number | null>(null);
+  // Columns chip (#90): reuses the grid's own Column Management model
+  // (`columnVisibility`/`handleColumnVisibilityChange` below) through the
+  // same `ContextMenu` checklist TransactionsGrid's header right-click
+  // already renders, just opened from a button instead of a right-click.
+  const [columnsMenuPos, setColumnsMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const columnsButtonRef = useRef<HTMLButtonElement>(null);
+  // Quote Strip's selected-Account balance (#90): the other unique feature
+  // the deleted per-Account TransactionsScreen had. `null` when "All
+  // accounts" is selected -- there is no single balance to show.
+  const [accountBalanceCents, setAccountBalanceCents] = useState<number | null>(null);
 
   // Keeps the filter in sync with the Account the caller pre-selected, even
   // if this screen is already mounted showing a different filter (e.g. the
@@ -144,6 +181,61 @@ export function AllTransactionsScreen({
     }
   }
 
+  function columnMenuItems(): ContextMenuItem[] {
+    return COLUMN_SET.map((column) => ({
+      label: COLUMN_LABELS[column],
+      checked: columnVisibility[column],
+      closeOnClick: false,
+      onClick: () =>
+        handleColumnVisibilityChange({ ...columnVisibility, [column]: !columnVisibility[column] }),
+    }));
+  }
+
+  function openColumnsMenu() {
+    const rect = columnsButtonRef.current?.getBoundingClientRect();
+    setColumnsMenuPos({ x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + 4 });
+  }
+
+  // Quote Strip's selected-Account balance (#90): fetched whenever the
+  // Account filter changes, and re-fetched after every `refresh()` (i.e.
+  // whenever `transactions` gets a new value) so an edit that changes a
+  // Transaction's amount is reflected immediately, same as the deleted
+  // per-Account screen's balance did.
+  useEffect(() => {
+    if (accountFilter == null) {
+      setAccountBalanceCents(null);
+      return;
+    }
+    invoke<number>("account_balance_cents", { account_id: accountFilter })
+      .then(setAccountBalanceCents)
+      .catch((err) => setError(String(err)));
+  }, [accountFilter, transactions]);
+
+  // CANC (#90): clears search + all filters in one action (ADR-0021).
+  // Search and the per-column filter model land in #91/#92 -- until then
+  // this resets the only filter already wired here (Show Hidden), which
+  // keeps it a real action rather than a dead no-op.
+  function handleCancel() {
+    setShowHidden(false);
+  }
+
+  // Filters chip (#90): a stub -- the popover/filter model lands in #91.
+  function handleFilters() {}
+
+  function openImportPicker() {
+    if (accounts.length === 0) return;
+    setImportAccountId(accountFilter ?? accounts[0].id);
+    setImportPicking(true);
+  }
+
+  function handleStartImport() {
+    const account = accounts.find((a) => a.id === importAccountId);
+    if (account) {
+      onImportAccount?.(account);
+    }
+    setImportPicking(false);
+  }
+
   function openCreateTransaction() {
     if (accounts.length === 0) return;
     setNewTransactionAccountId(accountFilter ?? accounts[0].id);
@@ -175,12 +267,13 @@ export function AllTransactionsScreen({
 
   // Reserved Shortcut Set (#78): Cmd/Ctrl+N opens the New Transaction panel
   // above; Cmd/Ctrl+W and Escape close whichever of this screen's own
-  // panels is open (the New Transaction panel or the transfer-link picker);
-  // Delete/Backspace deletes the grid's current checkbox selection -- but
-  // only when exactly one row is selected, since `onDelete` shows its own
-  // confirmation per Transaction and firing it once per row for a large
-  // multi-select would stack that many confirmation dialogs. This screen
-  // has no search/filter text input, so `onFocusSearch` is omitted.
+  // panels is open (the New Transaction panel, the transfer-link picker, or
+  // -- as of #90 -- the Import chip's Account picker); Delete/Backspace
+  // deletes the grid's current checkbox selection -- but only when exactly
+  // one row is selected, since `onDelete` shows its own confirmation per
+  // Transaction and firing it once per row for a large multi-select would
+  // stack that many confirmation dialogs. This screen has no search input
+  // yet (#92), so `onFocusSearch` is omitted.
   useReservedShortcuts({
     onNew: accounts.length > 0 ? openCreateTransaction : undefined,
     onCloseModal: () => {
@@ -190,6 +283,10 @@ export function AllTransactionsScreen({
       }
       if (linkingId != null) {
         setLinkingId(null);
+        return true;
+      }
+      if (importPicking) {
+        setImportPicking(false);
         return true;
       }
       return false;
@@ -395,6 +492,20 @@ export function AllTransactionsScreen({
   // resolve to a single distinct Account, generalizing what this screen
   // used to compute locally as `showAccountBadge`.
 
+  // Quote Strip totals (#90): derived from the same filtered array the grid
+  // renders, so they always match what's on screen. Full "recomputes on
+  // every filter/search change" (per ADR-0021) lands once filtering/search
+  // exist (#91/#92) -- today `filteredTransactions` only reflects the
+  // Account filter and Show Hidden, so that's what these recompute on.
+  const incomeCents = filteredTransactions
+    .filter((t) => t.amount_cents > 0)
+    .reduce((sum, t) => sum + t.amount_cents, 0);
+  const expenseCents = filteredTransactions
+    .filter((t) => t.amount_cents < 0)
+    .reduce((sum, t) => sum + -t.amount_cents, 0);
+  const netCents = incomeCents - expenseCents;
+  const selectedAccountName = accountFilter != null ? accounts.find((a) => a.id === accountFilter)?.name ?? null : null;
+
   return (
     <section>
       <div className="content-header">
@@ -402,39 +513,51 @@ export function AllTransactionsScreen({
           <h2 className="account-title">Transactions</h2>
           <div className="account-title-meta">Every transaction across every account</div>
         </div>
-        <div className="content-header-actions">
-          <label>
-            Account{" "}
-            <CustomSelect
-              ariaLabel="Filter by account"
-              options={[
-                { value: "all", label: "All accounts" },
-                ...accounts.map((account) => ({ value: String(account.id), label: account.name })),
-              ]}
-              value={accountFilter == null ? "all" : String(accountFilter)}
-              onChange={(val) => setAccountFilter(val === "all" ? null : Number(val))}
-            />
-          </label>
-          <label className="show-hidden-toggle">
-            <input
-              type="checkbox"
-              checked={showHidden}
-              onChange={(e) => setShowHidden(e.currentTarget.checked)}
-            />
-            Show hidden
-          </label>
-          <button
-            type="button"
-            className="toolbar-btn toolbar-btn--primary"
-            onClick={openCreateTransaction}
-            disabled={accounts.length === 0}
-          >
-            New Transaction
-          </button>
-        </div>
       </div>
 
+      <FunctionBar
+        onCancel={handleCancel}
+        onNew={openCreateTransaction}
+        newDisabled={accounts.length === 0}
+        onImport={openImportPicker}
+        importDisabled={accounts.length === 0}
+        onExport={exportCsv}
+        exportLabel={exportingCsv ? "Exporting…" : "Export"}
+        exportDisabled={exportingCsv}
+        onColumns={openColumnsMenu}
+        columnsButtonRef={columnsButtonRef}
+        onFilters={handleFilters}
+        showHidden={showHidden}
+        onToggleShowHidden={() => setShowHidden((prev) => !prev)}
+      />
+
+      <ContextBar accounts={accounts} accountFilter={accountFilter} onAccountFilterChange={setAccountFilter} />
+
+      <QuoteStrip
+        rowCount={filteredTransactions.length}
+        incomeCents={incomeCents}
+        expenseCents={expenseCents}
+        netCents={netCents}
+        accountBalanceCents={accountBalanceCents}
+        accountName={selectedAccountName}
+      />
+
+      {columnsMenuPos && (
+        <ContextMenu
+          x={columnsMenuPos.x}
+          y={columnsMenuPos.y}
+          items={columnMenuItems()}
+          onClose={() => setColumnsMenuPos(null)}
+        />
+      )}
+
       {error && <p role="alert">{error}</p>}
+      {csvExportResult && <p className="csv-export-status">{csvExportResult}</p>}
+      {csvExportError && (
+        <p className="csv-export-status" role="alert">
+          {csvExportError}
+        </p>
+      )}
 
       {creatingTransaction && (
         <div className="ledger new-transaction-row">
@@ -452,6 +575,26 @@ export function AllTransactionsScreen({
             onSubmit={handleCreateTransaction}
             onCancel={() => setCreatingTransaction(false)}
           />
+        </div>
+      )}
+
+      {importPicking && (
+        <div className="ledger new-transaction-row">
+          <label>
+            Account{" "}
+            <CustomSelect
+              ariaLabel="Import account"
+              options={accounts.map((account) => ({ value: String(account.id), label: account.name }))}
+              value={importAccountId != null ? String(importAccountId) : ""}
+              onChange={(val) => setImportAccountId(Number(val))}
+            />
+          </label>
+          <button type="button" className="toolbar-btn toolbar-btn--primary" onClick={handleStartImport}>
+            Continue
+          </button>
+          <button type="button" onClick={() => setImportPicking(false)}>
+            Cancel
+          </button>
         </div>
       )}
 
@@ -486,6 +629,8 @@ export function AllTransactionsScreen({
           onCreateCategory={handleCreateCategory}
         />
       </div>
+
+      <StatusBar visibleCount={filteredTransactions.length} totalCount={transactions.length} />
     </section>
   );
 }

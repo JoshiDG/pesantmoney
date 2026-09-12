@@ -18,7 +18,7 @@ import { TransferPicker } from "../transfers/TransferPicker";
 import { Transfer } from "../transfers/types";
 import { CellPos, nextCellForKey } from "../ui/grid-nav";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
-import { COLUMN_SET, ColumnKey, EDITABLE_COLUMNS } from "./grid-nav";
+import { COLUMN_LABELS, COLUMN_SET, ColumnKey, EDITABLE_COLUMNS } from "./grid-nav";
 import { SuggestionCombobox } from "../ui/SuggestionCombobox";
 import {
   ColumnVisibility,
@@ -44,20 +44,6 @@ interface SortState {
   column: ColumnKey;
   direction: SortDirection;
 }
-
-// Field labels for the Column Management checklist and the Mobile-tier
-// stacked-card layout (ADR-0018) -- the grid's column headers don't apply
-// to cards, so each field is labeled inline instead.
-const COLUMN_LABELS: Record<ColumnKey, string> = {
-  date: "Date",
-  account: "Account",
-  payee: "Payee",
-  memo: "Memo",
-  category: "Category",
-  tags: "Tags",
-  amount: "Amount",
-  running_balance: "Running Balance",
-};
 
 // Column widths for the grid's CSS Grid layout (see `.ledger`/`.ledger-editable`
 // in App.css). Computed here rather than in CSS because the set of visible
@@ -99,7 +85,7 @@ interface TransactionsGridProps {
   onSelectionChange?: (selectedIds: number[]) => void;
   // Hidden-transaction support (#70): a row-level right-click context menu
   // offers Hide/Unhide, toggling the already-existing backend `hidden`
-  // field. Callers (TransactionsScreen/AllTransactionsScreen) call
+  // field. Callers (AllTransactionsScreen) call
   // `set_transaction_hidden` and refresh -- the grid itself is unaware of
   // the persistence mechanism, same as onDelete/onUpdate.
   onSetHidden: (transaction: Transaction, hidden: boolean) => void;

@@ -1,0 +1,55 @@
+/* Palette (ADR-0021): the single source of truth for every color value in
+   the app, grouped by role -- backgrounds, text, credit/debit, accents, and
+   the Bloomberg function-key roles. Starting values are literal Bloomberg
+   Terminal colors; the point of this file is that any of them can be
+   retuned later by editing here, without touching component code. Dark
+   only -- no `prefers-color-scheme` branch, no light variant, no TypeScript
+   mirror (see CONTEXT.md's "Palette" glossary entry and ADR-0020). Imported
+   once, at the top of App.css; every other stylesheet reaches these values
+   only through the app-level tokens (--ink, --paper, --credit, etc.) that
+   App.css's `:root` defines in terms of them. */
+
+:root {
+  /* ---------- Backgrounds ---------- */
+  /* Main content canvas -- pure Bloomberg black. */
+  --palette-bg-canvas: #000000;
+  /* Nav Rail / chrome surfaces -- a hair off pure black so chrome reads as
+     a distinct layer from the canvas it frames. */
+  --palette-bg-rail: #060606;
+  /* Raised surface for inputs/buttons/menus/chips sitting above the canvas. */
+  --palette-bg-raised: #1a1a1a;
+  /* Hairline borders throughout. */
+  --palette-bg-line: #333333;
+  /* Heavier dividers -- table head rules, sticky Date Group borders. */
+  --palette-bg-line-strong: #4d4d4d;
+
+  /* ---------- Text ---------- */
+  --palette-text-primary: #ffffff;
+  --palette-text-secondary: rgba(255, 255, 255, 0.7);
+  --palette-text-tertiary: rgba(255, 255, 255, 0.5);
+
+  /* ---------- Credit / Debit ---------- */
+  --palette-credit: #00b140;
+  --palette-credit-soft: rgba(0, 177, 64, 0.14);
+  --palette-debit: #e2231a;
+  --palette-debit-soft: rgba(226, 35, 26, 0.14);
+
+  /* ---------- Accents ---------- */
+  /* Structural chrome: column headers, small-caps captions, labels. */
+  --palette-accent-label: #00aeef;
+  /* Needs-attention states that aren't a debit (missing price, needs-review
+     import row) -- kept distinct from --palette-debit. */
+  --palette-accent-warning: #ff9900;
+  /* Keyboard-focus ring. */
+  --palette-focus: #00aeef;
+
+  /* ---------- Function-key roles (Bloomberg keyboard) ---------- */
+  /* Yellow -- MENU-style primary keys. Function Bar: Import/Export/Columns. */
+  --palette-role-primary: #fedd00;
+  /* Green -- GO/action keys. Function Bar: New. */
+  --palette-role-action: #00a651;
+  /* Red -- CANCEL key. Function Bar: CANC (leftmost). */
+  --palette-role-cancel: #ed1c24;
+  /* Magenta -- sector keys. Function Bar: Filters/Show Hidden. */
+  --palette-role-secondary: #92278f;
+}

@@ -47,6 +47,21 @@ export const COLUMN_SET: ColumnKey[] = [
  */
 export const EDITABLE_COLUMNS: ColumnKey[] = ["date", "memo", "category", "amount"];
 
+// Field labels for the Column Management checklist (the grid's own
+// right-click header menu, and -- as of #90 -- the Function Bar's Columns
+// chip popover on AllTransactionsScreen) and the Mobile-tier stacked-card
+// layout (ADR-0018), which has no column headers to label cells against.
+export const COLUMN_LABELS: Record<ColumnKey, string> = {
+  date: "Date",
+  account: "Account",
+  payee: "Payee",
+  memo: "Memo",
+  category: "Category",
+  tags: "Tags",
+  amount: "Amount",
+  running_balance: "Running Balance",
+};
+
 // Re-exported for existing consumers -- the type itself is generic and now
 // lives in `src/ui/grid-nav.ts` alongside the nav math that operates on it.
 export type { CellPos } from "../ui/grid-nav";

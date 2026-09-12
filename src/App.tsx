@@ -202,6 +202,7 @@ function AppShell() {
               initialAccountId={view.accountId}
               autoOpenNew={pendingAction === "new-transaction"}
               onAutoOpenNewHandled={() => setPendingAction(null)}
+              onImportAccount={(account) => setView({ type: "import", account })}
             />
           )}
           {view.type === "reports" && <ReportsScreen />}

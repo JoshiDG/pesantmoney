@@ -1,44 +1,42 @@
-:root {
-  /* Terminal visual identity (ADR-0020): dark-only, unconditional -- no
-     `prefers-color-scheme` branch. These were previously the light-theme
-     defaults, overridden by a dark-mode media query; that override is now
-     the only theme there is. */
-  --ink: #101317;
-  --ink-line: #2a323b;
-  --ink-text: #e7e3d8;
-  /* Warm near-black canvas (not pure black), consistent with the
-     paper/ledger identity rather than a neutral-cool dark gray. */
-  --paper: #14120f;
-  --paper-line: #38352f;
-  /* ~90%-opacity body text (not pure white) — eases eye strain during
-     extended data-review sessions. */
-  --paper-text: rgba(233, 230, 223, 0.9);
-  /* Raised surface for inputs/buttons/menus sitting on top of --paper. */
-  --surface-raised: #22262c;
-  --credit: #1f6f5c;
-  --credit-soft: rgba(31, 111, 92, 0.12);
-  --debit: #a23b2e;
-  --debit-soft: rgba(162, 59, 46, 0.12);
-  --focus: #3f7cac;
+@import "./ui/palette.css";
 
-  /* Multi-accent palette (ADR-0020): green/red stay reserved for
-     credit/debit; these two are new, additional accents so the dark base
-     reads as a real multi-color terminal screen, not a monochrome
-     single-phosphor retro look. */
+:root {
+  /* Terminal visual identity (ADR-0020/ADR-0021): dark-only, unconditional
+     -- no `prefers-color-scheme` branch. Every value below is a reference
+     into the Palette (`src/ui/palette.css`), never a literal color -- the
+     Palette is the only place color values are written down, per ADR-0021.
+     These app-level token names are kept so the ~3800 lines of CSS below
+     that already consume them don't need to change in this diff; only
+     what they resolve to changed, from the old warm ADR-0020 literals to
+     the new Bloomberg Palette. */
+  --ink: var(--palette-bg-rail);
+  --ink-line: var(--palette-bg-line);
+  --ink-text: var(--palette-text-primary);
+  --paper: var(--palette-bg-canvas);
+  --paper-line: var(--palette-bg-line);
+  --paper-text: var(--palette-text-primary);
+  /* Raised surface for inputs/buttons/menus sitting on top of --paper. */
+  --surface-raised: var(--palette-bg-raised);
+  --credit: var(--palette-credit);
+  --credit-soft: var(--palette-credit-soft);
+  --debit: var(--palette-debit);
+  --debit-soft: var(--palette-debit-soft);
+  --focus: var(--palette-focus);
+
   /* Metadata/label color: column headers, small-caps captions, structural
      chrome that isn't page-background text but also isn't a warning. */
-  --accent-label: #5fb8d6;
+  --accent-label: var(--palette-accent-label);
   /* Warning/highlight color: "needs attention" states that aren't a debit
      (missing price, needs-review import row) — kept distinct from --debit
      so "this lost money" and "this needs your attention" don't collide. */
-  --accent-warning: #e0a53d;
+  --accent-warning: var(--palette-accent-warning);
 
   /* Secondary text: readable content that is intentionally de-emphasized
      (descriptions, results, values, interactive labels) — needs to stay legible. */
-  --text-secondary: rgba(233, 230, 223, 0.7);
+  --text-secondary: var(--palette-text-secondary);
   /* Tertiary text: structural chrome (column headers, small-caps captions,
      meta labels) — the most muted tier, decorative rather than content. */
-  --text-tertiary: rgba(233, 230, 223, 0.55);
+  --text-tertiary: var(--palette-text-tertiary);
 
   --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --font-sans: -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
@@ -274,7 +272,7 @@ body {
   position: sticky;
   top: -2.5rem;
   z-index: 25;
-  background: var(--paper, #ffffff);
+  background: var(--paper);
   margin: -2.5rem -3rem 1.25rem -3rem;
   padding: 1.5rem 3rem 1rem 3rem;
   border-bottom: 1px solid var(--paper-line);
@@ -347,7 +345,7 @@ body {
   font-family: var(--font-sans);
   font-size: 0.88rem;
   color: var(--paper-text);
-  background: var(--paper, #ffffff);
+  background: var(--paper);
   border: 1px solid var(--paper-line);
   border-radius: 6px;
   cursor: pointer;
@@ -412,7 +410,7 @@ body {
   height: 36px;
   border-radius: 6px;
   border: 1px solid var(--paper-line);
-  background: var(--paper, #ffffff);
+  background: var(--paper);
   color: var(--paper-text);
   font-size: 0.9rem;
   cursor: pointer;
@@ -450,8 +448,8 @@ body {
   right: 0;
   z-index: 100;
   min-width: 180px;
-  background: var(--paper, #ffffff);
-  border: 1px solid var(--paper-line, rgba(0, 0, 0, 0.15));
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
   padding: 4px;
@@ -518,7 +516,7 @@ body {
   font-weight: 500;
   border-radius: 6px;
   border: 1px solid var(--paper-line);
-  background: var(--paper, #ffffff);
+  background: var(--paper);
   color: var(--paper-text);
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
@@ -530,9 +528,9 @@ body {
 }
 
 .toolbar-btn--primary {
-  background: var(--ink, #1c2430);
-  color: var(--ink-text, #ffffff);
-  border-color: var(--ink, #1c2430);
+  background: var(--ink);
+  color: var(--ink-text);
+  border-color: var(--ink);
   font-weight: 600;
 }
 
@@ -569,7 +567,7 @@ body {
   position: sticky;
   top: 2.4rem;
   z-index: 20;
-  background: var(--paper, #ffffff);
+  background: var(--paper);
   display: grid;
   grid-template-columns: 28px 2fr 1fr 1fr 40px;
   align-items: center;
@@ -744,7 +742,7 @@ body {
 }
 
 .account-row-balance.debit {
-  color: var(--debit, #c0392b);
+  color: var(--debit);
 }
 
 .account-menu-trigger {
@@ -768,8 +766,8 @@ body {
 .context-menu {
   position: fixed;
   z-index: 1000;
-  background: var(--paper, #ffffff);
-  border: 1px solid var(--paper-line, rgba(0, 0, 0, 0.15));
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
   padding: 4px;
@@ -825,12 +823,12 @@ body {
 }
 
 .context-menu-item--danger {
-  color: var(--debit, #c0392b);
+  color: var(--debit);
 }
 
 .context-menu-item--danger:hover {
   background: rgba(192, 57, 43, 0.08);
-  color: var(--debit, #c0392b);
+  color: var(--debit);
 }
 
 .context-menu-icon {
@@ -992,6 +990,151 @@ body {
   font-size: 0.72rem;
   color: var(--text-tertiary);
   font-weight: 400;
+}
+
+/* ---------- Bloomberg chrome: Function Bar / Context Bar / Quote Strip /
+   Status Bar (ADR-0021, #90) ---------- */
+
+.function-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.function-bar-chip {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.4rem 0.75rem;
+  border-radius: 3px;
+  border: 1px solid var(--palette-bg-line);
+  background: var(--palette-bg-raised);
+  color: var(--palette-text-primary);
+  cursor: pointer;
+}
+
+.function-bar-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.function-bar-chip:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.function-bar-chip--cancel {
+  border-color: var(--palette-role-cancel);
+  color: var(--palette-role-cancel);
+}
+
+.function-bar-chip--action {
+  border-color: var(--palette-role-action);
+  color: var(--palette-role-action);
+}
+
+.function-bar-chip--primary {
+  border-color: var(--palette-role-primary);
+  color: var(--palette-role-primary);
+}
+
+.function-bar-chip--secondary {
+  border-color: var(--palette-role-secondary);
+  color: var(--palette-role-secondary);
+}
+
+.function-bar-chip--active {
+  background: var(--palette-role-secondary);
+  color: var(--palette-bg-canvas);
+}
+
+.context-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  margin-bottom: 0.85rem;
+  border-top: 1px solid var(--palette-bg-line);
+  border-bottom: 1px solid var(--palette-bg-line);
+}
+
+.context-bar-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.context-bar-label {
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.quote-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+  padding: 0.6rem 0;
+  margin-bottom: 1rem;
+}
+
+.quote-strip-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.quote-strip-item--balance {
+  margin-left: auto;
+  text-align: right;
+}
+
+.quote-strip-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.quote-strip-value {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--palette-text-primary);
+}
+
+.quote-strip-value--credit {
+  color: var(--credit);
+}
+
+.quote-strip-value--debit {
+  color: var(--debit);
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--palette-bg-line);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.status-bar-summary {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.status-bar-count {
+  color: var(--palette-text-secondary);
 }
 
 /* ---------- ledger table (modernized skeuomorphic passbook) ---------- */

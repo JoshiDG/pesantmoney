@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
 import { ReservedShortcutProvider } from "../ui/ReservedShortcuts";
 import { withBreakpoint } from "../ui/withBreakpoint";
@@ -14,7 +15,12 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  save: vi.fn(),
+}));
+
 const mockedInvoke = vi.mocked(invoke);
+const mockedSave = vi.mocked(save);
 
 const checking: Account = { id: 1, name: "Checking", account_type: "checking", institution_name: null, apr_bps: null };
 const savings: Account = { id: 2, name: "Savings", account_type: "savings", institution_name: null, apr_bps: null };
@@ -754,5 +760,213 @@ describe("AllTransactionsScreen New Transaction panel + Reserved Shortcut Set wi
 
     expect(screen.queryByRole("button", { name: "Delete Transaction" })).not.toBeInTheDocument();
     expect(mockedInvoke).not.toHaveBeenCalledWith("delete_transaction", expect.anything());
+  });
+});
+
+// Bloomberg Terminal chrome skeleton (#90, ADR-0021): the Function Bar,
+// Context Bar, Quote Strip, and Status Bar replace this screen's old
+// header (Account dropdown, Show-hidden checkbox, New Transaction button).
+describe("AllTransactionsScreen Bloomberg chrome (#90)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedSave.mockReset();
+    mockInvokeDefaults();
+  });
+
+  it("renders the Function Bar with every required chip", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    const functionBar = screen.getByRole("toolbar", { name: "Transactions actions" });
+    expect(within(functionBar).getByText("CANC")).toBeInTheDocument();
+    expect(within(functionBar).getByRole("button", { name: "New Transaction" })).toBeInTheDocument();
+    expect(within(functionBar).getByRole("button", { name: "Import" })).toBeInTheDocument();
+    expect(within(functionBar).getByRole("button", { name: "Export" })).toBeInTheDocument();
+    expect(within(functionBar).getByRole("button", { name: "Columns" })).toBeInTheDocument();
+    expect(within(functionBar).getByRole("button", { name: "Filters" })).toBeInTheDocument();
+    expect(within(functionBar).getByLabelText("Show hidden")).toBeInTheDocument();
+  });
+
+  it("renders the Context Bar with the Account selector", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    expect(screen.getByLabelText("Filter by account")).toBeInTheDocument();
+  });
+
+  it("renders the Quote Strip with row count, Income, Expense, and Net", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    const quoteStrip = screen.getByRole("status", { name: "Transactions summary" });
+    // Coffee shop is -$12.50, Interest is +$50.00.
+    expect(within(quoteStrip).getByText("2")).toBeInTheDocument();
+    expect(within(quoteStrip).getByText("$50.00")).toBeInTheDocument();
+    expect(within(quoteStrip).getByText("$12.50")).toBeInTheDocument();
+    expect(within(quoteStrip).getByText("$37.50")).toBeInTheDocument();
+  });
+
+  it("shows the selected Account's balance in the Quote Strip once narrowed, and hides it for All accounts", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "account_balance_cents" && (args as { account_id?: number } | undefined)?.account_id === 1) {
+        return -1250;
+      }
+      switch (cmd) {
+        case "list_all_transactions":
+          return allTransactions;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [checking, savings];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "list_tags":
+          return [];
+        case "list_merchants":
+          return [];
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        default:
+          return null;
+      }
+    });
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    expect(
+      screen.queryByRole("status", { name: "Transactions summary" }),
+    ).not.toHaveTextContent("balance");
+
+    await userEvent.selectOptions(screen.getByLabelText("Filter by account"), "1");
+
+    const quoteStrip = await screen.findByRole("status", { name: "Transactions summary" });
+    await waitFor(() => expect(within(quoteStrip).getByText("$12.50")).toBeInTheDocument());
+    expect(within(quoteStrip).getByText(/balance/i)).toBeInTheDocument();
+  });
+
+  it("renders the Status Bar with a visible-of-total count", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    expect(screen.getByText("2 of 2")).toBeInTheDocument();
+  });
+
+  it("CANC resets Show Hidden back off (no-op safe -- search/filters aren't wired yet)", async () => {
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_all_transactions":
+          return allTransactionsWithHidden;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [checking, savings];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        default:
+          return null;
+      }
+    });
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByLabelText("Show hidden"));
+    await findMemoCell("Old subscription");
+
+    await userEvent.click(screen.getByText("CANC"));
+
+    await waitFor(() => expect(screen.queryByText("Old subscription")).not.toBeInTheDocument());
+  });
+
+  it("the New chip opens the New Transaction panel (same as the old button)", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByRole("button", { name: "New Transaction" }));
+
+    expect(screen.getByLabelText("New transaction account")).toBeInTheDocument();
+  });
+
+  it("the Import chip prompts for an Account, then hands it to onImportAccount", async () => {
+    const onImportAccount = vi.fn();
+    render(
+      <ConfirmationProvider>
+        <AllTransactionsScreen initialAccountId={null} onImportAccount={onImportAccount} />
+      </ConfirmationProvider>,
+      { wrapper: withBreakpoint("expanded") },
+    );
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(screen.getByLabelText("Import account")).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Import account"), "2");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(onImportAccount).toHaveBeenCalledWith(savings);
+    expect(screen.queryByLabelText("Import account")).not.toBeInTheDocument();
+  });
+
+  it("the Export chip carries the existing CSV export flow", async () => {
+    mockedSave.mockResolvedValue("/tmp/transactions.csv");
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "export_transactions_csv") return 2;
+      switch (cmd) {
+        case "list_all_transactions":
+          return allTransactions;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [checking, savings];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        default:
+          return null;
+      }
+    });
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByRole("button", { name: "Export" }));
+
+    expect(mockedSave).toHaveBeenCalledWith(
+      expect.objectContaining({ filters: [{ name: "CSV", extensions: ["csv"] }] }),
+    );
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("export_transactions_csv", {
+        destination: "/tmp/transactions.csv",
+      }),
+    );
+    expect(await screen.findByText(/Exported 2 transactions/)).toBeInTheDocument();
+  });
+
+  it("the Columns chip opens the Column Management checklist", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByRole("button", { name: "Columns" }));
+
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getByRole("menuitemcheckbox", { name: "Date" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitemcheckbox", { name: "Running Balance" })).toBeInTheDocument();
+
+    await userEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Memo" }));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "update_transaction_column_visibility",
+        expect.objectContaining({
+          transaction_column_visibility: expect.objectContaining({ memo: false }),
+        }),
+      ),
+    );
   });
 });
