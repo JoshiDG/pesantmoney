@@ -95,3 +95,95 @@ describe("RulesScreen delete confirmation", () => {
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_categorization_rule", { id: 1 }));
   });
 });
+
+describe("RulesScreen keyboard navigation (ADR-0020, #76 grid-nav primitive)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_categorization_rules":
+          return [
+            {
+              id: 1,
+              field: "description",
+              match_type: "contains",
+              match_value: "Coffee",
+              category_id: 10,
+              rename_value: null,
+              hide: false,
+              tag_ids: [],
+              priority: 1,
+            },
+            {
+              id: 2,
+              field: "description",
+              match_type: "contains",
+              match_value: "Rent",
+              category_id: 10,
+              rename_value: null,
+              hide: false,
+              tag_ids: [],
+              priority: 2,
+            },
+          ];
+        case "list_accounts":
+          return [];
+        case "list_categories":
+          return [{ id: 10, group_id: 1, name: "Food" }];
+        case "list_tags":
+          return [];
+        case "delete_categorization_rule":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("ArrowDown moves keyboard focus from one rule row to the next", async () => {
+    renderScreen();
+    await screen.findByText(/Coffee/);
+
+    const firstRow = screen.getByText(/Coffee/).closest("li")!;
+    const secondRow = screen.getByText(/Rent/).closest("li")!;
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: "ArrowDown" });
+
+    expect(secondRow).toHaveFocus();
+  });
+
+  it("bare 'e' on a keyboard-focused row opens it for editing", async () => {
+    renderScreen();
+    await screen.findByText(/Coffee/);
+
+    const row = screen.getByText(/Coffee/).closest("li")!;
+    row.focus();
+    fireEvent.keyDown(row, { key: "e" });
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("'e' does not fire while a text input (the row's own selection checkbox) has focus", async () => {
+    renderScreen();
+    await screen.findByText(/Coffee/);
+
+    const checkbox = screen.getByLabelText("Select rule for Coffee");
+    checkbox.focus();
+    fireEvent.keyDown(checkbox, { key: "e" });
+
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("Delete selected removes every selected rule after one confirmation", async () => {
+    renderScreen();
+    await screen.findByText(/Coffee/);
+
+    fireEvent.click(screen.getByLabelText("Select rule for Coffee"));
+    fireEvent.click(screen.getByLabelText("Select rule for Rent"));
+    await userEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete Rules" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_categorization_rule", { id: 1 }));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_categorization_rule", { id: 2 }));
+  });
+});
