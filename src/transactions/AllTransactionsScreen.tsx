@@ -6,6 +6,7 @@ import { Merchant } from "../merchants/types";
 import { Tag } from "../tags/types";
 import { Transfer } from "../transfers/types";
 import { TransactionsGrid } from "./TransactionsGrid";
+import { TransactionForm } from "./TransactionForm";
 import {
   ColumnVisibility,
   DEFAULT_COLUMN_VISIBILITY,
@@ -15,11 +16,19 @@ import {
 } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 import { CustomSelect } from "../ui/Dropdown";
+import { useReservedShortcuts } from "../ui/ReservedShortcuts";
 
 interface AllTransactionsScreenProps {
   // Pre-selects the Account filter, e.g. when opened from an Account row
   // click on the Accounts screen (#50/#51). `null` shows every Account.
   initialAccountId: number | null;
+  // Set by the Command Palette's "New Transaction" action (#77) when it
+  // navigates here from another screen -- opens the New Transaction panel
+  // on arrival, same as pressing Cmd/Ctrl+N once already here.
+  // `onAutoOpenNewHandled` clears the flag so it doesn't reopen on every
+  // re-render.
+  autoOpenNew?: boolean;
+  onAutoOpenNewHandled?: () => void;
 }
 
 // The all-Accounts Transactions view (#51): defaults to every Transaction
@@ -28,7 +37,11 @@ interface AllTransactionsScreenProps {
 // link/unlink Transfer, mark Hidden, delete, bulk category assignment) are
 // reused unchanged via TransactionsGrid -- this screen only adds the
 // cross-Account data-fetch and the Account filter/badge on top of it.
-export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScreenProps) {
+export function AllTransactionsScreen({
+  initialAccountId,
+  autoOpenNew,
+  onAutoOpenNewHandled,
+}: AllTransactionsScreenProps) {
   const [transactions, setTransactions] = useState<TransactionWithAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
@@ -41,6 +54,17 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(DEFAULT_COLUMN_VISIBILITY);
+  // New Transaction panel (#77/#78): this screen previously had no manual
+  // "create a Transaction" entry point at all (only Import produced
+  // Transactions here -- see the per-Account TransactionsScreen.tsx, no
+  // longer reachable from the Nav Rail, for the form/backend call this
+  // reuses). Cmd/Ctrl+N and the Command Palette's "New Transaction" action
+  // both need something to open, so this adds the minimal version: the
+  // existing TransactionForm plus an Account picker (this view spans every
+  // Account, unlike the per-Account screen TransactionForm was built for).
+  const [creatingTransaction, setCreatingTransaction] = useState(false);
+  const [newTransactionAccountId, setNewTransactionAccountId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   // Hidden transactions (#70): off by default. `list_all_transactions`
   // has no `include_hidden` param (unlike the per-Account
   // `list_visible_transactions`) -- see the "Hidden transactions" section
@@ -119,6 +143,67 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
       setError(String(err));
     }
   }
+
+  function openCreateTransaction() {
+    if (accounts.length === 0) return;
+    setNewTransactionAccountId(accountFilter ?? accounts[0].id);
+    setCreatingTransaction(true);
+  }
+
+  async function handleCreateTransaction(fields: TransactionFields) {
+    if (newTransactionAccountId == null) return;
+    try {
+      await invoke("create_transaction", { account_id: newTransactionAccountId, ...fields });
+      setCreatingTransaction(false);
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  // Bridges the Command Palette's "New Transaction" action (#77): when it
+  // navigates here from a different screen, `autoOpenNew` arrives true on
+  // mount and this opens the panel once, then tells the caller (App.tsx) to
+  // clear the pending flag so it doesn't reopen on a later re-render.
+  useEffect(() => {
+    if (autoOpenNew) {
+      openCreateTransaction();
+      onAutoOpenNewHandled?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenNew, accounts]);
+
+  // Reserved Shortcut Set (#78): Cmd/Ctrl+N opens the New Transaction panel
+  // above; Cmd/Ctrl+W and Escape close whichever of this screen's own
+  // panels is open (the New Transaction panel or the transfer-link picker);
+  // Delete/Backspace deletes the grid's current checkbox selection -- but
+  // only when exactly one row is selected, since `onDelete` shows its own
+  // confirmation per Transaction and firing it once per row for a large
+  // multi-select would stack that many confirmation dialogs. This screen
+  // has no search/filter text input, so `onFocusSearch` is omitted.
+  useReservedShortcuts({
+    onNew: accounts.length > 0 ? openCreateTransaction : undefined,
+    onCloseModal: () => {
+      if (creatingTransaction) {
+        setCreatingTransaction(false);
+        return true;
+      }
+      if (linkingId != null) {
+        setLinkingId(null);
+        return true;
+      }
+      return false;
+    },
+    onDeleteSelection:
+      selectedIds.length === 1
+        ? () => {
+            const transaction = transactions.find((t) => t.id === selectedIds[0]);
+            if (transaction) {
+              handleDelete(transaction);
+            }
+          }
+        : undefined,
+  });
 
   async function handleUpdate(id: number, fields: TransactionFields) {
     try {
@@ -338,10 +423,37 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
             />
             Show hidden
           </label>
+          <button
+            type="button"
+            className="toolbar-btn toolbar-btn--primary"
+            onClick={openCreateTransaction}
+            disabled={accounts.length === 0}
+          >
+            New Transaction
+          </button>
         </div>
       </div>
 
       {error && <p role="alert">{error}</p>}
+
+      {creatingTransaction && (
+        <div className="ledger new-transaction-row">
+          <label>
+            Account{" "}
+            <CustomSelect
+              ariaLabel="New transaction account"
+              options={accounts.map((account) => ({ value: String(account.id), label: account.name }))}
+              value={newTransactionAccountId != null ? String(newTransactionAccountId) : ""}
+              onChange={(val) => setNewTransactionAccountId(Number(val))}
+            />
+          </label>
+          <TransactionForm
+            categories={categories}
+            onSubmit={handleCreateTransaction}
+            onCancel={() => setCreatingTransaction(false)}
+          />
+        </div>
+      )}
 
       <div className="ledger-container">
         <TransactionsGrid
@@ -361,6 +473,7 @@ export function AllTransactionsScreen({ initialAccountId }: AllTransactionsScree
           onUpdate={handleUpdate}
           onBulkAssignCategory={handleBulkAssignCategory}
           onDelete={handleDelete}
+          onSelectionChange={setSelectedIds}
           onSetHidden={handleSetHidden}
           tags={allTags}
           onAddTag={handleAddTag}

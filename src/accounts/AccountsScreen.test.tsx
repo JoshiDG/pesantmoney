@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { ReservedShortcutProvider } from "../ui/ReservedShortcuts";
 import { withBreakpoint } from "../ui/withBreakpoint";
 import { AccountsScreen } from "./AccountsScreen";
 import { Account } from "./types";
@@ -233,5 +234,59 @@ describe("AccountsScreen", () => {
     expect(card).not.toHaveClass("account-row");
     expect(within(card).getByText("Main Checking")).toBeInTheDocument();
     expect(within(card).getByText("First Bank")).toBeInTheDocument();
+  });
+});
+
+describe("AccountsScreen Reserved Shortcut Set wiring (#78)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_accounts":
+          return [CHECKING, SAVINGS];
+        case "get_net_worth_by_account":
+          return [[CHECKING, 125000], [SAVINGS, 50000]];
+        case "account_balance_cents":
+          return 0;
+        default:
+          return null;
+      }
+    });
+  });
+
+  function renderWithShortcuts() {
+    render(
+      <ConfirmationProvider>
+        <ReservedShortcutProvider onOpenSettings={vi.fn()}>
+          <AccountsScreen
+            onSelectAccount={vi.fn()}
+            onImportAccount={vi.fn()}
+            onAccountUpdated={vi.fn()}
+            onAccountDeleted={vi.fn()}
+          />
+        </ReservedShortcutProvider>
+      </ConfirmationProvider>,
+      { wrapper: withBreakpoint("expanded") },
+    );
+  }
+
+  it("Cmd+N opens the Add Account form", async () => {
+    renderWithShortcuts();
+    await screen.findByText("Main Checking");
+
+    expect(screen.queryByLabelText("Account name")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    expect(await screen.findByRole("button", { name: "Add Account" })).toBeInTheDocument();
+  });
+
+  it("Escape closes the Add Account form opened via Cmd+N", async () => {
+    renderWithShortcuts();
+    await screen.findByText("Main Checking");
+
+    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    await screen.findByRole("button", { name: "Add Account" });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Add Account" })).not.toBeInTheDocument();
   });
 });
