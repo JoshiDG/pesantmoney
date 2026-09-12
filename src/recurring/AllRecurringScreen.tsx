@@ -7,6 +7,7 @@ import { RecurringItemForm } from "./RecurringItemForm";
 import { FREQUENCY_LABELS, RecurringItemFields, RecurringItemWithAccount } from "./types";
 import { useBreakpoint } from "../ui/BreakpointProvider";
 import { useConfirmation } from "../ui/ConfirmationProvider";
+import { RecurringSectionNav, useRecurringSectionNav } from "./useRecurringSectionNav";
 
 // The all-Accounts Recurring screen (#52): every Recurring Item across every
 // Account in one list, each row carrying its Account's name. Carries over all
@@ -124,9 +125,45 @@ export function AllRecurringScreen() {
   const detected = items.filter((item) => !item.is_confirmed);
   const confirmed = items.filter((item) => item.is_confirmed);
 
-  function renderRow(item: RecurringItemWithAccount, actions: ReactNode) {
+  // One keyboard-nav/selection instance per section (#80, ADR-0020's "Grid
+  // keyboard navigation"), same split as RecurringItemsScreen: Detected and
+  // Confirmed have different available actions, so focus/selection never
+  // span both. Desktop (row) only -- Mobile's card layout is deprioritized
+  // by ADR-0020 and keeps its existing simpler behavior.
+  const detectedNav = useRecurringSectionNav(detected.map((item) => item.id));
+  const confirmedNav = useRecurringSectionNav(confirmed.map((item) => item.id));
+
+  function renderRow(
+    item: RecurringItemWithAccount,
+    index: number,
+    nav: RecurringSectionNav,
+    shortcuts: Record<string, () => void>,
+    actions: ReactNode,
+  ) {
+    const isFocused = nav.isFocused(index);
+    const isSelected = nav.isSelected(item.id);
     return (
-      <div className="recurring-row" key={item.id}>
+      <div
+        className={`recurring-row${isFocused ? " row-focused" : ""}${isSelected ? " row-selected" : ""}`}
+        key={item.id}
+        ref={nav.rowRef(index)}
+        tabIndex={0}
+        role="row"
+        onFocus={() => nav.handleRowFocus(index)}
+        onKeyDown={(e) => nav.handleRowKeyDown(e, index, shortcuts)}
+      >
+        <span className="cell-select">
+          <input
+            type="checkbox"
+            aria-label={`Select ${item.description}`}
+            checked={isSelected}
+            onClick={(e) => {
+              e.preventDefault();
+              nav.toggleSelectRow(item.id, e.shiftKey);
+            }}
+            onChange={() => {}}
+          />
+        </span>
         <span className="cell-account">{item.account_name}</span>
         <span className="cell-description">{item.description}</span>
         <span className={`amount ${item.amount_cents < 0 ? "debit" : "credit"}`}>
@@ -182,12 +219,18 @@ export function AllRecurringScreen() {
     );
   }
 
-  function renderItem(item: RecurringItemWithAccount, actions: ReactNode) {
-    return isMobile ? renderCard(item, actions) : renderRow(item, actions);
+  function renderItem(
+    item: RecurringItemWithAccount,
+    index: number,
+    nav: RecurringSectionNav,
+    shortcuts: Record<string, () => void>,
+    actions: ReactNode,
+  ) {
+    return isMobile ? renderCard(item, actions) : renderRow(item, index, nav, shortcuts, actions);
   }
 
   return (
-    <section>
+    <section className="ledger-container">
       <div className="content-header">
         <div>
           <h2 className="account-title">Recurring</h2>
@@ -201,9 +244,17 @@ export function AllRecurringScreen() {
       {detected.length === 0 ? (
         <p className="empty-state">No newly-detected recurring patterns.</p>
       ) : (
-        <div className={isMobile ? "recurring-list recurring-list--cards" : "recurring-list"}>
+        <div className={isMobile ? "recurring-list recurring-list--cards" : "recurring-list recurring-list--with-account"}>
           {!isMobile && (
             <div className="recurring-head">
+              <span className="cell-select">
+                <input
+                  type="checkbox"
+                  aria-label="Select all detected items"
+                  checked={detected.length > 0 && detectedNav.selectedCount === detected.length}
+                  onChange={detectedNav.toggleSelectAll}
+                />
+              </span>
               <span>Account</span>
               <span>Description</span>
               <span>Amount</span>
@@ -213,9 +264,14 @@ export function AllRecurringScreen() {
               <span></span>
             </div>
           )}
-          {detected.map((item) =>
+          {detected.map((item, index) =>
             renderItem(
               item,
+              index,
+              detectedNav,
+              // Scoped bare single-letter shortcuts (#80, ADR-0020): active
+              // only while a Detected row has keyboard focus.
+              { c: () => handleConfirm(item), d: () => handleDelete(item) },
               <>
                 <button type="button" onClick={() => handleConfirm(item)}>
                   Confirm
@@ -230,9 +286,17 @@ export function AllRecurringScreen() {
       )}
 
       <h3 className="recurring-section-title">Confirmed</h3>
-      <div className={isMobile ? "recurring-list recurring-list--cards" : "recurring-list"}>
+      <div className={isMobile ? "recurring-list recurring-list--cards" : "recurring-list recurring-list--with-account"}>
         {!isMobile && (
           <div className="recurring-head">
+            <span className="cell-select">
+              <input
+                type="checkbox"
+                aria-label="Select all confirmed items"
+                checked={confirmed.length > 0 && confirmedNav.selectedCount === confirmed.length}
+                onChange={confirmedNav.toggleSelectAll}
+              />
+            </span>
             <span>Account</span>
             <span>Description</span>
             <span>Amount</span>
@@ -242,7 +306,7 @@ export function AllRecurringScreen() {
             <span></span>
           </div>
         )}
-        {confirmed.map((item) =>
+        {confirmed.map((item, index) =>
           editingId === item.id ? (
             <RecurringItemForm
               key={item.id}
@@ -254,6 +318,9 @@ export function AllRecurringScreen() {
           ) : (
             renderItem(
               item,
+              index,
+              confirmedNav,
+              { e: () => setEditingId(item.id), d: () => handleDelete(item) },
               <>
                 <button type="button" onClick={() => setEditingId(item.id)}>
                   Edit

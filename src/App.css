@@ -1669,10 +1669,18 @@ body {
   margin-top: 0;
 }
 
+/* Leading 28px column is the row-select checkbox (#80, matching the
+   Transactions ledger's `.cell-select` column -- see `.ledger-editable`). */
 .recurring-list {
   display: grid;
-  grid-template-columns: 1fr 130px 110px 130px 150px 132px;
+  grid-template-columns: 28px 1fr 130px 110px 130px 150px 132px;
   column-gap: 1rem;
+}
+
+/* AllRecurringScreen's rows carry an extra leading Account column ahead of
+   Description. */
+.recurring-list--with-account {
+  grid-template-columns: 28px 120px 1fr 130px 110px 130px 150px 132px;
 }
 
 .recurring-head,
@@ -1688,6 +1696,10 @@ body {
   border-bottom: 1px solid var(--paper-line);
 }
 
+.recurring-head .cell-select {
+  justify-content: center;
+}
+
 .recurring-row > * {
   display: flex;
   align-items: center;
@@ -1695,6 +1707,28 @@ body {
   border-bottom: 1px solid var(--paper-line);
   font-size: 0.9rem;
   min-width: 0;
+}
+
+.recurring-row .cell-select {
+  justify-content: center;
+}
+
+/* Keyboard focus (arrow-key row navigation, #80/ADR-0020's "Grid keyboard
+   navigation") and checkbox multi-select highlight -- applied via the `>`
+   child combinator since `.recurring-row` itself is `display: contents`
+   (its children participate directly in `.recurring-list`'s grid), same
+   technique `.ledger-row.is-transfer > *`/`.ledger-row.hidden-row > *`
+   already use in the Transactions ledger above. The terminal-density
+   variant of these two rules (under `.ledger-container`, the wrapper both
+   Recurring screens render inside) further down this section takes
+   precedence via specificity; these are the plain fallback. */
+.recurring-row.row-focused > * {
+  box-shadow: inset 0 0 0 2px var(--focus);
+  background-color: rgba(63, 124, 172, 0.1);
+}
+
+.recurring-row.row-selected > * {
+  background-color: rgba(63, 124, 172, 0.16);
 }
 
 .recurring-item-form > * {
@@ -1714,6 +1748,51 @@ body {
     padding: 0.5rem 0;
     font-size: 0.85rem;
   }
+}
+
+/* Terminal density (#80, ADR-0020): tighter row/header padding than the
+   base rules above, matching the Transactions ledger's `.ledger-container`
+   treatment (see that section's "Density" comment). `.ledger-container` is
+   the same wrapper class/token layer Transactions uses -- Recurring reuses
+   it rather than inventing a parallel one, so `.amount.credit`/`.debit`,
+   inputs/selects/buttons, and ConfirmCreateDialog descendants all already
+   pick up the terminal treatment for free via the generic rules above. */
+.ledger-container .recurring-head > span {
+  padding-bottom: 0.3rem;
+  color: var(--term-text-dim);
+  border-bottom: 2px solid var(--term-line-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-mono);
+}
+
+.ledger-container .recurring-row > * {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--term-line);
+  font-size: 0.85rem;
+  color: var(--term-text);
+}
+
+.ledger-container .recurring-row.row-focused > * {
+  box-shadow: inset 0 0 0 2px var(--term-focus);
+  background-color: rgba(91, 155, 213, 0.18);
+}
+
+.ledger-container .recurring-row.row-selected > * {
+  background-color: rgba(91, 155, 213, 0.1);
+}
+
+.ledger-container .recurring-card {
+  border-color: var(--term-line);
+  background: var(--term-bg-raised);
+}
+
+.ledger-container .recurring-card-label {
+  color: var(--term-text-faint);
+}
+
+.ledger-container .recurring-item-form > * {
+  border-bottom: 1px dashed var(--term-line);
 }
 
 /* Mobile tier (<768px, ADR-0018, issue #65): stacked cards instead of grid
