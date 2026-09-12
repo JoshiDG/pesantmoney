@@ -20,6 +20,7 @@ import { CellPos, isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
 import { COLUMN_LABELS, COLUMN_SET, ColumnKey, EDITABLE_COLUMNS } from "./grid-nav";
 import { isFilterableColumn } from "./filters";
+import { dateGroupLabel } from "./dateGroups";
 import { SuggestionCombobox } from "../ui/SuggestionCombobox";
 import { ShortcutsOverlay } from "./chrome/ShortcutsOverlay";
 import {
@@ -39,9 +40,9 @@ type SortDirection = "asc" | "desc";
 
 // Client-side, single-column, three-state sort (see #67's "Sorting"
 // Implementation Decision and issue #69): a header click cycles
-// asc -> desc -> cleared (null, back to the default date-desc order the
-// screen already loaded `transactions` in). Only one column is ever
-// sorted at a time -- clicking a different header resets the cycle.
+// asc -> desc -> cleared (null, back to the default date-desc order --
+// see `sortedTransactions` below, #93). Only one column is ever sorted at
+// a time -- clicking a different header resets the cycle.
 interface SortState {
   column: ColumnKey;
   direction: SortDirection;
@@ -355,10 +356,19 @@ export function TransactionsGrid({
   }
 
   // The sorted copy rendered by the grid. `transactions` (the prop) is never
-  // mutated -- when `sortState` is null this is just the original,
-  // already-date-desc-loaded order the screen passed in.
+  // mutated. Default sort (#93, ADR-0021): newest first, computed here
+  // rather than relied upon from the caller's query order -- the backend's
+  // `list_all_transactions`/`list_visible_transactions` never guaranteed an
+  // order (see #67/#69). A header-click sort (`sortState`, set below) still
+  // overrides this default for the rest of the session; clearing it (the
+  // 3-state cycle's third click) falls back to this same date-desc order,
+  // not the caller's raw order.
   const sortedTransactions = useMemo(() => {
-    if (!sortState) return transactions;
+    if (!sortState) {
+      return [...transactions].sort(
+        (a, b) => b.date.localeCompare(a.date) || b.id - a.id,
+      );
+    }
     const { column, direction } = sortState;
     const factor = direction === "asc" ? 1 : -1;
     return [...transactions].sort((a, b) => {
@@ -382,6 +392,20 @@ export function TransactionsGrid({
     () => sortedTransactions.map((t) => t.id),
     [sortedTransactions],
   );
+
+  // Date Group headers (#93, ADR-0021/CONTEXT.md's "Date Group"): computed
+  // from `sortedTransactions` -- the final post-sort, post-filter,
+  // post-search row set the grid actually renders -- so narrowing via the
+  // Context Bar search (#92) or any column/Type/Show-Hidden filter (#91)
+  // recomputes groups automatically, same as every other derived value in
+  // this component. `now` is captured once per computation (not once per
+  // row) so a clock tick mid-render can't split what should be one group.
+  // Not collapsible in this phase (see #93's acceptance criteria) -- every
+  // group's rows always render.
+  const rowGroupLabels = useMemo(() => {
+    const now = new Date();
+    return sortedTransactions.map((t) => dateGroupLabel(t.date, now));
+  }, [sortedTransactions]);
 
   const rowCount = sortedTransactions.length;
   // Keyboard navigation spans EVERY visible column (read-only ones
@@ -1189,9 +1213,24 @@ export function TransactionsGrid({
         </div>
       )}
 
-      {sortedTransactions.map((transaction, row) =>
-        isMobile ? renderCard(transaction, row) : renderRow(transaction, row),
-      )}
+      {sortedTransactions.map((transaction, row) => {
+        // A group header renders immediately before the first row of each
+        // contiguous same-label run -- `sortedTransactions`/`rowGroupLabels`
+        // stay index-aligned with the keyboard-nav `row` index used
+        // throughout this component, so inserting an extra header element
+        // here doesn't renumber any row/col position.
+        const showGroupHeader = row === 0 || rowGroupLabels[row] !== rowGroupLabels[row - 1];
+        return (
+          <Fragment key={transaction.id}>
+            {showGroupHeader && (
+              <div className="ledger-date-group" role="rowheader">
+                {rowGroupLabels[row]}
+              </div>
+            )}
+            {isMobile ? renderCard(transaction, row) : renderRow(transaction, row)}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }

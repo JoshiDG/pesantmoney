@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
@@ -125,6 +125,25 @@ function memoCell(text: string) {
 
 function findMemoCell(text: string) {
   return screen.findByText(text, { selector: ".cell-memo" });
+}
+
+// Row-scoped, not index/DOM-position-based: the grid's default sort is now
+// date-desc (#93), so "the first .cell-tags/.cell-payee/Uncategorized in the
+// document" no longer reliably means Coffee shop's row -- these find the
+// cell via the row containing that transaction's own Memo text instead.
+function tagsCellFor(description: string) {
+  const row = memoCell(description).closest(".ledger-row") as HTMLElement;
+  return row.querySelector(".cell-tags") as HTMLElement;
+}
+
+function payeeCellFor(description: string) {
+  const row = memoCell(description).closest(".ledger-row") as HTMLElement;
+  return row.querySelector(".cell-payee") as HTMLElement;
+}
+
+function categoryCellFor(description: string) {
+  const row = memoCell(description).closest(".ledger-row") as HTMLElement;
+  return within(row).getByText("Uncategorized");
 }
 
 describe("AllTransactionsScreen", () => {
@@ -337,7 +356,7 @@ describe("AllTransactionsScreen Tag editing wiring (#71)", () => {
 
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
 
-    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    fireEvent.click(tagsCellFor("Coffee shop"));
     expect(screen.getByLabelText("Tags for Coffee shop")).toBeInTheDocument();
   });
 
@@ -346,7 +365,7 @@ describe("AllTransactionsScreen Tag editing wiring (#71)", () => {
     await findMemoCell("Coffee shop");
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
 
-    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    fireEvent.click(tagsCellFor("Coffee shop"));
     const input = screen.getByLabelText("Tags for Coffee shop");
     await userEvent.type(input, "Reimbursable");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -365,7 +384,7 @@ describe("AllTransactionsScreen Tag editing wiring (#71)", () => {
     await findMemoCell("Coffee shop");
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_tags"));
 
-    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    fireEvent.click(tagsCellFor("Coffee shop"));
     const input = screen.getByLabelText("Tags for Coffee shop");
     await userEvent.type(input, "Brand New Tag");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -407,7 +426,7 @@ describe("AllTransactionsScreen Tag editing wiring (#71)", () => {
     renderScreen();
     await findMemoCell("Coffee shop");
 
-    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    fireEvent.click(tagsCellFor("Coffee shop"));
     await userEvent.click(screen.getByLabelText("Remove Reimbursable"));
 
     await waitFor(() =>
@@ -486,7 +505,7 @@ describe("AllTransactionsScreen Category combobox editing + inline creation (#73
     await findMemoCell("Coffee shop");
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_category_groups"));
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCellFor("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await userEvent.type(input, "Subscriptions");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -499,7 +518,7 @@ describe("AllTransactionsScreen Category combobox editing + inline creation (#73
     await findMemoCell("Coffee shop");
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_categories"));
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCellFor("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await userEvent.type(input, "Food");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -518,7 +537,7 @@ describe("AllTransactionsScreen Category combobox editing + inline creation (#73
     await findMemoCell("Coffee shop");
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_category_groups"));
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCellFor("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await userEvent.type(input, "Subscriptions");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -542,7 +561,7 @@ describe("AllTransactionsScreen Category combobox editing + inline creation (#73
     await findMemoCell("Coffee shop");
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_category_groups"));
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCellFor("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await userEvent.type(input, "Subscriptions");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -593,7 +612,7 @@ describe("AllTransactionsScreen Payee editing wiring (#72)", () => {
 
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
 
-    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    fireEvent.click(payeeCellFor("Coffee shop"));
     expect(screen.getByLabelText("Payee for Coffee shop")).toBeInTheDocument();
   });
 
@@ -602,7 +621,7 @@ describe("AllTransactionsScreen Payee editing wiring (#72)", () => {
     await findMemoCell("Coffee shop");
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
 
-    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    fireEvent.click(payeeCellFor("Coffee shop"));
     const input = screen.getByLabelText("Payee for Coffee shop");
     await userEvent.type(input, "Bank Interest");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -621,7 +640,7 @@ describe("AllTransactionsScreen Payee editing wiring (#72)", () => {
     await findMemoCell("Coffee shop");
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
 
-    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    fireEvent.click(payeeCellFor("Coffee shop"));
     const input = screen.getByLabelText("Payee for Coffee shop");
     await userEvent.type(input, "Neighborhood Cafe");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -647,7 +666,7 @@ describe("AllTransactionsScreen Payee editing wiring (#72)", () => {
     await findMemoCell("Coffee shop");
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("list_merchants"));
 
-    fireEvent.click(document.querySelector(".cell-payee") as HTMLElement);
+    fireEvent.click(payeeCellFor("Coffee shop"));
     const input = screen.getByLabelText("Payee for Coffee shop");
     await userEvent.type(input, "Neighborhood Cafe");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -1257,14 +1276,16 @@ describe("AllTransactionsScreen live search + single-letter grid shortcuts (#92)
     renderScreen();
     await findMemoCell("Coffee shop");
 
-    await userEvent.click(accountCell("Checking"));
-    expect(accountCell("Checking")).toHaveClass("grid-cell-focused");
-
-    fireEvent.keyDown(accountCell("Checking"), { key: "j" });
+    // Default sort is date-desc (#93): Interest (2026-09-02, Savings) is
+    // row 0, Coffee shop (2026-09-01, Checking) is row 1.
+    await userEvent.click(accountCell("Savings"));
     expect(accountCell("Savings")).toHaveClass("grid-cell-focused");
 
-    fireEvent.keyDown(accountCell("Savings"), { key: "k" });
+    fireEvent.keyDown(accountCell("Savings"), { key: "j" });
     expect(accountCell("Checking")).toHaveClass("grid-cell-focused");
+
+    fireEvent.keyDown(accountCell("Checking"), { key: "k" });
+    expect(accountCell("Savings")).toHaveClass("grid-cell-focused");
   });
 
   it("x toggles the focused row's checkbox", async () => {
@@ -1333,5 +1354,139 @@ describe("AllTransactionsScreen live search + single-letter grid shortcuts (#92)
     expect(searchInput()).toHaveValue("jkx?");
     expect(screen.queryByLabelText("Select Coffee shop")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
+  });
+});
+
+// Sticky Date Group headers + newest-first default sort (#93, ADR-0021's
+// "Date Group": Today / Yesterday / explicit dates). See
+// src/transactions/dateGroups.test.ts for the underlying pure-module
+// coverage (Today/Yesterday/explicit-date labeling, contiguous bucketing) --
+// these tests cover the screen-level composition with search/filter
+// (#91/#92) and the newest-first default itself.
+describe("AllTransactionsScreen Date Groups + newest-first default sort (#93)", () => {
+  const NOW = new Date("2026-09-11T12:00:00");
+
+  // Today (2026-09-11), Yesterday (2026-09-10), and an explicit-date row
+  // (2026-08-15, outside the current month so the Date column's "This
+  // month" preset can be used below to narrow it away).
+  const dateGroupTransactions = [
+    {
+      id: 1,
+      account_id: 1,
+      account_name: "Checking",
+      date: "2026-09-11",
+      amount_cents: -1250,
+      description: "Coffee shop",
+      category_id: null,
+      hidden: false,
+      merchant_name: null,
+    },
+    {
+      id: 2,
+      account_id: 1,
+      account_name: "Checking",
+      date: "2026-09-10",
+      amount_cents: 5000,
+      description: "Interest",
+      category_id: null,
+      hidden: false,
+      merchant_name: null,
+    },
+    {
+      id: 3,
+      account_id: 1,
+      account_name: "Checking",
+      date: "2026-08-15",
+      amount_cents: -3000,
+      description: "Groceries",
+      category_id: null,
+      hidden: false,
+      merchant_name: null,
+    },
+  ];
+
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    vi.setSystemTime(NOW);
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_all_transactions":
+          return dateGroupTransactions;
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [checking];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "list_tags":
+          return [];
+        case "list_merchants":
+          return [];
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        default:
+          return null;
+      }
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function groupHeaderLabels() {
+    return Array.from(document.querySelectorAll(".ledger-date-group")).map((el) => el.textContent);
+  }
+
+  function memoOrder() {
+    return Array.from(document.querySelectorAll(".cell-memo")).map((el) => el.textContent);
+  }
+
+  it("defaults to newest-first (date-desc) sort on load", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    expect(memoOrder()).toEqual(["Coffee shop", "Interest", "Groceries"]);
+  });
+
+  it("renders sticky Today/Yesterday/explicit-date group headers in newest-first order", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    expect(groupHeaderLabels()).toEqual(["Today", "Yesterday", "Aug 15, 2026"]);
+  });
+
+  it("recomputes Date Groups from the narrowed row set after a live search", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.type(screen.getByLabelText("Search transactions"), "interest");
+
+    await waitFor(() => expect(screen.queryByText("Coffee shop")).not.toBeInTheDocument());
+    expect(groupHeaderLabels()).toEqual(["Yesterday"]);
+  });
+
+  it("recomputes Date Groups from the narrowed row set after a column filter", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.contextMenu(screen.getByText("Date", { selector: ".ledger-head span" }));
+    const menu = screen.getByRole("menu");
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "This month" }));
+
+    await waitFor(() => expect(screen.queryByText("Groceries")).not.toBeInTheDocument());
+    expect(groupHeaderLabels()).toEqual(["Today", "Yesterday"]);
+  });
+
+  it("an explicit header-click column sort still overrides the date-desc default for the session", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.click(screen.getByText("Payee", { selector: ".ledger-head span" }));
+
+    // Ascending by Payee: Coffee shop, Groceries, Interest.
+    expect(memoOrder()).toEqual(["Coffee shop", "Groceries", "Interest"]);
   });
 });

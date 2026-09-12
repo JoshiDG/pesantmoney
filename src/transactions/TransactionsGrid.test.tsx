@@ -87,6 +87,21 @@ function payeeName(text: string) {
   return screen.getByText(text, { selector: ".passbook-payee-name" });
 }
 
+// Row-scoped, not index-based: the grid's default sort is now date-desc
+// (#93), so "which row is first" is no longer a stable way to pick a
+// specific transaction's Category cell -- this finds it via the row
+// containing that transaction's own Memo text instead.
+function categoryCell(description: string) {
+  const row = memoCell(description).closest(".ledger-row") as HTMLElement;
+  return within(row).getByText("Uncategorized");
+}
+
+// Same row-scoped rationale as categoryCell above.
+function tagsCell(description: string) {
+  const row = memoCell(description).closest(".ledger-row") as HTMLElement;
+  return row.querySelector(".cell-tags") as HTMLElement;
+}
+
 describe("TransactionsGrid inline editing", () => {
   it("clicking the memo cell opens an inline text input pre-filled with the current value, no modal", () => {
     renderGrid();
@@ -132,7 +147,7 @@ describe("TransactionsGrid inline editing", () => {
     const user = userEvent.setup();
     const props = renderGrid();
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCell("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await user.type(input, "Food");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -176,28 +191,34 @@ describe("TransactionsGrid keyboard navigation", () => {
   it("ArrowDown/ArrowUp move between rows in the same column, clamped at the edges", () => {
     renderGrid();
 
-    const dateCell = screen.getByText("2026-08-01");
+    // Default sort is date-desc (#93): Paycheck (2026-08-02) is row 0,
+    // Coffee shop (2026-08-01) is row 1.
+    const dateCell = screen.getByText("2026-08-02");
     dateCell.focus();
     fireEvent.keyDown(dateCell, { key: "ArrowDown" });
-    expect(screen.getByText("2026-08-02")).toHaveFocus();
-
-    fireEvent.keyDown(screen.getByText("2026-08-02"), { key: "ArrowDown" });
-    expect(screen.getByText("2026-08-02")).toHaveFocus();
-
-    fireEvent.keyDown(screen.getByText("2026-08-02"), { key: "ArrowUp" });
     expect(screen.getByText("2026-08-01")).toHaveFocus();
+
+    fireEvent.keyDown(screen.getByText("2026-08-01"), { key: "ArrowDown" });
+    expect(screen.getByText("2026-08-01")).toHaveFocus();
+
+    fireEvent.keyDown(screen.getByText("2026-08-01"), { key: "ArrowUp" });
+    expect(screen.getByText("2026-08-02")).toHaveFocus();
   });
 
   it("Home/End jump to the first/last visible column of the row", () => {
     renderGrid();
 
     const memo = memoCell("Coffee shop").closest('[role="gridcell"]') as HTMLElement;
+    const row = memo.closest(".ledger-row") as HTMLElement;
     memo.focus();
     fireEvent.keyDown(memo, { key: "Home" });
     expect(screen.getByText("2026-08-01")).toHaveFocus();
 
+    // Scoped to Coffee shop's own row (#93: default sort is date-desc, so
+    // this row is no longer necessarily the first `.cell-running-balance`
+    // in DOM order).
     fireEvent.keyDown(screen.getByText("2026-08-01"), { key: "End" });
-    expect(document.querySelector(".cell-running-balance")).toHaveFocus();
+    expect(row.querySelector(".cell-running-balance")).toHaveFocus();
   });
 
   it("Enter on a focused read-only Payee cell opens its combobox editor", () => {
@@ -259,7 +280,10 @@ describe("TransactionsGrid multi-row selection and bulk category assignment", ()
 
     const bulkSelect = screen.getByLabelText("Assign category to selection") as HTMLSelectElement;
     fireEvent.change(bulkSelect, { target: { value: "10" } });
-    expect(props.onBulkAssignCategory).toHaveBeenCalledWith([1, 2, 3], 10);
+    // Default sort is date-desc (#93), so the row order (and thus the
+    // range-select order) runs Groceries (08-03) -> Paycheck (08-02) ->
+    // Coffee shop (08-01), i.e. ids [3, 2, 1].
+    expect(props.onBulkAssignCategory).toHaveBeenCalledWith([3, 2, 1], 10);
   });
 });
 
@@ -364,7 +388,7 @@ describe("TransactionsGrid Tags editing (#71)", () => {
       tagsByTransactionId: { 1: [{ id: 5, name: "Reimbursable" }] },
     });
 
-    const cell = document.querySelector(".cell-tags") as HTMLElement;
+    const cell = tagsCell("Coffee shop");
     fireEvent.click(cell);
 
     const input = screen.getByLabelText("Tags for Coffee shop");
@@ -376,7 +400,7 @@ describe("TransactionsGrid Tags editing (#71)", () => {
     const user = userEvent.setup();
     const props = renderGrid({ tags: [{ id: 6, name: "Trip" }], onAddTag: vi.fn() });
 
-    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    fireEvent.click(tagsCell("Coffee shop"));
     const input = screen.getByLabelText("Tags for Coffee shop");
     await user.type(input, "Trip");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -392,7 +416,7 @@ describe("TransactionsGrid Tags editing (#71)", () => {
       onRemoveTag: vi.fn(),
     });
 
-    fireEvent.click(document.querySelector(".cell-tags") as HTMLElement);
+    fireEvent.click(tagsCell("Coffee shop"));
     await user.click(screen.getByLabelText("Remove Reimbursable"));
 
     expect(props.onRemoveTag).toHaveBeenCalledWith(1, 5);
@@ -490,7 +514,7 @@ describe("TransactionsGrid Category editing (#73)", () => {
   it("clicking the Category cell renders a SuggestionCombobox seeded with the known Category names", () => {
     renderGrid();
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCell("Coffee shop"));
 
     expect(screen.getByLabelText("Category for Coffee shop")).toBeInTheDocument();
   });
@@ -499,7 +523,7 @@ describe("TransactionsGrid Category editing (#73)", () => {
     const user = userEvent.setup();
     const props = renderGrid();
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCell("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await user.type(input, "Food");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -518,7 +542,7 @@ describe("TransactionsGrid Category editing (#73)", () => {
     const user = userEvent.setup();
     const props = renderGrid();
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCell("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await user.type(input, "Subscriptions");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -533,7 +557,7 @@ describe("TransactionsGrid Category editing (#73)", () => {
     const user = userEvent.setup();
     renderGrid();
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCell("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await user.type(input, "Subscriptions");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -545,7 +569,7 @@ describe("TransactionsGrid Category editing (#73)", () => {
     const user = userEvent.setup();
     const props = renderGrid();
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCell("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await user.type(input, "Subscriptions");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -561,7 +585,7 @@ describe("TransactionsGrid Category editing (#73)", () => {
     const user = userEvent.setup();
     const props = renderGrid();
 
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCell("Coffee shop"));
     const input = screen.getByLabelText("Category for Coffee shop");
     await user.type(input, "Subscriptions");
     fireEvent.keyDown(input, { key: "Enter" });
@@ -571,7 +595,7 @@ describe("TransactionsGrid Category editing (#73)", () => {
     expect(props.onCreateCategory).not.toHaveBeenCalled();
     expect(props.onUpdate).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(screen.getAllByText("Uncategorized")[0]).toBeInTheDocument();
+    expect(categoryCell("Coffee shop")).toBeInTheDocument();
   });
 
   it("defaults the Group dropdown to the most-recently-assigned Category's Group within the session", async () => {
@@ -579,14 +603,14 @@ describe("TransactionsGrid Category editing (#73)", () => {
     renderGrid();
 
     // Assign the Paycheck row's Category to "Income" (Group 2) first.
-    fireEvent.click(screen.getAllByText("Uncategorized")[1]);
+    fireEvent.click(categoryCell("Paycheck"));
     const paycheckInput = screen.getByLabelText("Category for Paycheck");
     await user.type(paycheckInput, "Income");
     fireEvent.keyDown(paycheckInput, { key: "Enter" });
 
     // Opening the create-new flow on a different row should now default to
     // Income's Group (2), not the first Group (1).
-    fireEvent.click(screen.getAllByText("Uncategorized")[0]);
+    fireEvent.click(categoryCell("Coffee shop"));
     const coffeeInput = screen.getByLabelText("Category for Coffee shop");
     await user.type(coffeeInput, "Subscriptions");
     fireEvent.keyDown(coffeeInput, { key: "Enter" });
@@ -707,10 +731,20 @@ describe("TransactionsGrid Running Balance", () => {
   it("renders a cumulative running total, in date order, when the view is scoped to a single Account", () => {
     renderGrid();
 
-    const balances = Array.from(document.querySelectorAll(".cell-running-balance")).map(
-      (el) => el.textContent,
-    );
-    expect(balances).toEqual([formatCents(-1250), formatCents(298750)]);
+    // The running total is computed in chronological order regardless of
+    // the grid's display sort (#93 defaults display to date-desc): Coffee
+    // shop (2026-08-01, -$12.50) comes first date-wise, Paycheck
+    // (2026-08-02, $3,000.00) second -- so their per-row cumulative totals
+    // stay -$12.50 and $2,987.50 respectively, found here by row rather
+    // than by DOM position.
+    const coffeeBalance = memoCell("Coffee shop")
+      .closest(".ledger-row")!
+      .querySelector(".cell-running-balance");
+    const paycheckBalance = memoCell("Paycheck")
+      .closest(".ledger-row")!
+      .querySelector(".cell-running-balance");
+    expect(coffeeBalance).toHaveTextContent(formatCents(-1250));
+    expect(paycheckBalance).toHaveTextContent(formatCents(298750));
   });
 
   it("renders blank for every row when the view spans more than one Account", () => {
@@ -875,19 +909,19 @@ describe("TransactionsGrid click-to-sort columns", () => {
     expect(memoOrder()).toEqual(["Paycheck", "Groceries", "Coffee shop"]);
   });
 
-  it("clicking the Amount header a third time clears back to the default order", () => {
-    const transactions = sortableTransactions();
-    renderGrid({ transactions });
+  it("clicking the Amount header a third time clears back to the default date-desc order (#93)", () => {
+    renderGrid({ transactions: sortableTransactions() });
 
     const header = screen.getByText("Amount", { selector: ".ledger-head span" });
     fireEvent.click(header);
     fireEvent.click(header);
     fireEvent.click(header);
 
-    expect(memoOrder()).toEqual(transactions.map((t) => t.description));
+    // Groceries (08-03) newest, Coffee shop (08-01) oldest.
+    expect(memoOrder()).toEqual(["Groceries", "Paycheck", "Coffee shop"]);
   });
 
-  it("clicking the Payee header sorts ascending, then descending, then clears (text column)", () => {
+  it("clicking the Payee header sorts ascending, then descending, then clears back to the default date-desc order (#93) (text column)", () => {
     const transactions = sortableTransactions();
     renderGrid({ transactions });
 
@@ -900,7 +934,7 @@ describe("TransactionsGrid click-to-sort columns", () => {
     expect(payeeOrder()).toEqual(["Paycheck", "Groceries", "Coffee shop"]);
 
     fireEvent.click(header);
-    expect(payeeOrder()).toEqual(transactions.map((t) => t.description));
+    expect(payeeOrder()).toEqual(["Groceries", "Paycheck", "Coffee shop"]);
   });
 
   it("clicking a different header resets the cycle to ascending on the new column", () => {
