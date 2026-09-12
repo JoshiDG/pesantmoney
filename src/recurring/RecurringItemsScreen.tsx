@@ -6,6 +6,7 @@ import { formatCents } from "../transactions/types";
 import { RecurringItemForm } from "./RecurringItemForm";
 import { FREQUENCY_LABELS, RecurringItem, RecurringItemFields } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
+import { RecurringSectionNav, useRecurringSectionNav } from "./useRecurringSectionNav";
 
 interface RecurringItemsScreenProps {
   account: Account;
@@ -100,9 +101,44 @@ export function RecurringItemsScreen({ account, categories }: RecurringItemsScre
   const detected = items.filter((item) => !item.is_confirmed);
   const confirmed = items.filter((item) => item.is_confirmed);
 
-  function renderRow(item: RecurringItem, actions: ReactNode) {
+  // One keyboard-nav/selection instance per section (#80, ADR-0020's "Grid
+  // keyboard navigation"): Detected and Confirmed have different available
+  // actions (Confirm/Dismiss vs. Edit/Delete), so focus and selection never
+  // span both -- see useRecurringSectionNav's module doc.
+  const detectedNav = useRecurringSectionNav(detected.map((item) => item.id));
+  const confirmedNav = useRecurringSectionNav(confirmed.map((item) => item.id));
+
+  function renderRow(
+    item: RecurringItem,
+    index: number,
+    nav: RecurringSectionNav,
+    shortcuts: Record<string, () => void>,
+    actions: ReactNode,
+  ) {
+    const isFocused = nav.isFocused(index);
+    const isSelected = nav.isSelected(item.id);
     return (
-      <div className="recurring-row" key={item.id}>
+      <div
+        className={`recurring-row${isFocused ? " row-focused" : ""}${isSelected ? " row-selected" : ""}`}
+        key={item.id}
+        ref={nav.rowRef(index)}
+        tabIndex={0}
+        role="row"
+        onFocus={() => nav.handleRowFocus(index)}
+        onKeyDown={(e) => nav.handleRowKeyDown(e, index, shortcuts)}
+      >
+        <span className="cell-select">
+          <input
+            type="checkbox"
+            aria-label={`Select ${item.description}`}
+            checked={isSelected}
+            onClick={(e) => {
+              e.preventDefault();
+              nav.toggleSelectRow(item.id, e.shiftKey);
+            }}
+            onChange={() => {}}
+          />
+        </span>
         <span className="cell-description">{item.description}</span>
         <span className={`amount ${item.amount_cents < 0 ? "debit" : "credit"}`}>
           {formatCents(item.amount_cents)}
@@ -118,7 +154,7 @@ export function RecurringItemsScreen({ account, categories }: RecurringItemsScre
   }
 
   return (
-    <section>
+    <section className="ledger-container">
       {error && <p role="alert">{error}</p>}
 
       <h3 className="recurring-section-title">Detected</h3>
@@ -127,6 +163,14 @@ export function RecurringItemsScreen({ account, categories }: RecurringItemsScre
       ) : (
         <div className="recurring-list">
           <div className="recurring-head">
+            <span className="cell-select">
+              <input
+                type="checkbox"
+                aria-label="Select all detected items"
+                checked={detected.length > 0 && detectedNav.selectedCount === detected.length}
+                onChange={detectedNav.toggleSelectAll}
+              />
+            </span>
             <span>Description</span>
             <span>Amount</span>
             <span>Frequency</span>
@@ -134,9 +178,15 @@ export function RecurringItemsScreen({ account, categories }: RecurringItemsScre
             <span>Category</span>
             <span></span>
           </div>
-          {detected.map((item) =>
+          {detected.map((item, index) =>
             renderRow(
               item,
+              index,
+              detectedNav,
+              // Scoped bare single-letter shortcuts (#80, ADR-0020): active
+              // only while a Detected row has keyboard focus, mirroring the
+              // Confirm/Dismiss buttons already rendered for this row.
+              { c: () => handleConfirm(item), d: () => handleDelete(item) },
               <>
                 <button type="button" onClick={() => handleConfirm(item)}>
                   Confirm
@@ -153,6 +203,14 @@ export function RecurringItemsScreen({ account, categories }: RecurringItemsScre
       <h3 className="recurring-section-title">Confirmed</h3>
       <div className="recurring-list">
         <div className="recurring-head">
+          <span className="cell-select">
+            <input
+              type="checkbox"
+              aria-label="Select all confirmed items"
+              checked={confirmed.length > 0 && confirmedNav.selectedCount === confirmed.length}
+              onChange={confirmedNav.toggleSelectAll}
+            />
+          </span>
           <span>Description</span>
           <span>Amount</span>
           <span>Frequency</span>
@@ -160,7 +218,7 @@ export function RecurringItemsScreen({ account, categories }: RecurringItemsScre
           <span>Category</span>
           <span></span>
         </div>
-        {confirmed.map((item) =>
+        {confirmed.map((item, index) =>
           editingId === item.id ? (
             <RecurringItemForm
               key={item.id}
@@ -172,6 +230,9 @@ export function RecurringItemsScreen({ account, categories }: RecurringItemsScre
           ) : (
             renderRow(
               item,
+              index,
+              confirmedNav,
+              { e: () => setEditingId(item.id), d: () => handleDelete(item) },
               <>
                 <button type="button" onClick={() => setEditingId(item.id)}>
                   Edit

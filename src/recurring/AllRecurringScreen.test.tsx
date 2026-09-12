@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -132,6 +132,109 @@ describe("AllRecurringScreen", () => {
         expect.objectContaining({ id: 1, description: "Streaming service" }),
       ),
     );
+  });
+});
+
+// Keyboard grid navigation + scoped single-letter shortcuts (#80,
+// ADR-0020's "Grid keyboard navigation"). A second Confirmed item is added
+// so ArrowDown has somewhere to move focus to.
+describe("AllRecurringScreen keyboard navigation", () => {
+  const twoConfirmedItems = [
+    ...allItems,
+    {
+      id: 3,
+      account_id: 2,
+      account_name: "Savings",
+      description: "Internet",
+      amount_cents: -6000,
+      frequency: "monthly",
+      next_expected_date: "2026-10-03",
+      category_id: 10,
+      is_confirmed: true,
+    },
+  ];
+
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_accounts":
+          return accounts;
+        case "list_categories":
+          return categories;
+        case "detect_recurring_items":
+          return [];
+        case "list_all_recurring_items":
+          return twoConfirmedItems;
+        case "confirm_recurring_item":
+          return null;
+        case "delete_recurring_item":
+          return null;
+        case "update_recurring_item":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  function row(description: string) {
+    return screen.getByText(description).closest('[role="row"]') as HTMLElement;
+  }
+
+  it("ArrowDown moves focus from one Confirmed row to the next", async () => {
+    renderScreen();
+    await screen.findByText("Internet");
+
+    const first = row("Streaming service");
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+
+    expect(row("Internet")).toHaveFocus();
+  });
+
+  it("bare 'e' on a focused Confirmed row opens it for editing", async () => {
+    renderScreen();
+    await screen.findByText("Streaming service");
+
+    const item = row("Streaming service");
+    item.focus();
+    fireEvent.keyDown(item, { key: "e" });
+
+    expect(screen.getByDisplayValue("Streaming service")).toBeInTheDocument();
+  });
+
+  it("bare 'c' on a focused Detected row confirms it", async () => {
+    renderScreen();
+    await screen.findByText("Gym membership");
+
+    const item = row("Gym membership");
+    item.focus();
+    fireEvent.keyDown(item, { key: "c" });
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("confirm_recurring_item", { id: 2 }));
+  });
+
+  it("does not fire the bare-letter shortcut while a text input has focus", async () => {
+    renderScreen();
+    await screen.findByText("Streaming service");
+
+    const checkbox = screen.getByRole("checkbox", { name: "Select Streaming service" });
+    checkbox.focus();
+    fireEvent.keyDown(checkbox, { key: "e" });
+
+    expect(screen.queryByDisplayValue("Streaming service")).not.toBeInTheDocument();
+  });
+
+  it("Shift+click range-selects rows between the anchor and the clicked row", async () => {
+    renderScreen();
+    await screen.findByText("Internet");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Streaming service" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Internet" }), { shiftKey: true });
+
+    expect(row("Streaming service")).toHaveClass("row-selected");
+    expect(row("Internet")).toHaveClass("row-selected");
   });
 });
 
