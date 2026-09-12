@@ -100,7 +100,7 @@ The full list of columns the Transactions grid can display for a Transaction (e.
 _Avoid_: Columns (ambiguous between the full available set and what's currently shown)
 
 **Column Management**:
-User control over which columns from the Column Set are visible and in what order, for the Transactions grid. Lets a power-user configure a dense, Bloomberg-terminal-style view rather than being locked to a fixed column list.
+User control over which columns from the Column Set are visible and in what order (drag-to-reorder), for the Transactions grid. Lets a power-user configure a dense, Bloomberg-terminal-style view rather than being locked to a fixed column list.
 _Avoid_: Column customization (vaguer — Column Management is the specific show/hide/reorder affordance, not styling)
 
 **Command Palette**:
@@ -110,3 +110,26 @@ _Avoid_: Quick switcher, spotlight (describes the pattern generically; Command P
 **Reserved Shortcut Set**:
 The closed, app-wide vocabulary of macOS-native modifier-key shortcuts (e.g. Cmd+N, Cmd+F, Cmd+,) that a screen may never repurpose for a different action. See ADR-0020; distinct from the bare single-letter shortcuts scoped to a focused grid/list, which aren't app-wide and don't need reservation.
 _Avoid_: Global shortcuts (ambiguous — could be read to include the grid-scoped single-letter shortcuts, which are deliberately not app-wide)
+
+**Palette**:
+The single source of truth for all color values in the app — a dedicated token file listing every color by role (backgrounds, text, credit/debit, function-key roles, accents). Current values are Bloomberg Terminal-inspired; the point of the file is that any value can be swapped later without touching component code.
+_Avoid_: Theme (implies multiple switchable themes; there is one palette, just extractable)
+
+**Function Bar**:
+The Bloomberg-style row of color-coded action chips at the top of the Transactions screen (New, Import, Export, Columns, Show Hidden), each chip colored by role. Screen-level actions only — row-level actions stay on the row context menu.
+_Avoid_: Toolbar, action bar (generic; the color-coded role system is the defining trait)
+
+**Context Bar**:
+The Bloomberg command-line-style bar below the Function Bar on the Transactions screen: the Account context selector plus the live search input (focused by Cmd+F). Carries *where* the grid is looking, not actions.
+_Avoid_: Breadcrumbs, command bar (breadcrumbs imply a path; command bar implies palette-style commands — this holds context + record search)
+
+**Quote Strip**:
+The live totals strip above the Transactions grid: filtered row count, Income, Expense, Net (green/red signed), plus the selected Account's balance. Updates with every filter/search change.
+_Avoid_: Summary header, KPI strip (generic)
+
+**Status Bar**:
+The bottom line of the Transactions screen: filter/search state summary and current sort on the left, context-aware shortcut hints on the right.
+_Avoid_: Footer (too generic — this is an information-bearing terminal element, not a page footer)
+
+**Date Group**:
+A sticky section header in the Transactions grid grouping rows by calendar date (Today / Yesterday / explicit dates).
