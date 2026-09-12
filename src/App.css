@@ -1404,16 +1404,16 @@ body {
   color: var(--paper-text);
   border-radius: 12px;
   padding: 0.5rem;
-  /* Bloomberg-density identity pass (#88): amber accent for *structural
-     chrome only* -- column headers, sort glyphs, and the two standalone
-     labels below -- reusing --accent-warning's hue (#e0a53d) rather than
-     inventing a new color, but defined locally here (not hoisted to
-     :root) since #88 is explicitly scoped to this one tab. Cell-focus
-     ring and bulk-actions bar deliberately keep the shared --focus (blue)
-     token untouched (see those rules below) so "focused for editing"
-     stays visually distinct from "this is a header/label." */
-  --ledger-label: #e0a53d;
 }
+
+/* Bloomberg-density identity pass (#88): amber accent for *structural chrome
+   only* -- column headers, sort glyphs, and the two standalone labels below.
+   --accent-warning is already a :root token (not something #88 introduces),
+   so these rules read it directly rather than re-declaring its value under a
+   new local name -- there's no scoping reason to duplicate a token that's
+   already global. Cell-focus ring and bulk-actions bar deliberately keep the
+   shared --focus (blue) token untouched (see those rules below) so "focused
+   for editing" stays visually distinct from "this is a header/label." */
 
 .ledger-container .ledger {
   background-color: var(--paper);
@@ -1430,7 +1430,7 @@ body {
    stays dense at every breakpoint. */
 .ledger-container .ledger-head > span {
   padding: 0.25rem 0.25rem 0.2rem 0.25rem;
-  color: var(--ledger-label);
+  color: var(--accent-warning);
   border-bottom: 2px solid var(--paper-line);
   font-family: var(--font-mono);
   text-transform: uppercase;
@@ -1443,7 +1443,7 @@ body {
 
 .ledger-container .ledger-head > span.sort-asc,
 .ledger-container .ledger-head > span.sort-desc {
-  color: var(--ledger-label);
+  color: var(--accent-warning);
 }
 
 .ledger-container .ledger-row > * {
@@ -1602,21 +1602,20 @@ body {
 /* Balance label and "Show hidden" toggle (#88 acceptance criterion 1): both
    render inside `.content-header`, a DOM sibling *before* `.ledger-container`
    in TransactionsScreen/AllTransactionsScreen -- not a descendant of it --
-   so they cannot inherit `.ledger-container`'s locally-scoped
-   `--ledger-label` custom property through the cascade. Rather than
-   hoisting that property to a shared ancestor or to `:root` (ruled out --
-   #88 keeps the amber accent scoped to this one tab), these two rules
-   repeat its literal value directly. `.balance .balance-label` is
-   qualified by the `.balance` wrapper (unique to TransactionsScreen --
-   BudgetScreen's identical `.balance-label` class sits inside
-   `.ready-to-assign` instead, so "Ready to Assign" is untouched);
-   `label.show-hidden-toggle` has no other consumer in the app besides
-   TransactionsScreen/AllTransactionsScreen, so it needs no extra
-   qualifier beyond the element type (bumped for cascade-order safety
-   against the earlier `.show-hidden-toggle` rule above). */
+   so `.ledger-container`-scoped rules can't reach them. They read the shared
+   `--accent-warning` token directly (same as every other already-migrated
+   screen's amber usage, e.g. the rules at line ~1958) rather than needing any
+   `.ledger-container` scoping trick. `.balance .balance-label` is qualified
+   by the `.balance` wrapper (unique to TransactionsScreen -- BudgetScreen's
+   identical `.balance-label` class sits inside `.ready-to-assign` instead,
+   so "Ready to Assign" is untouched); `label.show-hidden-toggle` has no
+   other consumer in the app besides TransactionsScreen/AllTransactionsScreen,
+   so it needs no extra qualifier beyond the element type (bumped for
+   cascade-order safety against the earlier `.show-hidden-toggle` rule
+   above). */
 .balance .balance-label,
 label.show-hidden-toggle {
-  color: #e0a53d;
+  color: var(--accent-warning);
 }
 
 /* ---------- all-Accounts Transactions view ---------- */
