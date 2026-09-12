@@ -8,6 +8,7 @@ import { RuleForm } from "./RuleForm";
 import { MATCH_TYPE_LABELS, Rule, RuleFields, RULE_FIELD_LABELS } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 import { isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
+import { useReservedShortcuts } from "../ui/ReservedShortcuts";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
 
 function describeMatchValue(rule: Rule, accounts: Account[]): string {
@@ -124,6 +125,28 @@ export function RulesScreen() {
       setError(String(err));
     }
   }
+
+  // Reserved Shortcut Set (#78): Cmd/Ctrl+N opens the same "Add rule" form
+  // the toolbar button does -- gated the same way the button is (a rule
+  // needs at least one Category to assign, so it's a no-op with none yet).
+  // Cmd/Ctrl+W and Escape close whichever of the add/edit forms is open.
+  // Delete/Backspace runs the same bulk-delete "Delete selected" does, only
+  // once a selection exists. No search/filter input exists on this screen.
+  useReservedShortcuts({
+    onNew: categories.length > 0 ? () => setAdding(true) : undefined,
+    onCloseModal: () => {
+      if (adding) {
+        setAdding(false);
+        return true;
+      }
+      if (editingId != null) {
+        setEditingId(null);
+        return true;
+      }
+      return false;
+    },
+    onDeleteSelection: selected.size > 0 ? handleDeleteSelected : undefined,
+  });
 
   function toggleSelectRule(ruleId: number, shiftKey: boolean) {
     if (shiftKey && anchorId != null) {

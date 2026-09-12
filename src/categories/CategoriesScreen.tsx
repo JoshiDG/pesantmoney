@@ -5,6 +5,7 @@ import { CategoryGroupForm } from "./CategoryGroupForm";
 import { Category, CategoryFields, CategoryGroup } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 import { isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
+import { useReservedShortcuts } from "../ui/ReservedShortcuts";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
 
 export function CategoriesScreen() {
@@ -130,6 +131,37 @@ export function CategoriesScreen() {
       setError(String(err));
     }
   }
+
+  // Reserved Shortcut Set (#78): Cmd/Ctrl+N opens the top-level "Add group"
+  // form (the screen's one unscoped create action -- adding a Category
+  // requires picking a group first, so it isn't a natural Cmd+N target).
+  // Cmd/Ctrl+W and Escape close whichever of the four possible open
+  // forms/edits is active; at most one is ever open at a time in normal use.
+  // Delete/Backspace runs the same bulk-delete "Delete selected" does, only
+  // once a selection exists. No search/filter input exists on this screen.
+  useReservedShortcuts({
+    onNew: () => setAddingGroup(true),
+    onCloseModal: () => {
+      if (addingGroup) {
+        setAddingGroup(false);
+        return true;
+      }
+      if (addingCategoryForGroupId != null) {
+        setAddingCategoryForGroupId(null);
+        return true;
+      }
+      if (editingGroupId != null) {
+        setEditingGroupId(null);
+        return true;
+      }
+      if (editingCategoryId != null) {
+        setEditingCategoryId(null);
+        return true;
+      }
+      return false;
+    },
+    onDeleteSelection: selected.size > 0 ? handleDeleteSelected : undefined,
+  });
 
   function toggleSelectCategory(categoryId: number, shiftKey: boolean) {
     if (shiftKey && anchorId != null) {

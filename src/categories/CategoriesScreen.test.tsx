@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { ReservedShortcutProvider } from "../ui/ReservedShortcuts";
 import { CategoriesScreen } from "./CategoriesScreen";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -204,5 +205,64 @@ describe("CategoriesScreen keyboard navigation (ADR-0020, #76 grid-nav primitive
 
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_category", { id: 10 }));
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_category", { id: 11 }));
+  });
+});
+
+describe("CategoriesScreen Reserved Shortcut Set wiring (#78)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_category_groups":
+          return [{ id: 1, name: "Food" }];
+        case "list_categories":
+          return [{ id: 10, group_id: 1, name: "Groceries" }];
+        case "delete_category":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  function renderWithShortcuts() {
+    render(
+      <ConfirmationProvider>
+        <ReservedShortcutProvider onOpenSettings={vi.fn()}>
+          <CategoriesScreen />
+        </ReservedShortcutProvider>
+      </ConfirmationProvider>,
+    );
+  }
+
+  it("Cmd+N opens the Add group form", async () => {
+    renderWithShortcuts();
+    await screen.findByText("Groceries");
+
+    expect(screen.queryByLabelText("Group name")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    expect(await screen.findByLabelText("Group name")).toBeInTheDocument();
+  });
+
+  it("Delete/Backspace bulk-deletes the current selection", async () => {
+    renderWithShortcuts();
+    await screen.findByText("Groceries");
+
+    await userEvent.click(screen.getByLabelText("Select Groceries"));
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(await screen.findByRole("heading", { name: "Delete Categories" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete Categories" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_category", { id: 10 }));
+  });
+
+  it("Delete/Backspace is a no-op with nothing selected", async () => {
+    renderWithShortcuts();
+    await screen.findByText("Groceries");
+
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(screen.queryByRole("heading", { name: "Delete Categories" })).not.toBeInTheDocument();
   });
 });

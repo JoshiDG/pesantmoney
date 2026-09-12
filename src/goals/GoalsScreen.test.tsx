@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { ReservedShortcutProvider } from "../ui/ReservedShortcuts";
 import { withBreakpoint } from "../ui/withBreakpoint";
 import { GoalsScreen } from "./GoalsScreen";
 
@@ -241,6 +242,80 @@ describe("GoalsScreen keyboard grid navigation and shortcuts (ADR-0020, #81)", (
     await userEvent.click(screen.getByRole("button", { name: "Clear selection" }));
 
     expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+  });
+});
+
+describe("GoalsScreen Reserved Shortcut Set wiring (#78)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_goals_with_progress":
+          return [
+            {
+              id: 1,
+              name: "Emergency Fund",
+              target_cents: 100000,
+              target_date: "2026-12-31",
+              linked_category_id: 10,
+              linked_account_id: null,
+              starting_balance_cents: null,
+              created_at: "2026-01-01 00:00:00",
+              progress_cents: 5000,
+              pace: "insufficient_data",
+            },
+          ];
+        case "list_categories":
+          return [{ id: 10, group_id: 1, name: "Savings" }];
+        case "list_accounts":
+          return [];
+        case "delete_goal":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  function renderWithShortcuts() {
+    render(
+      <ConfirmationProvider>
+        <ReservedShortcutProvider onOpenSettings={vi.fn()}>
+          <GoalsScreen />
+        </ReservedShortcutProvider>
+      </ConfirmationProvider>,
+    );
+  }
+
+  it("Cmd+N opens the Add goal form", async () => {
+    renderWithShortcuts();
+    await screen.findByText("Emergency Fund");
+
+    expect(screen.queryByLabelText("Goal name")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    expect(await screen.findByLabelText("Goal name")).toBeInTheDocument();
+  });
+
+  it("Delete/Backspace bulk-deletes the current selection", async () => {
+    renderWithShortcuts();
+    await screen.findByText("Emergency Fund");
+
+    await userEvent.click(screen.getByLabelText("Select Emergency Fund"));
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(await screen.findByRole("heading", { name: "Delete Goals" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete 1 Goal" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_goal", { id: 1 }));
+  });
+
+  it("Delete/Backspace is a no-op with nothing selected", async () => {
+    renderWithShortcuts();
+    await screen.findByText("Emergency Fund");
+
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(screen.queryByRole("heading", { name: "Delete Goals" })).not.toBeInTheDocument();
   });
 });
 

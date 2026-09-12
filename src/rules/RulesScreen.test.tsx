@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { ReservedShortcutProvider } from "../ui/ReservedShortcuts";
 import { RulesScreen } from "./RulesScreen";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -185,5 +186,80 @@ describe("RulesScreen keyboard navigation (ADR-0020, #76 grid-nav primitive)", (
 
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_categorization_rule", { id: 1 }));
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_categorization_rule", { id: 2 }));
+  });
+});
+
+describe("RulesScreen Reserved Shortcut Set wiring (#78)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_categorization_rules":
+          return [
+            {
+              id: 1,
+              field: "description",
+              match_type: "contains",
+              match_value: "Coffee",
+              category_id: 10,
+              rename_value: null,
+              hide: false,
+              tag_ids: [],
+              priority: 1,
+            },
+          ];
+        case "list_accounts":
+          return [];
+        case "list_categories":
+          return [{ id: 10, group_id: 1, name: "Food" }];
+        case "list_tags":
+          return [];
+        case "delete_categorization_rule":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  function renderWithShortcuts() {
+    render(
+      <ConfirmationProvider>
+        <ReservedShortcutProvider onOpenSettings={vi.fn()}>
+          <RulesScreen />
+        </ReservedShortcutProvider>
+      </ConfirmationProvider>,
+    );
+  }
+
+  it("Cmd+N opens the Add rule form", async () => {
+    renderWithShortcuts();
+    await screen.findByText(/Coffee/);
+
+    expect(screen.queryByLabelText("Priority")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    expect(await screen.findByLabelText("Priority")).toBeInTheDocument();
+  });
+
+  it("Delete/Backspace bulk-deletes the current selection", async () => {
+    renderWithShortcuts();
+    await screen.findByText(/Coffee/);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /Select rule/ }));
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(await screen.findByRole("heading", { name: "Delete Rules" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete Rules" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_categorization_rule", { id: 1 }));
+  });
+
+  it("Delete/Backspace is a no-op with nothing selected", async () => {
+    renderWithShortcuts();
+    await screen.findByText(/Coffee/);
+
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(screen.queryByRole("heading", { name: "Delete Rules" })).not.toBeInTheDocument();
   });
 });

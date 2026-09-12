@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { ReservedShortcutProvider } from "../ui/ReservedShortcuts";
 import { HoldingsScreen } from "./HoldingsScreen";
 import { Account } from "../accounts/types";
 
@@ -216,5 +217,73 @@ describe("HoldingsScreen keyboard navigation", () => {
 
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_holding", { id: 1 }));
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_holding", { id: 2 }));
+  });
+});
+
+describe("HoldingsScreen Reserved Shortcut Set wiring (#78)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_holdings_with_values":
+          return [
+            {
+              id: 1,
+              account_id: 1,
+              ticker: "VTI",
+              quantity: 10,
+              cost_basis_cents: null,
+              price_cents: 25000,
+              as_of_date: "2026-09-01",
+              value_cents: 250000,
+            },
+          ];
+        case "delete_holding":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  function renderWithShortcuts() {
+    render(
+      <ConfirmationProvider>
+        <ReservedShortcutProvider onOpenSettings={vi.fn()}>
+          <HoldingsScreen account={account} />
+        </ReservedShortcutProvider>
+      </ConfirmationProvider>,
+    );
+  }
+
+  it("Cmd+N moves focus into the always-present create form's Ticker field", async () => {
+    renderWithShortcuts();
+    await screen.findByText("VTI");
+
+    expect(screen.getByLabelText("Ticker")).not.toHaveFocus();
+    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    expect(screen.getByLabelText("Ticker")).toHaveFocus();
+  });
+
+  it("Delete/Backspace bulk-deletes the current selection", async () => {
+    renderWithShortcuts();
+    await screen.findByText("VTI");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select VTI" }));
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(await screen.findByRole("heading", { name: "Delete Holdings" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete Holdings" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_holding", { id: 1 }));
+  });
+
+  it("Delete/Backspace is a no-op with nothing selected", async () => {
+    renderWithShortcuts();
+    await screen.findByText("VTI");
+
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(screen.queryByRole("heading", { name: "Delete Holdings" })).not.toBeInTheDocument();
   });
 });

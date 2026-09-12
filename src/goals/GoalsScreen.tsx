@@ -8,6 +8,7 @@ import { GoalPaceBadge } from "./GoalPaceBadge";
 import { GoalFields, GoalWithProgress, PayoffProjection, progressFraction } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 import { isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
+import { useReservedShortcuts } from "../ui/ReservedShortcuts";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
 
 const DEBT_ACCOUNT_TYPES = new Set(["credit_card", "loan"]);
@@ -181,6 +182,29 @@ export function GoalsScreen() {
       setFocusedRow(goals.length > 0 ? goals.length - 1 : null);
     }
   }, [goals.length, focusedRow]);
+
+  // Reserved Shortcut Set (#78): Cmd/Ctrl+N opens the same "Add goal" form
+  // the toolbar button does; Cmd/Ctrl+W and Escape close whichever of the
+  // add/edit forms is open; Delete/Backspace runs the same bulk-delete the
+  // "Delete selected" button does, but only once a selection actually
+  // exists (a bare Delete press with nothing selected is a no-op, not an
+  // error). Goals has no search/filter text input, so `onFocusSearch` is
+  // intentionally omitted.
+  useReservedShortcuts({
+    onNew: () => setAdding(true),
+    onCloseModal: () => {
+      if (adding) {
+        setAdding(false);
+        return true;
+      }
+      if (editingId != null) {
+        setEditingId(null);
+        return true;
+      }
+      return false;
+    },
+    onDeleteSelection: selected.size > 0 ? handleBulkDelete : undefined,
+  });
 
   function toggleSelectRow(goalId: number, shiftKey: boolean) {
     const orderedIds = goals.map((g) => g.id);

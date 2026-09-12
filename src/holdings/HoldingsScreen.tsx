@@ -6,6 +6,7 @@ import { PriceForm } from "./PriceForm";
 import { formatCents, Holding, HoldingFields, HoldingWithValue } from "./types";
 import { useConfirmation } from "../ui/ConfirmationProvider";
 import { isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
+import { useReservedShortcuts } from "../ui/ReservedShortcuts";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
 
 interface HoldingsScreenProps {
@@ -36,6 +37,7 @@ export function HoldingsScreen({ account }: HoldingsScreenProps) {
   // Left/Right are no-ops (clamped to the single column).
   const [focusedRow, setFocusedRow] = useState<number | null>(null);
   const rowRefs = useRef<Record<number, HTMLSpanElement | null>>({});
+  const addFormRef = useRef<HTMLDivElement | null>(null);
 
   async function refresh() {
     try {
@@ -144,6 +146,21 @@ export function HoldingsScreen({ account }: HoldingsScreenProps) {
       setError(String(err));
     }
   }
+
+  // Reserved Shortcut Set (#78): Holdings' create form (<HoldingForm> at the
+  // bottom of the list) is always rendered, not toggled open/closed like
+  // Accounts'/Goals' add forms, so there's no modal state for Cmd/Ctrl+W or
+  // Escape to close here -- Cmd/Ctrl+N instead moves focus into that
+  // always-present form's first field, the same "jump to create" affordance
+  // Cmd/Ctrl+F gives search inputs elsewhere. Delete/Backspace runs the same
+  // bulk-delete the "Delete selected" button does, only once a selection
+  // exists. No search/filter input exists on this screen.
+  useReservedShortcuts({
+    onNew: () => {
+      addFormRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+    },
+    onDeleteSelection: selected.size > 0 ? handleBulkDelete : undefined,
+  });
 
   const orderedIds = holdings.map((h) => h.id);
 
@@ -328,7 +345,9 @@ export function HoldingsScreen({ account }: HoldingsScreenProps) {
           </div>
         )}
 
-        <HoldingForm onSubmit={handleCreate} />
+        <div ref={addFormRef}>
+          <HoldingForm onSubmit={handleCreate} />
+        </div>
       </div>
     </section>
   );
