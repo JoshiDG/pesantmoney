@@ -1404,6 +1404,15 @@ body {
   color: var(--paper-text);
   border-radius: 12px;
   padding: 0.5rem;
+  /* Bloomberg-density identity pass (#88): amber accent for *structural
+     chrome only* -- column headers, sort glyphs, and the two standalone
+     labels below -- reusing --accent-warning's hue (#e0a53d) rather than
+     inventing a new color, but defined locally here (not hoisted to
+     :root) since #88 is explicitly scoped to this one tab. Cell-focus
+     ring and bulk-actions bar deliberately keep the shared --focus (blue)
+     token untouched (see those rules below) so "focused for editing"
+     stays visually distinct from "this is a header/label." */
+  --ledger-label: #e0a53d;
 }
 
 .ledger-container .ledger {
@@ -1420,9 +1429,12 @@ body {
    rule and the Compact-tier (768-1279px) media-query reflow, so Transactions
    stays dense at every breakpoint. */
 .ledger-container .ledger-head > span {
-  padding: 0.4rem 0.4rem 0.3rem 0.4rem;
-  color: var(--text-secondary);
+  padding: 0.25rem 0.25rem 0.2rem 0.25rem;
+  color: var(--ledger-label);
   border-bottom: 2px solid var(--paper-line);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .ledger-container .ledger-head > span:hover {
@@ -1431,13 +1443,14 @@ body {
 
 .ledger-container .ledger-head > span.sort-asc,
 .ledger-container .ledger-head > span.sort-desc {
-  color: var(--paper-text);
+  color: var(--ledger-label);
 }
 
 .ledger-container .ledger-row > * {
-  padding: 0.3rem 0.4rem;
+  padding: 0.2rem 0.25rem;
   border-bottom: 1px solid var(--paper-line);
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
   color: var(--paper-text);
 }
 
@@ -1584,6 +1597,26 @@ body {
 
 .ledger-container .suggestion-chip-remove {
   color: var(--text-secondary);
+}
+
+/* Balance label and "Show hidden" toggle (#88 acceptance criterion 1): both
+   render inside `.content-header`, a DOM sibling *before* `.ledger-container`
+   in TransactionsScreen/AllTransactionsScreen -- not a descendant of it --
+   so they cannot inherit `.ledger-container`'s locally-scoped
+   `--ledger-label` custom property through the cascade. Rather than
+   hoisting that property to a shared ancestor or to `:root` (ruled out --
+   #88 keeps the amber accent scoped to this one tab), these two rules
+   repeat its literal value directly. `.balance .balance-label` is
+   qualified by the `.balance` wrapper (unique to TransactionsScreen --
+   BudgetScreen's identical `.balance-label` class sits inside
+   `.ready-to-assign` instead, so "Ready to Assign" is untouched);
+   `label.show-hidden-toggle` has no other consumer in the app besides
+   TransactionsScreen/AllTransactionsScreen, so it needs no extra
+   qualifier beyond the element type (bumped for cascade-order safety
+   against the earlier `.show-hidden-toggle` rule above). */
+.balance .balance-label,
+label.show-hidden-toggle {
+  color: #e0a53d;
 }
 
 /* ---------- all-Accounts Transactions view ---------- */
