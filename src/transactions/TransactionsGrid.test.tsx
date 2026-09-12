@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { Category, CategoryGroup } from "../categories/types";
@@ -1275,5 +1275,232 @@ describe("TransactionsGrid layout across Breakpoint Tiers", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Link transfer" }));
 
     expect(props.onStartLink).toHaveBeenCalledWith(1);
+  });
+});
+
+// Grid virtualization (#95): @tanstack/react-virtual reads its scroll
+// container's offsetHeight exactly once, synchronously, while React commits
+// the initial render (see observeElementRect/_willUpdate in
+// @tanstack/virtual-core -- it only re-subscribes if the scroll-element
+// *reference* itself changes, not on every render). That's before a test
+// can get a handle on the actual DOM node to override its offsetHeight, so
+// a plain per-instance `Object.defineProperty(el, ...)` after `render()`
+// returns is too late to affect how many rows mount initially. This helper
+// instead keys the override off a CSS selector, so it's already in effect
+// before the matching element even exists -- shadowing the global 600px
+// default installed in src/test/setup.ts for just the element(s) a given
+// test cares about (usually the `.ledger.ledger-editable` scroll
+// container).
+function mockElementSize(selector: string, height: number) {
+  // clientHeight/scrollHeight mocked alongside offsetHeight: jsdom hardcodes
+  // both to 0 (no layout engine), but @tanstack/virtual-core's
+  // `getMaxScrollOffset` (used for `scrollToIndex(..., { align: "end" })`
+  // when the target is the very last item -- see `getOffsetForIndex`) reads
+  // `scrollHeight - clientHeight` directly rather than its own computed
+  // total-item-size, so leaving them at 0 makes every "scroll to the end"
+  // request resolve to offset 0, a no-op. `scrollHeight` here is a rough
+  // stand-in for "much taller than the viewport", not pixel-accurate to
+  // this grid's real total row height -- fine for tests asserting *that* a
+  // far-off row gets scrolled into view, not the exact resulting offset.
+  const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight")!;
+  const originalClientHeight = Object.getOwnPropertyDescriptor(Element.prototype, "clientHeight")!;
+  const originalScrollHeight = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight")!;
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.matches(selector) ? height : originalOffsetHeight.get!.call(this);
+    },
+  });
+  Object.defineProperty(Element.prototype, "clientHeight", {
+    configurable: true,
+    get(this: Element) {
+      return this.matches(selector) ? height : originalClientHeight.get!.call(this);
+    },
+  });
+  Object.defineProperty(Element.prototype, "scrollHeight", {
+    configurable: true,
+    get(this: Element) {
+      return this.matches(selector) ? height * 1000 : originalScrollHeight.get!.call(this);
+    },
+  });
+  return () => {
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
+    Object.defineProperty(Element.prototype, "clientHeight", originalClientHeight);
+    Object.defineProperty(Element.prototype, "scrollHeight", originalScrollHeight);
+  };
+}
+
+// Grid virtualization (#95): jsdom implements neither `Element.scrollTo`
+// nor a real layout, so @tanstack/react-virtual's `scrollToIndex` (which
+// calls `scrollElement.scrollTo({ top })`, see `elementScroll` in
+// @tanstack/virtual-core) is a silent no-op by default -- the virtualizer
+// never learns the scroll offset changed, so it never re-renders a wider
+// mounted window. This stands in for the browser's real scrolling: it
+// applies the requested `scrollTop` (which jsdom *does* store as a plain
+// property, just never derives from real layout) and dispatches the
+// `scroll` event the virtualizer's `observeElementOffset` listens for --
+// letting the same production `scrollToIndex` path this component actually
+// ships drive a real, observable re-render in the test. The dispatch is
+// deferred to a microtask, not fired inline: `scrollToIndex` here is called
+// from this component's own focus-effect (a layout effect, mid-commit), and
+// a real browser's `scroll` event similarly never fires synchronously
+// within the same script that requested the scroll -- dispatching it inline
+// would re-enter React's renderer mid-commit (it warns "flushSync was
+// called from inside a lifecycle method" and drops the update). Callers
+// must therefore `await` a tick (e.g. via `waitFor`) after the action that
+// triggers the scroll.
+function installScrollToPolyfill() {
+  const original = (Element.prototype as unknown as { scrollTo?: (opts?: unknown) => void }).scrollTo;
+  (Element.prototype as unknown as { scrollTo: (opts?: { top?: number }) => void }).scrollTo = function (
+    this: HTMLElement,
+    options,
+  ) {
+    if (options && typeof options.top === "number") {
+      this.scrollTop = options.top;
+      queueMicrotask(() => this.dispatchEvent(new Event("scroll")));
+    }
+  };
+  return () => {
+    (Element.prototype as unknown as { scrollTo?: (opts?: unknown) => void }).scrollTo = original;
+  };
+}
+
+function makeManyTransactions(count: number): Transaction[] {
+  // One calendar day apart, strictly descending as `i` increases, so the
+  // grid's default newest-first sort (#93) keeps nav-order `row` aligned
+  // with `i` (Transaction 0 is always the newest/first row, Transaction
+  // count-1 the oldest/last) -- tests below rely on that alignment to
+  // reason about which rows are/aren't mounted. Distinct days also means
+  // Date Groups (#93) don't collapse everything into a single header,
+  // exercising the group-header items `renderItems` interleaves with rows.
+  const base = new Date("2025-06-01T00:00:00Z");
+  return Array.from({ length: count }, (_, i) => {
+    const date = new Date(base);
+    date.setUTCDate(date.getUTCDate() - i);
+    return {
+      id: i + 1,
+      account_id: 1,
+      date: date.toISOString().slice(0, 10),
+      amount_cents: -100 * (i + 1),
+      description: `Transaction ${i}`,
+      category_id: null,
+      merchant_name: null,
+      hidden: false,
+    };
+  });
+}
+
+describe("TransactionsGrid virtualization (#95)", () => {
+  it("only mounts a small subset of rows near the viewport with thousands of rows", () => {
+    const restore = mockElementSize(".ledger.ledger-editable", 300);
+    try {
+      renderGrid({ transactions: makeManyTransactions(2000) });
+
+      const mountedRows = document.querySelectorAll(".ledger-row");
+      // A 300px viewport at 32px/row plus 12-row overscan above and below
+      // comfortably fits well under 100 mounted rows -- nowhere near the
+      // full 2000, which is the behavior under test.
+      expect(mountedRows.length).toBeGreaterThan(0);
+      expect(mountedRows.length).toBeLessThan(100);
+    } finally {
+      restore();
+    }
+  });
+
+  it("renders top/bottom padding spacers sized for the un-mounted rows above/below the window", () => {
+    const restore = mockElementSize(".ledger.ledger-editable", 300);
+    try {
+      renderGrid({ transactions: makeManyTransactions(2000) });
+
+      // Scrolled to the top: no un-mounted rows above yet, so no top
+      // spacer, but plenty below.
+      expect(screen.queryByTestId("ledger-virtual-spacer-top")).not.toBeInTheDocument();
+      const bottomSpacer = screen.getByTestId("ledger-virtual-spacer-bottom");
+      expect(parseInt(bottomSpacer.style.height, 10)).toBeGreaterThan(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("scrolling a not-yet-mounted row into focus via keyboard nav (Ctrl+End) mounts and focuses it", async () => {
+    const restore = mockElementSize(".ledger.ledger-editable", 300);
+    const restoreScroll = installScrollToPolyfill();
+    try {
+      const count = 2000;
+      renderGrid({ transactions: makeManyTransactions(count) });
+
+      // Default sort is date-desc (#93): "Transaction 0" is the newest
+      // fixture date, so it's row 0 and already mounted at the top.
+      const first = memoCell("Transaction 0").closest('[role="gridcell"]') as HTMLElement;
+      first.focus();
+      expect(screen.queryByText(`Transaction ${count - 1}`)).not.toBeInTheDocument();
+
+      fireEvent.keyDown(first, { key: "End", ctrlKey: true });
+
+      // The last row in nav order (oldest date) becomes mounted and
+      // focused once the polyfilled `scroll` event's microtask resolves
+      // (see installScrollToPolyfill), proving the not-currently-mounted-
+      // row branch of the focus effect drove the virtualizer to scroll it
+      // into view rather than focusing nothing.
+      const lastRow = await waitFor(() => {
+        const lastMemo = screen.getByText(`Transaction ${count - 1}`, { selector: ".cell-memo" });
+        return lastMemo.closest(".ledger-row") as HTMLElement;
+      });
+      expect(document.activeElement).not.toBe(document.body);
+      expect(lastRow.contains(document.activeElement)).toBe(true);
+    } finally {
+      restoreScroll();
+      restore();
+    }
+  });
+
+  it("inline cell editing on a mounted row is unaffected by virtualization", () => {
+    const restore = mockElementSize(".ledger.ledger-editable", 300);
+    try {
+      const props = renderGrid({ transactions: makeManyTransactions(50) });
+
+      fireEvent.click(memoCell("Transaction 0"));
+      const input = screen.getByLabelText("Memo for Transaction 0") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "Edited" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(props.onUpdate).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ description: "Edited" }),
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it("row selection on a mounted row is unaffected by virtualization", () => {
+    const restore = mockElementSize(".ledger.ledger-editable", 300);
+    try {
+      const props = renderGrid({ transactions: makeManyTransactions(50) });
+
+      fireEvent.click(screen.getByLabelText("Select Transaction 0"));
+      fireEvent.click(screen.getByLabelText("Select Transaction 1"));
+
+      // Assert via the bulk-actions bar / bulk callback rather than the
+      // checkbox's own `checked` DOM property: a lone `fireEvent.click` on a
+      // controlled checkbox whose onClick calls `e.preventDefault()` (this
+      // grid's pattern, needed so the checkbox's own native toggle never
+      // fights the `selected` state driving it) races jsdom's post-dispatch
+      // "canceled activation steps", which revert `checked` back to its
+      // pre-click value *after* React's own commit already set it --
+      // clobbering the visual state on the very next microtask. This is a
+      // jsdom/synthetic-event artifact, not a real bug (existing pre-#95
+      // tests already dodge it by pairing every selection click with a
+      // second, unrelated one before asserting `toBeChecked()`) -- the
+      // bulk-actions bar's `selected.size` text and the bulk-assign
+      // callback are driven by the same `selected` state and don't race
+      // this revert, so they're the reliable signal here.
+      expect(screen.getByText("2 selected")).toBeInTheDocument();
+
+      const bulkSelect = screen.getByLabelText("Assign category to selection") as HTMLSelectElement;
+      fireEvent.change(bulkSelect, { target: { value: "11" } });
+      expect(props.onBulkAssignCategory).toHaveBeenCalledWith([1, 2], 11);
+    } finally {
+      restore();
+    }
   });
 });

@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Account } from "../accounts/types";
 import { Category, CategoryGroup } from "../categories/types";
 import { Merchant } from "../merchants/types";
@@ -36,6 +37,24 @@ import {
 const UNCATEGORIZED = "";
 const BULK_PLACEHOLDER = "__bulk_placeholder__";
 const NO_BALANCE = "—";
+
+// Grid virtualization (#95, ADR-0021 phase 6): fixed-size estimates for the
+// two kinds of grid rows the virtualizer schedules (a data row and a Date
+// Group header, see `renderItems` below). These are approximations of the
+// `.ledger-container`-scoped CSS's actual computed heights (dense
+// mono/uppercase rows, ~0.2rem vertical padding + ~0.78rem text; group
+// headers similarly compact) -- not pixel-exact, which is fine for a
+// windowing estimate: a mismatch only shifts the scrollbar thumb/scroll-jump
+// slightly, it never mis-renders content, since actual DOM rows still lay
+// out via the grid's own auto-flow rather than any absolute positioning (see
+// the "Rendering approach" note below `renderItems`).
+const ROW_HEIGHT_PX = 32;
+const GROUP_HEADER_HEIGHT_PX = 28;
+// How many extra rows to mount above/below the visible window, both to make
+// scrolling feel smooth (no blank flash before paint catches up) and to give
+// keyboard nav (PageUp/PageDown's 10-row stride) enough of a running start
+// that a single next-page press doesn't have to wait on a second render.
+const OVERSCAN_ROWS = 12;
 
 type SortDirection = "asc" | "desc";
 
@@ -467,6 +486,94 @@ export function TransactionsGrid({
   // editors there.
   const colCount = visibleColumns.length;
 
+  // Grid virtualization (#95, ADR-0021 phase 6): `renderItems` flattens the
+  // Date Group headers (#93) and data rows into the single ordered list the
+  // grid actually paints, in DOM order -- exactly what the pre-#95
+  // `sortedTransactions.map` loop below used to iterate directly. Keeping
+  // this as its own list (rather than virtualizing `sortedTransactions`
+  // directly and inserting headers ad hoc) is what lets the virtualizer's
+  // index space include the group headers as real, sized items instead of
+  // free-floating extras layered on top of row indices -- important because
+  // a header changes the pixel offset of every row after it.
+  //
+  // `rowToItemIndex[row]` maps a keyboard-nav `row` (an index into
+  // `sortedTransactions`/`CellPos`, unchanged by virtualization -- see
+  // grid-nav.ts) to that row's index in `renderItems`, so focus/scroll logic
+  // below can ask the virtualizer about a *row* without knowing how many
+  // group headers precede it. `itemOffsets[i]` is the pixel offset of
+  // `renderItems[i]` from the top of the scrollable area (a prefix sum over
+  // the same per-kind size estimates passed to `estimateSize` below) --
+  // needed because the *first visible row's own group header* must always be
+  // rendered even when the virtualizer's own overscan window starts mid-group
+  // (see `renderStartIndex` below), so the padding-spacer height above that
+  // extended start can't just be read off `getVirtualItems()`.
+  //
+  // Rendering approach: rows are `display: contents` (see `.ledger-row` /
+  // `.ledger-head` in App.css) -- their cells are the actual CSS Grid
+  // children, auto-flowed into grid rows in DOM order. That rules out the
+  // usual react-virtual pattern of absolutely-positioning each item (doing
+  // so would pull every cell out of the shared column grid entirely, since
+  // `display: contents` elements have no box of their own to position). This
+  // grid instead uses the classic virtualized-`<table>` "padding spacer"
+  // technique: two full-width filler elements (`grid-column: 1 / -1`) sized
+  // to the total height of the un-rendered rows above and below the mounted
+  // window, so the scrollbar and scroll-jump math stay correct while every
+  // *mounted* row still lays out via the grid's own auto-flow, unchanged
+  // from before #95.
+  const { renderItems, rowToItemIndex, itemOffsets } = useMemo(() => {
+    const items: Array<
+      | { kind: "group"; label: string; itemKey: string; size: number }
+      | { kind: "row"; transaction: Transaction; row: number; itemKey: string; size: number }
+    > = [];
+    const rowIndex: number[] = new Array(sortedTransactions.length);
+    sortedTransactions.forEach((transaction, row) => {
+      if (row === 0 || rowGroupLabels[row] !== rowGroupLabels[row - 1]) {
+        items.push({
+          kind: "group",
+          label: rowGroupLabels[row],
+          itemKey: `group-${row}-${rowGroupLabels[row]}`,
+          size: GROUP_HEADER_HEIGHT_PX,
+        });
+      }
+      rowIndex[row] = items.length;
+      items.push({ kind: "row", transaction, row, itemKey: `row-${transaction.id}`, size: ROW_HEIGHT_PX });
+    });
+    const offsets: number[] = new Array(items.length + 1);
+    offsets[0] = 0;
+    for (let i = 0; i < items.length; i++) {
+      offsets[i + 1] = offsets[i] + items[i].size;
+    }
+    return { renderItems: items, rowToItemIndex: rowIndex, itemOffsets: offsets };
+  }, [sortedTransactions, rowGroupLabels]);
+
+  const scrollElementRef = useRef<HTMLDivElement | null>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: renderItems.length,
+    getScrollElement: () => scrollElementRef.current,
+    estimateSize: (index) => renderItems[index]?.size ?? ROW_HEIGHT_PX,
+    overscan: OVERSCAN_ROWS,
+    getItemKey: (index) => renderItems[index]?.itemKey ?? index,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  // The topmost mounted item's own Date Group header must always be mounted
+  // too, even when the virtualizer's overscan window starts mid-group --
+  // otherwise that group's sticky header (`.ledger-date-group`, position:
+  // sticky top: 0) has nothing to stick, and a mid-scroll screenshot would
+  // show rows with no header floating above them at all.
+  const virtualStartIndex = virtualItems[0]?.index ?? 0;
+  const renderStartIndex = (() => {
+    let i = virtualStartIndex;
+    while (i > 0 && renderItems[i]?.kind !== "group") i--;
+    return i;
+  })();
+  const virtualEndIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1;
+  const renderEndIndex = Math.min(virtualEndIndex, renderItems.length - 1);
+  const totalSize = itemOffsets[renderItems.length] ?? 0;
+  const paddingTop = itemOffsets[renderStartIndex] ?? 0;
+  const paddingBottom = renderEndIndex >= 0 ? totalSize - (itemOffsets[renderEndIndex + 1] ?? totalSize) : totalSize;
+
   function handleHeaderClick(column: ColumnKey) {
     setSortState((prev) => {
       if (!prev || prev.column !== column) return { column, direction: "asc" };
@@ -476,21 +583,39 @@ export function TransactionsGrid({
   }
 
   useEffect(() => {
-    if (focusedCell && !editingCell) {
-      const el = cellRefs.current[`${focusedCell.row}-${focusedCell.col}`];
-      // Guard against re-focusing an already-focused element: some DOM
-      // implementations (jsdom included) re-dispatch a focus event even
-      // when the target is already the activeElement, which would
-      // otherwise loop through onFocus -> setFocusedCell -> this effect.
-      if (el && document.activeElement !== el) {
-        el.focus();
+    if (!focusedCell || editingCell) return;
+    // Virtualization (#95): if the focused row isn't currently mounted (its
+    // cell never had a chance to register a ref -- see `cellRefs`), ask the
+    // virtualizer to scroll it into its mounted window first, rather than
+    // focusing nothing. `scrollToIndex` triggers a re-render with an updated
+    // `virtualStartIndex`/`virtualEndIndex` (both in this effect's deps
+    // below), so this effect re-fires once the target row is actually
+    // mounted and falls through to the focus/scrollIntoView logic below on
+    // that later pass -- same as it always ran for an already-mounted row
+    // pre-#95, just possibly one extra render later.
+    if (!isMobile) {
+      const targetItemIndex = rowToItemIndex[focusedCell.row];
+      const isMounted =
+        targetItemIndex != null && targetItemIndex >= virtualStartIndex && targetItemIndex <= virtualEndIndex;
+      if (!isMounted && targetItemIndex != null) {
+        rowVirtualizer.scrollToIndex(targetItemIndex, { align: "auto" });
+        return;
       }
-      // Keep the focused cell on screen during long arrow-key/PgUp/PgDn
-      // traversals. jsdom doesn't implement scrollIntoView, hence the
-      // optional call.
-      el?.scrollIntoView?.({ block: "nearest" });
     }
-  }, [focusedCell, editingCell]);
+    const el = cellRefs.current[`${focusedCell.row}-${focusedCell.col}`];
+    // Guard against re-focusing an already-focused element: some DOM
+    // implementations (jsdom included) re-dispatch a focus event even
+    // when the target is already the activeElement, which would
+    // otherwise loop through onFocus -> setFocusedCell -> this effect.
+    if (el && document.activeElement !== el) {
+      el.focus();
+    }
+    // Keep the focused cell on screen during long arrow-key/PgUp/PgDn
+    // traversals. jsdom doesn't implement scrollIntoView, hence the
+    // optional call.
+    el?.scrollIntoView?.({ block: "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedCell, editingCell, isMobile, virtualStartIndex, virtualEndIndex]);
 
   // Column Management / Account auto-suppression / data refresh can shrink
   // the grid out from under a held focus -- drop it rather than point at a
@@ -1106,6 +1231,15 @@ export function TransactionsGrid({
 
   return (
     <div
+      // Virtualization (#95): this same root grid div is the scroll
+      // container the virtualizer measures/observes -- see the "Rendering
+      // approach" note above `renderItems`. Only non-mobile needs the ref;
+      // Mobile's stacked-card layout stays fully unvirtualized (see the
+      // trailing `sortedTransactions.map` below), so `.ledger-cards` never
+      // gets `overflow-y: auto` from the CSS this ref pairs with
+      // (`.ledger-container .ledger`, scoped off `.ledger-cards` in
+      // App.css).
+      ref={scrollElementRef}
       className={`ledger ledger-editable${isMobile ? " ledger-cards" : ""}`}
       style={{ gridTemplateColumns }}
     >
@@ -1280,24 +1414,64 @@ export function TransactionsGrid({
         </div>
       )}
 
-      {sortedTransactions.map((transaction, row) => {
-        // A group header renders immediately before the first row of each
-        // contiguous same-label run -- `sortedTransactions`/`rowGroupLabels`
-        // stay index-aligned with the keyboard-nav `row` index used
-        // throughout this component, so inserting an extra header element
-        // here doesn't renumber any row/col position.
-        const showGroupHeader = row === 0 || rowGroupLabels[row] !== rowGroupLabels[row - 1];
-        return (
-          <Fragment key={transaction.id}>
-            {showGroupHeader && (
-              <div className="ledger-date-group" role="rowheader">
-                {rowGroupLabels[row]}
-              </div>
+      {isMobile
+        ? // Mobile tier (#95): stays fully unvirtualized -- the stacked-card
+          // layout is a small screen's worth of content at a time by nature
+          // (ADR-0018), so the dense-grid performance problem #95 exists to
+          // solve doesn't apply here, and mixing virtualization into a
+          // second, structurally different render path would add real risk
+          // (a second set of scroll/measurement edge cases) for no
+          // measured benefit. `renderItems`/the virtualizer above still
+          // compute either way (cheap, and keeps the hook call order
+          // unconditional across renders), just unused on this path.
+          sortedTransactions.map((transaction, row) => {
+            const showGroupHeader = row === 0 || rowGroupLabels[row] !== rowGroupLabels[row - 1];
+            return (
+              <Fragment key={transaction.id}>
+                {showGroupHeader && (
+                  <div className="ledger-date-group" role="rowheader">
+                    {rowGroupLabels[row]}
+                  </div>
+                )}
+                {renderCard(transaction, row)}
+              </Fragment>
+            );
+          })
+        : // Virtualized path (#95): only `renderItems[renderStartIndex..renderEndIndex]`
+          // actually mount -- everything above/below is represented purely by
+          // the two spacer elements' heights (see the "Rendering approach"
+          // note above `renderItems`), so the scrollbar and scroll-jump math
+          // stay correct for the full, un-mounted row count. The spacers must
+          // sit *outside* this array, immediately before/after it in DOM
+          // order (see below) -- grid auto-flow lays out children in source
+          // order, so a spacer placed anywhere else would shift real rows
+          // into the wrong vertical position.
+          <Fragment>
+            {paddingTop > 0 && (
+              <div
+                aria-hidden="true"
+                data-testid="ledger-virtual-spacer-top"
+                style={{ gridColumn: "1 / -1", height: paddingTop }}
+              />
             )}
-            {isMobile ? renderCard(transaction, row) : renderRow(transaction, row)}
-          </Fragment>
-        );
-      })}
+            {renderItems.slice(renderStartIndex, renderEndIndex + 1).map((item) => {
+              if (item.kind === "group") {
+                return (
+                  <div key={item.itemKey} className="ledger-date-group" role="rowheader">
+                    {item.label}
+                  </div>
+                );
+              }
+              return <Fragment key={item.itemKey}>{renderRow(item.transaction, item.row)}</Fragment>;
+            })}
+            {paddingBottom > 0 && (
+              <div
+                aria-hidden="true"
+                data-testid="ledger-virtual-spacer-bottom"
+                style={{ gridColumn: "1 / -1", height: paddingBottom }}
+              />
+            )}
+          </Fragment>}
     </div>
   );
 }

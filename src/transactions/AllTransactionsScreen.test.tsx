@@ -1593,3 +1593,134 @@ describe("AllTransactionsScreen Date Groups + newest-first default sort (#93)", 
     expect(memoOrder()).toEqual(["Coffee shop", "Groceries", "Interest"]);
   });
 });
+
+// Grid virtualization (#95, ADR-0021 phase 6): the issue's own testing note
+// calls for screen-level coverage of scrolling/virtualized rendering
+// combined with at least one of filtering, search, or Date Groups, on top
+// of the row-count-scoped coverage in TransactionsGrid.test.tsx. These
+// mount `AllTransactionsScreen` (not just the grid in isolation) against a
+// thousands-row `list_all_transactions` response so the full data-fetch ->
+// row-model -> virtualized-render pipeline is exercised together, the same
+// as it runs in the app.
+describe("AllTransactionsScreen grid virtualization (#95)", () => {
+  // Same rationale as TransactionsGrid.test.tsx's `mockElementSize`: jsdom
+  // has no layout engine, so @tanstack/react-virtual's one-time,
+  // synchronous read of the scroll container's offsetHeight (see
+  // observeElementRect in @tanstack/virtual-core) needs a small,
+  // deterministic override *before* that element exists, keyed off a CSS
+  // selector rather than a DOM reference obtained after `render()` returns.
+  function mockElementSize(selector: string, height: number) {
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight")!;
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.matches(selector) ? height : original.get!.call(this);
+      },
+    });
+    return () => Object.defineProperty(HTMLElement.prototype, "offsetHeight", original);
+  }
+
+  // One calendar day apart, strictly descending as `i` increases, so the
+  // grid's default newest-first sort (#93) keeps "Coffee shop" (i === 0) as
+  // the newest row, and every other row distinct enough for Date Groups
+  // (#93) to form many single-day buckets rather than collapsing together.
+  function manyTransactions(count: number) {
+    const base = new Date("2025-06-01T00:00:00Z");
+    return Array.from({ length: count }, (_, i) => {
+      const date = new Date(base);
+      date.setUTCDate(date.getUTCDate() - i);
+      return {
+        id: i + 1,
+        account_id: 1,
+        account_name: "Checking",
+        date: date.toISOString().slice(0, 10),
+        amount_cents: -100 * (i + 1),
+        description: i === 0 ? "Coffee shop" : `Bulk transaction ${i}`,
+        category_id: null,
+        hidden: false,
+        merchant_name: null,
+      };
+    });
+  }
+
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_all_transactions":
+          return manyTransactions(1000);
+        case "list_categories":
+          return [];
+        case "list_accounts":
+          return [checking];
+        case "list_transfers":
+          return [];
+        case "list_tags_for_account":
+          return {};
+        case "list_tags":
+          return [];
+        case "list_merchants":
+          return [];
+        case "get_settings":
+          return { transaction_column_visibility: DEFAULT_COLUMN_VISIBILITY };
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("mounts only a small subset of a 1000-row grid, and live search still narrows it correctly", async () => {
+    const restore = mockElementSize(".ledger.ledger-editable", 300);
+    try {
+      renderScreen();
+      await findMemoCell("Coffee shop");
+
+      const mountedBefore = document.querySelectorAll(".ledger-row").length;
+      expect(mountedBefore).toBeGreaterThan(0);
+      expect(mountedBefore).toBeLessThan(100);
+      expect(screen.getByTestId("ledger-virtual-spacer-bottom")).toBeInTheDocument();
+
+      await userEvent.type(screen.getByLabelText("Search transactions"), "coffee");
+
+      await waitFor(() => expect(screen.queryByText("Bulk transaction 1")).not.toBeInTheDocument());
+      expect(memoCell("Coffee shop")).toBeInTheDocument();
+      // Narrowed to a single matching row: nothing left un-mounted below the
+      // window, so the bottom spacer collapses away entirely.
+      expect(screen.queryByTestId("ledger-virtual-spacer-bottom")).not.toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it("Date Groups still form correctly against a virtualized, thousands-row grid", async () => {
+    const restore = mockElementSize(".ledger.ledger-editable", 300);
+    try {
+      renderScreen();
+      await findMemoCell("Coffee shop");
+
+      // Every row is its own calendar day here, so with only a small
+      // mounted window, the *mounted* group headers should still track the
+      // *mounted* rows one-for-one -- proving Date Group headers stay
+      // correctly interleaved with virtualized rows rather than, say, all
+      // collapsing to the first group or drifting out of sync with the
+      // rows actually on screen.
+      const mountedRows = document.querySelectorAll(".ledger-row").length;
+      const mountedHeaders = document.querySelectorAll(".ledger-date-group").length;
+      expect(mountedHeaders).toBe(mountedRows);
+
+      // Narrow via live search (#92) to every description containing "1"
+      // (Coffee shop excluded, "Bulk transaction 1"/"...10"/"...100"/etc.
+      // included) -- still hundreds of rows, so still virtualized, and
+      // still one Date Group header per mounted row.
+      await userEvent.type(screen.getByLabelText("Search transactions"), "bulk transaction 1");
+      await waitFor(() => expect(screen.queryByText("Coffee shop")).not.toBeInTheDocument());
+
+      const mountedRowsAfter = document.querySelectorAll(".ledger-row").length;
+      const mountedHeadersAfter = document.querySelectorAll(".ledger-date-group").length;
+      expect(mountedRowsAfter).toBeGreaterThan(0);
+      expect(mountedHeadersAfter).toBe(mountedRowsAfter);
+    } finally {
+      restore();
+    }
+  });
+});
