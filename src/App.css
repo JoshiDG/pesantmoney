@@ -1400,29 +1400,17 @@ body {
    so no override is needed for it to satisfy #74's "must render legibly"
    bar. */
 .ledger-container {
-  --term-bg: #0a0d12;
-  --term-bg-raised: #12161d;
-  --term-line: rgba(148, 163, 184, 0.35);
-  --term-line-strong: rgba(148, 163, 184, 0.55);
-  --term-text: #e7ecf2;
-  --term-text-dim: rgba(231, 236, 242, 0.62);
-  --term-text-faint: rgba(231, 236, 242, 0.45);
-  --term-credit: #3ddc97;
-  --term-debit: #ff6b6b;
-  --term-focus: #5b9bd5;
-  --term-hover: rgba(148, 163, 184, 0.12);
-
-  background: var(--term-bg);
-  color: var(--term-text);
+  background: var(--paper);
+  color: var(--paper-text);
   border-radius: 12px;
   padding: 0.5rem;
 }
 
 .ledger-container .ledger {
-  background-color: var(--term-bg);
-  border-color: var(--term-line);
+  background-color: var(--paper);
+  border-color: var(--paper-line);
   box-shadow: none;
-  color: var(--term-text);
+  color: var(--paper-text);
 }
 
 /* Density (#74 acceptance criterion 1): row/header padding cut roughly in
@@ -1433,38 +1421,38 @@ body {
    stays dense at every breakpoint. */
 .ledger-container .ledger-head > span {
   padding: 0.4rem 0.4rem 0.3rem 0.4rem;
-  color: var(--term-text-dim);
-  border-bottom: 2px solid var(--term-line-strong);
+  color: var(--text-secondary);
+  border-bottom: 2px solid var(--paper-line);
 }
 
 .ledger-container .ledger-head > span:hover {
-  color: var(--term-text);
+  color: var(--paper-text);
 }
 
 .ledger-container .ledger-head > span.sort-asc,
 .ledger-container .ledger-head > span.sort-desc {
-  color: var(--term-text);
+  color: var(--paper-text);
 }
 
 .ledger-container .ledger-row > * {
   padding: 0.3rem 0.4rem;
-  border-bottom: 1px solid var(--term-line);
+  border-bottom: 1px solid var(--paper-line);
   font-size: 0.85rem;
-  color: var(--term-text);
+  color: var(--paper-text);
 }
 
 .ledger-container .cell-date,
 .ledger-container .cell-account,
 .ledger-container .ledger-row .cell-category {
-  color: var(--term-text-dim);
+  color: var(--text-secondary);
 }
 
 .ledger-container .passbook-payee-name {
-  color: var(--term-text);
+  color: var(--paper-text);
 }
 
 .ledger-container .passbook-memo {
-  color: var(--term-text-faint);
+  color: var(--text-tertiary);
 }
 
 /* Amount + Running Balance (#74 acceptance criterion 2): both already
@@ -1473,44 +1461,44 @@ body {
    brightening here for contrast against the new dark background (criterion
    5); everything else about `.amount` is inherited unchanged. */
 .ledger-container .amount.credit {
-  color: var(--term-credit);
+  color: var(--credit);
 }
 
 .ledger-container .amount.debit {
-  color: var(--term-debit);
+  color: var(--debit);
 }
 
 .ledger-container .cell-running-balance {
-  color: var(--term-text);
+  color: var(--paper-text);
 }
 
 .ledger-container .ledger-row.is-transfer .cell-description,
 .ledger-container .ledger-row.is-transfer .amount,
 .ledger-container .ledger-card.is-transfer .cell-description,
 .ledger-container .ledger-card.is-transfer .amount {
-  color: var(--term-text-faint);
+  color: var(--text-tertiary);
 }
 
 .ledger-container .tag-chip,
 .ledger-container .account-badge,
 .ledger-container .suggestion-chip {
-  background: var(--term-bg-raised);
-  color: var(--term-text-dim);
-  border: 1px solid var(--term-line);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  border: 1px solid var(--paper-line);
 }
 
 .ledger-container .transfer-badge {
-  color: var(--term-focus);
+  color: var(--focus);
 }
 
 .ledger-container .ledger-editable .grid-cell:hover {
-  background-color: var(--term-hover);
+  background-color: rgba(63, 124, 172, 0.08);
 }
 
 .ledger-container .ledger-editable .grid-cell-focused,
 .ledger-container .ledger-editable .grid-cell-flash {
-  box-shadow: inset 0 0 0 2px var(--term-focus);
-  background-color: rgba(91, 155, 213, 0.18);
+  box-shadow: inset 0 0 0 2px var(--focus);
+  background-color: rgba(63, 124, 172, 0.18);
 }
 
 /* Hidden-row dimming (#70): a slightly stronger dim than the light theme's
@@ -1522,21 +1510,21 @@ body {
 }
 
 .ledger-container .ledger-card {
-  border-color: var(--term-line);
+  border-color: var(--paper-line);
 }
 
 .ledger-container .ledger-card-label {
-  color: var(--term-text-faint);
+  color: var(--text-tertiary);
 }
 
 .ledger-container .bulk-actions-bar {
-  background: rgba(91, 155, 213, 0.14);
-  border-color: var(--term-focus);
-  color: var(--term-text);
+  background: rgba(63, 124, 172, 0.14);
+  border-color: var(--focus);
+  color: var(--paper-text);
 }
 
 .ledger-container .transaction-form > * {
-  border-bottom: 1px dashed var(--term-line);
+  border-bottom: 1px dashed var(--paper-line);
 }
 
 /* Inputs/selects/buttons within the tab (bulk-category select, the "new
@@ -1545,57 +1533,57 @@ body {
    regardless of OS color-scheme preference. */
 .ledger-container input,
 .ledger-container select {
-  background-color: var(--term-bg-raised);
-  border-color: var(--term-line);
-  color: var(--term-text);
+  background-color: var(--surface-raised);
+  border-color: var(--paper-line);
+  color: var(--paper-text);
 }
 
 .ledger-container button {
-  background-color: var(--term-bg-raised);
-  border-color: var(--term-line);
-  color: var(--term-text);
+  background-color: var(--surface-raised);
+  border-color: var(--paper-line);
+  color: var(--paper-text);
 }
 
 .ledger-container button:hover {
-  border-color: var(--term-focus);
+  border-color: var(--focus);
 }
 
 /* ContextMenu (Column Management + row Hide/Unhide, #68/#70). */
 .ledger-container .context-menu {
-  background: var(--term-bg-raised);
-  border-color: var(--term-line-strong);
-  color: var(--term-text);
+  background: var(--surface-raised);
+  border-color: var(--paper-line);
+  color: var(--paper-text);
 }
 
 .ledger-container .context-menu-item {
-  color: var(--term-text);
+  color: var(--paper-text);
 }
 
 .ledger-container .context-menu-item:hover {
-  background: var(--term-hover);
-  color: var(--term-text);
+  background: rgba(63, 124, 172, 0.08);
+  color: var(--paper-text);
 }
 
 .ledger-container .context-menu-item--danger {
-  color: var(--term-debit);
+  color: var(--debit);
 }
 
 .ledger-container .context-menu-item--danger:hover {
-  background: rgba(255, 107, 107, 0.12);
-  color: var(--term-debit);
+  background: var(--debit-soft);
+  color: var(--debit);
 }
 
 /* SuggestionCombobox (#71-73): ghost-text suffix, input, and chips. */
 .ledger-container .suggestion-ghost-suffix {
-  color: var(--term-text-faint);
+  color: var(--text-tertiary);
 }
 
 .ledger-container .suggestion-combobox-input {
-  color: var(--term-text);
+  color: var(--paper-text);
 }
 
 .ledger-container .suggestion-chip-remove {
-  color: var(--term-text-dim);
+  color: var(--text-secondary);
 }
 
 /* ---------- all-Accounts Transactions view ---------- */
@@ -1832,8 +1820,8 @@ body {
    pick up the terminal treatment for free via the generic rules above. */
 .ledger-container .recurring-head > span {
   padding-bottom: 0.3rem;
-  color: var(--term-text-dim);
-  border-bottom: 2px solid var(--term-line-strong);
+  color: var(--text-secondary);
+  border-bottom: 2px solid var(--paper-line);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-family: var(--font-mono);
@@ -1841,31 +1829,31 @@ body {
 
 .ledger-container .recurring-row > * {
   padding: 0.3rem 0;
-  border-bottom: 1px solid var(--term-line);
+  border-bottom: 1px solid var(--paper-line);
   font-size: 0.85rem;
-  color: var(--term-text);
+  color: var(--paper-text);
 }
 
 .ledger-container .recurring-row.row-focused > * {
-  box-shadow: inset 0 0 0 2px var(--term-focus);
-  background-color: rgba(91, 155, 213, 0.18);
+  box-shadow: inset 0 0 0 2px var(--focus);
+  background-color: rgba(63, 124, 172, 0.18);
 }
 
 .ledger-container .recurring-row.row-selected > * {
-  background-color: rgba(91, 155, 213, 0.1);
+  background-color: rgba(63, 124, 172, 0.1);
 }
 
 .ledger-container .recurring-card {
-  border-color: var(--term-line);
-  background: var(--term-bg-raised);
+  border-color: var(--paper-line);
+  background: var(--surface-raised);
 }
 
 .ledger-container .recurring-card-label {
-  color: var(--term-text-faint);
+  color: var(--text-tertiary);
 }
 
 .ledger-container .recurring-item-form > * {
-  border-bottom: 1px dashed var(--term-line);
+  border-bottom: 1px dashed var(--paper-line);
 }
 
 /* Mobile tier (<768px, ADR-0018, issue #65): stacked cards instead of grid
