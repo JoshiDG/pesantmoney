@@ -149,7 +149,12 @@ function NetWorthTrendChart({ trend }: { trend: TrendPoint[] }) {
       role="img"
       aria-label="Net worth trend"
     >
-      <polyline points={points} fill="none" stroke="var(--ink)" strokeWidth={2} />
+      {/* var(--ink) was the light-theme navy-on-paper line color; --ink is
+          now the near-black sidebar/nav color, invisible against the equally
+          dark --paper canvas. --accent-label (ADR-0020's multi-accent
+          metadata color) keeps this neutral trend line legible and distinct
+          from the credit/debit-coded amounts elsewhere on the widget. */}
+      <polyline points={points} fill="none" stroke="var(--accent-label)" strokeWidth={2} />
     </svg>
   );
 }

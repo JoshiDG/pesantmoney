@@ -355,19 +355,24 @@ body {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Hover/open/disabled states below used to lean on black-alpha overlays,
+   which read fine against the old light --paper but disappear against the
+   dark terminal canvas (ADR-0020) -- switched to the --focus accent and a
+   light-alpha overlay so they stay visible on dark. Reports' date-range
+   picker and Dashboard widgets' period selectors are the main consumers. */
 .custom-select-trigger:hover:not(.disabled) {
-  border-color: rgba(0, 0, 0, 0.3);
+  border-color: var(--focus);
 }
 
 .custom-select-trigger.open {
-  border-color: var(--ink, #1c2430);
-  box-shadow: 0 0 0 2px rgba(28, 36, 48, 0.1);
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px rgba(63, 124, 172, 0.25);
 }
 
 .custom-select-trigger.disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: rgba(0, 0, 0, 0.02);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .select-trigger-label {
@@ -487,17 +492,19 @@ body {
 }
 
 .custom-dropdown-item:hover {
-  background: rgba(0, 0, 0, 0.05);
+  /* Light-alpha, not black-alpha (ADR-0020): a black overlay is invisible
+     against the dark --paper canvas this menu now renders on. */
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .custom-dropdown-item.selected {
   font-weight: 600;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .dropdown-item-check {
   font-size: 0.8rem;
-  color: #2980b9;
+  color: var(--focus);
   font-weight: bold;
 }
 
@@ -874,7 +881,10 @@ body {
 }
 
 .account-title {
-  font-family: var(--font-serif);
+  /* ADR-0020: no serif anywhere -- .content-header's page title (Dashboard,
+     Reports, Import, Settings, Accounts, ...) was the last light-theme
+     paper/ledger accent left on this shared class. */
+  font-family: var(--font-sans);
   font-size: 1.55rem;
   margin: 0 0 0.2rem;
 }
@@ -884,14 +894,15 @@ body {
   color: var(--text-tertiary);
 }
 
-/* Hero-number display treatment (issue #43): the single most important figure
-   per screen — .net-worth-amount (Dashboard), .ready-to-assign-amount
-   (Budget), .balance (ledger/account view) — share one deliberate serif
-   display family/weight/tracking, each at its own size per the triage's
-   resolved modular scale. font-variant-numeric: lining-nums keeps digits
-   uniform-height in the serif stack (which defaults to old-style figures
-   otherwise). Scoped to these three named contexts only — other large
-   figures (e.g. .holdings-total-value) keep their own standalone size. */
+/* Hero-number display treatment (issue #43, superseded by ADR-0020): the
+   single most important figure per screen — .net-worth-amount (Dashboard),
+   .ready-to-assign-amount (Budget), .balance (ledger/account view) — share
+   one deliberate display family/weight/tracking, each at its own size per
+   the triage's resolved modular scale. `--display-family` now resolves to
+   the mono stack (not serif) per ADR-0020, matching the dense tabular rows;
+   font-variant-numeric: lining-nums still keeps digits uniform-height.
+   Scoped to these three named contexts only — other large figures (e.g.
+   .holdings-total-value) keep their own standalone size. */
 .balance,
 .ready-to-assign-amount,
 .net-worth-amount {
@@ -929,13 +940,20 @@ body {
   display: grid;
   grid-template-columns: 112px 1fr 150px 130px 112px;
   column-gap: 1rem;
-  background-color: var(--card-bg);
+  /* Was `var(--card-bg)`, a token that was never defined anywhere in
+     :root -- it silently resolved to transparent. --surface-raised (#75)
+     is the real "panel sitting on top of --paper" token; used here so
+     Import's preview ledger (the one consumer of base .ledger left after
+     Transactions moved to its own `.ledger-container` dark treatment)
+     reads as a distinct surface instead of a borderless void. */
+  background-color: var(--surface-raised);
   border: 1px solid var(--paper-line);
   border-radius: 12px;
-  box-shadow: 
-    0 4px 20px rgba(0, 0, 0, 0.03),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    inset 32px 0 0 -31px rgba(185, 28, 28, 0.15); /* Vintage passbook page margin line */
+  /* Dropped the vintage-passbook glossy inset highlight and red margin
+     line (ADR-0020: the paper/ledger skeuomorphic look is retired) --
+     both were light-paper-only effects that read as stray white/red
+     streaks against the dark terminal canvas. */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   padding: 0.75rem 1.25rem 1.25rem 1.25rem;
   position: relative;
 }
@@ -947,7 +965,12 @@ body {
 }
 
 .ledger-head > span {
-  font-family: var(--font-heading, Georgia, serif);
+  /* Was `var(--font-heading, Georgia, serif)` -- --font-heading was never
+     defined, so this always fell through to the Georgia serif fallback.
+     ADR-0020: no serif anywhere; column headers are structural chrome, so
+     they get the sans stack like other chrome labels, not the mono
+     ledger-row content itself. */
+  font-family: var(--font-sans);
   font-size: 0.76rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -2092,7 +2115,10 @@ body {
   margin: 0 0 0.4rem;
   font-size: 0.85rem;
   font-weight: 500;
-  color: var(--ink);
+  /* Was `var(--ink)`, a light-theme leftover: --ink is now the near-black
+     sidebar/nav color, invisible against the equally-dark --paper canvas.
+     Body text color keeps this legible in the terminal identity. */
+  color: var(--paper-text);
 }
 
 .import-csv-guidelines ul {
@@ -2134,7 +2160,8 @@ body {
 }
 
 .import-preview-heading {
-  font-family: var(--font-serif);
+  /* ADR-0020: no serif anywhere -- was the light-theme paper/ledger accent. */
+  font-family: var(--font-sans);
   font-size: 1rem;
   margin: 0 0 0.75rem;
 }
@@ -2762,7 +2789,8 @@ button.danger:hover,
 }
 
 .dashboard-section-title {
-  font-family: var(--font-serif);
+  /* ADR-0020: no serif anywhere -- was the light-theme paper/ledger accent. */
+  font-family: var(--font-sans);
   font-size: 1.05rem;
   margin: 0 0 0.85rem;
 }
@@ -3185,18 +3213,21 @@ button.danger:hover,
   background: var(--paper-line);
 }
 
+/* Connected/disconnected reuse the credit/debit accent pair (ADR-0020) --
+   this status is the same "good/bad" signal those tokens already carry,
+   not a new color language. */
 .gdrive-status-badge.connected {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+  background: var(--credit-soft);
+  color: var(--credit);
 }
 
 .gdrive-status-badge.disconnected {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  background: var(--debit-soft);
+  color: var(--debit);
 }
 
 .gdrive-sync-btn {
-  background: #10b981;
+  background: var(--credit);
   color: #ffffff;
   border: none;
   font-weight: 600;
@@ -3209,7 +3240,9 @@ button.danger:hover,
 }
 
 .gdrive-sync-btn:hover:not(:disabled) {
-  background: #059669;
+  /* Matches the darker-credit hover already used by button[type="submit"]
+     above, rather than inventing a second green. */
+  background: #1a5f4e;
 }
 
 .gdrive-sync-btn:disabled {
@@ -3245,16 +3278,16 @@ button.danger:hover,
   gap: 0.4rem;
   font-size: 0.82rem;
   padding: 0.35rem 0.75rem;
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: var(--credit-soft);
+  color: var(--credit);
+  border: 1px solid var(--credit);
   border-radius: 4px;
   cursor: pointer;
   font-weight: 500;
 }
 
 .gdrive-header-sync:hover:not(:disabled) {
-  background: rgba(16, 185, 129, 0.2);
+  background: rgba(31, 111, 92, 0.25);
 }
 
 
