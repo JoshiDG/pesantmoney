@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Search,
@@ -17,6 +17,8 @@ import { useConfirmation } from "../ui/ConfirmationProvider";
 import { useBreakpoint } from "../ui/BreakpointProvider";
 import { ContextMenu } from "../ui/ContextMenu";
 import { Dropdown, DropdownOption } from "../ui/Dropdown";
+import { CellPos, isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
+import { selectRowRange, toggleRowSelection } from "../ui/selection";
 import { formatCents } from "../transactions/types";
 
 interface AccountsScreenProps {
@@ -65,6 +67,17 @@ export function AccountsScreen({
     y: number;
     account: Account;
   } | null>(null);
+
+  // Grid keyboard navigation + row selection (ADR-0020's "Grid keyboard
+  // navigation" section, #79): reuses the same `grid-nav.ts`/`selection.ts`
+  // primitives TransactionsGrid consumes. Accounts has no per-cell inline
+  // editing (see AccountForm, rendered as a whole-row swap), so this is
+  // treated as a single-column grid (`colCount` = 1) -- arrow-key movement
+  // is purely row-to-row, and `focusedCell.col` is always 0.
+  const [focusedCell, setFocusedCell] = useState<CellPos | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [anchorId, setAnchorId] = useState<number | null>(null);
+  const rowRefs = useRef<Record<number, HTMLLIElement | null>>({});
 
   const { confirm } = useConfirmation();
   const tier = useBreakpoint();
@@ -186,6 +199,88 @@ export function AccountsScreen({
     }
   });
 
+  const orderedIds = sortedAccounts.map((account) => account.id);
+  const rowCount = sortedAccounts.length;
+
+  // Move real DOM focus to whichever row `focusedCell` points at -- mirrors
+  // TransactionsGrid's identical effect for `cellRefs`/`focusedCell`. The
+  // `document.activeElement` guard avoids a focus/onFocus/setFocusedCell
+  // loop some DOM implementations (jsdom included) would otherwise cause.
+  useEffect(() => {
+    if (focusedCell) {
+      const el = rowRefs.current[focusedCell.row];
+      if (el && document.activeElement !== el) {
+        el.focus();
+      }
+    }
+  }, [focusedCell]);
+
+  function focusRow(row: number) {
+    setFocusedCell((prev) => (prev && prev.row === row && prev.col === 0 ? prev : { row, col: 0 }));
+  }
+
+  function toggleSelectRow(accountId: number, shiftKey: boolean) {
+    if (shiftKey && anchorId != null) {
+      setSelected(selectRowRange(orderedIds, anchorId, accountId));
+      return;
+    }
+    setSelected((prev) => toggleRowSelection(prev, accountId));
+    setAnchorId(accountId);
+  }
+
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === sortedAccounts.length ? new Set() : new Set(orderedIds)));
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+    setAnchorId(null);
+  }
+
+  // Scoped bare single-letter shortcuts (ADR-0020's "Grid keyboard
+  // navigation"/"Keyboard architecture" sections): active only while a row
+  // has keyboard focus (this handler is attached per-row, never globally),
+  // and guarded by `isTextInputTarget` so a focused text input (e.g. the
+  // inline AccountForm's "Account name" field) never has its keystrokes
+  // hijacked.
+  //   e -- jump to Edit Account (the screen's highest-frequency action
+  //        besides simply opening the account)
+  //   t -- jump to the account's Transactions view (mirrors the existing
+  //        row-click behavior, exposed as a keyboard shortcut)
+  //   x -- toggle this row's selection (Shift+x extends the selection range
+  //        from the last-toggled row, matching TransactionsGrid's
+  //        checkbox shift-click range-select)
+  function handleRowKeyDown(e: KeyboardEvent<HTMLLIElement>, row: number, account: Account) {
+    if (isTextInputTarget(e.target)) return;
+
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      e.preventDefault();
+      setFocusedCell(nextCellForKey({ row, col: 0 }, e.key, rowCount, 1, e.shiftKey));
+      return;
+    }
+
+    switch (e.key) {
+      case "Enter":
+        e.preventDefault();
+        onSelectAccount(account);
+        break;
+      case "e":
+        e.preventDefault();
+        setEditingId(account.id);
+        break;
+      case "t":
+        e.preventDefault();
+        onSelectAccount(account);
+        break;
+      case "x":
+        e.preventDefault();
+        toggleSelectRow(account.id, e.shiftKey);
+        break;
+      default:
+        break;
+    }
+  }
+
   return (
     <section className="accounts-section">
       {/* Sticky non-scrolling top header bar with title and Monarch Money style Lucide icon tools */}
@@ -245,6 +340,14 @@ export function AccountsScreen({
 
       {!isMobile && (
         <div className="account-table-header">
+          <div className="col-select">
+            <input
+              type="checkbox"
+              aria-label="Select all accounts"
+              checked={sortedAccounts.length > 0 && selected.size === sortedAccounts.length}
+              onChange={toggleSelectAll}
+            />
+          </div>
           <div className="col-account">Account &amp; Institution</div>
           <div className="col-type">Type</div>
           <div className="col-balance">Balance</div>
@@ -252,8 +355,17 @@ export function AccountsScreen({
         </div>
       )}
 
+      {!isMobile && selected.size > 0 && (
+        <div className="accounts-selection-bar">
+          <span>{selected.size} selected</span>
+          <button type="button" onClick={clearSelection}>
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <ul className={isMobile ? "account-list account-list--cards" : "account-list"}>
-        {sortedAccounts.map((account) => {
+        {sortedAccounts.map((account, row) => {
           const balanceCents = balances[account.id] ?? 0;
           return editingId === account.id ? (
             <li key={account.id}>
@@ -266,10 +378,44 @@ export function AccountsScreen({
           ) : (
             <li
               key={account.id}
-              className={isMobile ? "account-card" : "account-row"}
+              ref={(el) => {
+                if (!isMobile) rowRefs.current[row] = el;
+              }}
+              className={`${isMobile ? "account-card" : "account-row"}${
+                !isMobile && focusedCell?.row === row ? " account-row-focused" : ""
+              }${!isMobile && selected.has(account.id) ? " account-row-selected" : ""}`}
+              tabIndex={isMobile ? undefined : 0}
+              aria-selected={isMobile ? undefined : selected.has(account.id)}
               onClick={() => onSelectAccount(account)}
               onContextMenu={(e) => handleContextMenu(e, account)}
+              onFocus={isMobile ? undefined : () => focusRow(row)}
+              onKeyDown={isMobile ? undefined : (e) => handleRowKeyDown(e, row, account)}
             >
+              {!isMobile && (
+                <span className="account-row-select">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${account.name}`}
+                    checked={selected.has(account.id)}
+                    onClick={(e) => {
+                      // No `preventDefault()` here (unlike some other
+                      // checkbox handlers in this codebase): calling it
+                      // caused jsdom's canceled-activation-behavior to
+                      // revert the native `checked` property after commit,
+                      // leaving it out of sync with `selected` state (see
+                      // #79). `stopPropagation` alone is sufficient to keep
+                      // this click from also bubbling to the row's
+                      // navigate-to-Transactions handler; the actual
+                      // selection toggle always derives from `selected`,
+                      // never from the native checkbox's own state.
+                      e.stopPropagation();
+                      toggleSelectRow(account.id, e.shiftKey);
+                    }}
+                    onChange={() => {}}
+                  />
+                </span>
+              )}
+
               <div className="account-row-info">
                 <div className={isMobile ? "account-card-name" : "account-row-name"}>
                   {account.name}
