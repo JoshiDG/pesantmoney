@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmationProvider } from "../ui/ConfirmationProvider";
+import { ReservedShortcutProvider } from "../ui/ReservedShortcuts";
 import { withBreakpoint } from "../ui/withBreakpoint";
 import type { BreakpointTier } from "../ui/breakpoints";
 import { AllTransactionsScreen } from "./AllTransactionsScreen";
@@ -90,6 +91,8 @@ function mockInvokeDefaults() {
         return null;
       case "delete_transaction":
         return null;
+      case "create_transaction":
+        return { id: 99 };
       case "update_transaction":
         return null;
       case "set_transaction_hidden":
@@ -652,5 +655,104 @@ describe("AllTransactionsScreen Payee editing wiring (#72)", () => {
       }),
     );
     expect(mockedInvoke).not.toHaveBeenCalledWith("create_merchant", expect.anything());
+  });
+});
+
+describe("AllTransactionsScreen New Transaction panel + Reserved Shortcut Set wiring (#77/#78)", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockInvokeDefaults();
+  });
+
+  function renderWithShortcuts(props: Partial<Parameters<typeof AllTransactionsScreen>[0]> = {}) {
+    render(
+      <ConfirmationProvider>
+        <ReservedShortcutProvider onOpenSettings={vi.fn()}>
+          <AllTransactionsScreen initialAccountId={null} {...props} />
+        </ReservedShortcutProvider>
+      </ConfirmationProvider>,
+      { wrapper: withBreakpoint("expanded") },
+    );
+  }
+
+  it("the New Transaction button opens a panel with an Account picker and the Transaction form", async () => {
+    renderWithShortcuts();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByRole("button", { name: "New Transaction" }));
+
+    expect(screen.getByLabelText("New transaction account")).toBeInTheDocument();
+    expect(screen.getByLabelText("Description")).toBeInTheDocument();
+  });
+
+  it("submitting the New Transaction form creates a Transaction on the selected Account", async () => {
+    renderWithShortcuts();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByRole("button", { name: "New Transaction" }));
+    await userEvent.selectOptions(screen.getByLabelText("New transaction account"), "2");
+    await userEvent.type(screen.getByLabelText("Description"), "Paycheck");
+    await userEvent.type(screen.getByLabelText("Amount"), "100");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "create_transaction",
+        expect.objectContaining({ account_id: 2, description: "Paycheck" }),
+      ),
+    );
+  });
+
+  it("Cmd+N opens the New Transaction panel", async () => {
+    renderWithShortcuts();
+    await findMemoCell("Coffee shop");
+
+    expect(screen.queryByLabelText("New transaction account")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    expect(await screen.findByLabelText("New transaction account")).toBeInTheDocument();
+  });
+
+  it("Escape closes the New Transaction panel", async () => {
+    renderWithShortcuts();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    await screen.findByLabelText("New transaction account");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByLabelText("New transaction account")).not.toBeInTheDocument();
+  });
+
+  it("autoOpenNew opens the panel on mount and reports back that it handled it (Command Palette bridge, #77)", async () => {
+    const onAutoOpenNewHandled = vi.fn();
+    renderWithShortcuts({ autoOpenNew: true, onAutoOpenNewHandled });
+    await findMemoCell("Coffee shop");
+
+    expect(await screen.findByLabelText("New transaction account")).toBeInTheDocument();
+    expect(onAutoOpenNewHandled).toHaveBeenCalled();
+  });
+
+  it("Delete deletes the single checkbox-selected Transaction (via the existing per-row delete action)", async () => {
+    renderWithShortcuts();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByLabelText("Select Coffee shop"));
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Transaction" }));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_transaction", { id: 1 }));
+  });
+
+  it("Delete does nothing when more than one row is selected (avoids stacking confirmation dialogs)", async () => {
+    renderWithShortcuts();
+    await findMemoCell("Coffee shop");
+    await findMemoCell("Interest");
+
+    await userEvent.click(screen.getByLabelText("Select Coffee shop"));
+    await userEvent.click(screen.getByLabelText("Select Interest"));
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(screen.queryByRole("button", { name: "Delete Transaction" })).not.toBeInTheDocument();
+    expect(mockedInvoke).not.toHaveBeenCalledWith("delete_transaction", expect.anything());
   });
 });

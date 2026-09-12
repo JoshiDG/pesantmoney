@@ -90,6 +90,13 @@ interface TransactionsGridProps {
   onUpdate: (id: number, fields: TransactionFields) => void;
   onBulkAssignCategory: (ids: number[], categoryId: number | null) => void;
   onDelete: (transaction: Transaction) => void;
+  // Reserved Shortcut Set support (#78): the grid's checkbox multi-select
+  // (`selected`, below) is the only "current selection" concept this screen
+  // has, so it's reported up to the caller on every change. The caller
+  // (AllTransactionsScreen) wires Delete/Backspace to it -- the grid itself
+  // stays unaware of ReservedShortcuts, same separation as onDelete/onUpdate
+  // (caller owns the actual action, grid owns only the row UI).
+  onSelectionChange?: (selectedIds: number[]) => void;
   // Hidden-transaction support (#70): a row-level right-click context menu
   // offers Hide/Unhide, toggling the already-existing backend `hidden`
   // field. Callers (TransactionsScreen/AllTransactionsScreen) call
@@ -173,6 +180,7 @@ export function TransactionsGrid({
   onUpdate,
   onBulkAssignCategory,
   onDelete,
+  onSelectionChange,
   onSetHidden,
   tags = [],
   onAddTag,
@@ -202,6 +210,10 @@ export function TransactionsGrid({
   const isMobile = tier === "mobile";
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    onSelectionChange?.(Array.from(selected));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
   const [anchorId, setAnchorId] = useState<number | null>(null);
   const [focusedCell, setFocusedCell] = useState<CellPos | null>(null);
   const [editingCell, setEditingCell] = useState<CellPos | null>(null);

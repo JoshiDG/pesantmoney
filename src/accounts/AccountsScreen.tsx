@@ -20,12 +20,20 @@ import { Dropdown, DropdownOption } from "../ui/Dropdown";
 import { CellPos, isTextInputTarget, nextCellForKey } from "../ui/grid-nav";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
 import { formatCents } from "../transactions/types";
+import { useReservedShortcuts } from "../ui/ReservedShortcuts";
 
 interface AccountsScreenProps {
   onSelectAccount: (account: Account) => void;
   onImportAccount: (account: Account) => void;
   onAccountUpdated: (account: Account) => void;
   onAccountDeleted: (id: number) => void;
+  // Set by the Command Palette's "New Account" action (#77) when it
+  // navigates here from another screen -- opens the Add Account form on
+  // arrival, same as clicking "Add account" or pressing Cmd/Ctrl+N once
+  // already here. `onAutoOpenAddHandled` clears the flag so it doesn't
+  // reopen on every re-render.
+  autoOpenAdd?: boolean;
+  onAutoOpenAddHandled?: () => void;
 }
 
 type SortOption = "name-asc" | "name-desc" | "balance-desc" | "balance-asc" | "type";
@@ -53,6 +61,8 @@ export function AccountsScreen({
   onImportAccount,
   onAccountUpdated,
   onAccountDeleted,
+  autoOpenAdd,
+  onAutoOpenAddHandled,
 }: AccountsScreenProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Record<number, number>>({});
@@ -125,6 +135,41 @@ export function AccountsScreen({
   useEffect(() => {
     refresh();
   }, []);
+
+  useEffect(() => {
+    if (autoOpenAdd) {
+      setAdding(true);
+      onAutoOpenAddHandled?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenAdd]);
+
+  // Reserved Shortcut Set (#78): Cmd/Ctrl+N opens the same "Add account"
+  // form the toolbar button does; Cmd/Ctrl+W and Escape close whichever of
+  // this screen's own panels is currently open (the add form, an inline
+  // edit row, or the row context menu -- checked in that order since at
+  // most one is ever open at a time in normal use). Accounts has no
+  // search/filter text input and no keyboard "current selection" concept
+  // (deletion is a per-row, click-triggered action only), so `onFocusSearch`
+  // and `onDeleteSelection` are intentionally omitted.
+  useReservedShortcuts({
+    onNew: () => setAdding(true),
+    onCloseModal: () => {
+      if (adding) {
+        setAdding(false);
+        return true;
+      }
+      if (editingId != null) {
+        setEditingId(null);
+        return true;
+      }
+      if (contextMenu) {
+        setContextMenu(null);
+        return true;
+      }
+      return false;
+    },
+  });
 
   async function handleCreate(fields: AccountFields) {
     try {

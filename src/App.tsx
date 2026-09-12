@@ -8,12 +8,15 @@ import { DashboardScreen } from "./dashboard/DashboardScreen";
 import { GoalsScreen } from "./goals/GoalsScreen";
 import { ImportScreen } from "./import/ImportScreen";
 import { InvestmentsScreen } from "./investments/InvestmentsScreen";
-import { NavRail } from "./ui/NavRail";
+import { NavRail, NavRailKey } from "./ui/NavRail";
 import { AllRecurringScreen } from "./recurring/AllRecurringScreen";
 import { ReportsScreen } from "./reports/ReportsScreen";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { AllTransactionsScreen } from "./transactions/AllTransactionsScreen";
 import { ConfirmationProvider } from "./ui/ConfirmationProvider";
+import { ReservedShortcutProvider } from "./ui/ReservedShortcuts";
+import { CommandRegistryProvider, useCommands } from "./ui/CommandRegistry";
+import { CommandPalette } from "./ui/CommandPalette";
 
 // How often to re-check the upcoming-bill / budget-overspend notification
 // conditions while the app is open (see `run_notification_check` and
@@ -43,8 +46,29 @@ type ContentView =
   | { type: "settings" }
   | { type: "import"; account: Account };
 
+// Cross-screen actions the Command Palette (#77) can invoke from anywhere,
+// even when the target screen isn't currently mounted: selecting one
+// navigates to the owning screen and asks it (via the `autoOpen*` props
+// below) to open its existing "create new record" form on arrival, the same
+// form Cmd+N opens once already there. This is the bridge between a global
+// action registered once at the App level and a screen-local piece of
+// state (e.g. AccountsScreen's `adding`) that only exists while that screen
+// is mounted.
+type PendingAction = "new-account" | "new-transaction" | null;
+
 function App() {
+  return (
+    <ConfirmationProvider>
+      <CommandRegistryProvider>
+        <AppShell />
+      </CommandRegistryProvider>
+    </ConfirmationProvider>
+  );
+}
+
+function AppShell() {
   const [view, setView] = useState<ContentView>({ type: "dashboard" });
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
 
   useEffect(() => {
     function checkNotifications() {
@@ -71,20 +95,89 @@ function App() {
     return () => window.removeEventListener("contextmenu", handleGlobalContextMenu);
   }, []);
 
+  const openDashboard = () => setView({ type: "dashboard" });
+  const openAccounts = () => setView({ type: "accounts" });
+  const openTransactions = () => setView({ type: "transactions", accountId: null });
+  const openReports = () => setView({ type: "reports" });
+  const openBudget = () => setView({ type: "budget" });
+  const openRecurring = () => setView({ type: "recurring" });
+  const openGoals = () => setView({ type: "goals" });
+  const openInvestments = () => setView({ type: "investments" });
+  const openSettings = () => setView({ type: "settings" });
+
+  const navHandlers: Record<NavRailKey, () => void> = {
+    dashboard: openDashboard,
+    accounts: openAccounts,
+    transactions: openTransactions,
+    reports: openReports,
+    budget: openBudget,
+    recurring: openRecurring,
+    goals: openGoals,
+    investments: openInvestments,
+    settings: openSettings,
+  };
+  const navLabels: Record<NavRailKey, string> = {
+    dashboard: "Dashboard",
+    accounts: "Accounts",
+    transactions: "Transactions",
+    reports: "Reports",
+    budget: "Budget",
+    recurring: "Recurring",
+    goals: "Goals",
+    investments: "Investments",
+    settings: "Settings",
+  };
+
+  // Command Palette (#77) core commands: every Nav Rail destination, plus a
+  // small starter set of high-value cross-screen actions ("New Transaction"
+  // and "New Account" per #77's acceptance criteria). Registered once here
+  // under fixed source ids -- future screens register their own commands
+  // via the same `useCommands` hook from wherever they're mounted, without
+  // touching this list or CommandPalette.tsx.
+  useCommands(
+    "core-nav",
+    (Object.keys(navHandlers) as NavRailKey[]).map((key) => ({
+      id: `nav-${key}`,
+      label: navLabels[key],
+      section: "Navigate",
+      run: navHandlers[key],
+    })),
+  );
+  useCommands("core-actions", [
+    {
+      id: "new-account",
+      label: "New Account",
+      section: "New",
+      run: () => {
+        setPendingAction("new-account");
+        openAccounts();
+      },
+    },
+    {
+      id: "new-transaction",
+      label: "New Transaction",
+      section: "New",
+      run: () => {
+        setPendingAction("new-transaction");
+        openTransactions();
+      },
+    },
+  ]);
+
   return (
-    <ConfirmationProvider>
+    <ReservedShortcutProvider onOpenSettings={openSettings}>
       <div className="app-shell">
         <NavRail
           active={view.type}
-          onOpenDashboard={() => setView({ type: "dashboard" })}
-          onOpenAccounts={() => setView({ type: "accounts" })}
-          onOpenTransactions={() => setView({ type: "transactions", accountId: null })}
-          onOpenReports={() => setView({ type: "reports" })}
-          onOpenBudget={() => setView({ type: "budget" })}
-          onOpenRecurring={() => setView({ type: "recurring" })}
-          onOpenGoals={() => setView({ type: "goals" })}
-          onOpenInvestments={() => setView({ type: "investments" })}
-          onOpenSettings={() => setView({ type: "settings" })}
+          onOpenDashboard={openDashboard}
+          onOpenAccounts={openAccounts}
+          onOpenTransactions={openTransactions}
+          onOpenReports={openReports}
+          onOpenBudget={openBudget}
+          onOpenRecurring={openRecurring}
+          onOpenGoals={openGoals}
+          onOpenInvestments={openInvestments}
+          onOpenSettings={openSettings}
         />
         <main className="content">
           {view.type === "dashboard" && <DashboardScreen />}
@@ -100,9 +193,17 @@ function App() {
                     : current,
                 )
               }
+              autoOpenAdd={pendingAction === "new-account"}
+              onAutoOpenAddHandled={() => setPendingAction(null)}
             />
           )}
-          {view.type === "transactions" && <AllTransactionsScreen initialAccountId={view.accountId} />}
+          {view.type === "transactions" && (
+            <AllTransactionsScreen
+              initialAccountId={view.accountId}
+              autoOpenNew={pendingAction === "new-transaction"}
+              onAutoOpenNewHandled={() => setPendingAction(null)}
+            />
+          )}
           {view.type === "reports" && <ReportsScreen />}
           {view.type === "budget" && <BudgetScreen />}
           {view.type === "recurring" && <AllRecurringScreen />}
@@ -113,8 +214,9 @@ function App() {
             <ImportScreen account={view.account} onBack={() => setView({ type: "accounts" })} />
           )}
         </main>
+        <CommandPalette />
       </div>
-    </ConfirmationProvider>
+    </ReservedShortcutProvider>
   );
 }
 
