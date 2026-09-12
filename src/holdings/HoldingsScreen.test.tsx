@@ -91,3 +91,130 @@ describe("HoldingsScreen delete confirmation", () => {
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_holding", { id: 1 }));
   });
 });
+
+// Keyboard navigation + scoped single-letter shortcuts (ADR-0020 "Grid
+// keyboard navigation" / issue #82). Uses two holdings so Up/Down movement
+// between rows is actually observable, unlike the single-row fixture above.
+describe("HoldingsScreen keyboard navigation", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_holdings_with_values":
+          return [
+            {
+              id: 1,
+              account_id: 1,
+              ticker: "VTI",
+              quantity: 10,
+              cost_basis_cents: null,
+              price_cents: 25000,
+              as_of_date: "2026-09-01",
+              value_cents: 250000,
+            },
+            {
+              id: 2,
+              account_id: 1,
+              ticker: "BND",
+              quantity: 5,
+              cost_basis_cents: null,
+              price_cents: 8000,
+              as_of_date: "2026-09-01",
+              value_cents: 40000,
+            },
+          ];
+        case "delete_holding":
+        case "set_security_price":
+        case "update_holding":
+          return null;
+        default:
+          return null;
+      }
+    });
+  });
+
+  it("ArrowDown/ArrowUp move keyboard focus between row Ticker cells", async () => {
+    renderScreen();
+    await screen.findByText("VTI");
+
+    const vtiRow = screen.getByRole("button", { name: "VTI row" });
+    const bndRow = screen.getByRole("button", { name: "BND row" });
+
+    vtiRow.focus();
+    expect(vtiRow).toHaveFocus();
+
+    fireEvent.keyDown(vtiRow, { key: "ArrowDown" });
+    await waitFor(() => expect(bndRow).toHaveFocus());
+
+    fireEvent.keyDown(bndRow, { key: "ArrowUp" });
+    await waitFor(() => expect(vtiRow).toHaveFocus());
+  });
+
+  it("ArrowDown at the last row is a no-op (clamped, doesn't wrap)", async () => {
+    renderScreen();
+    await screen.findByText("VTI");
+
+    const bndRow = screen.getByRole("button", { name: "BND row" });
+    bndRow.focus();
+
+    fireEvent.keyDown(bndRow, { key: "ArrowDown" });
+    await waitFor(() => expect(bndRow).toHaveFocus());
+  });
+
+  it("pressing 'p' while a row is focused opens the price form for that holding (highest-frequency shortcut)", async () => {
+    renderScreen();
+    await screen.findByText("VTI");
+
+    const bndRow = screen.getByRole("button", { name: "BND row" });
+    bndRow.focus();
+    fireEvent.keyDown(bndRow, { key: "p" });
+
+    expect(await screen.findByLabelText("Price for BND")).toBeInTheDocument();
+  });
+
+  it("pressing 'e' while a row is focused opens the edit form for that holding", async () => {
+    renderScreen();
+    await screen.findByText("VTI");
+
+    const vtiRow = screen.getByRole("button", { name: "VTI row" });
+    vtiRow.focus();
+    fireEvent.keyDown(vtiRow, { key: "e" });
+
+    expect(await screen.findByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("does not fire the 'p' shortcut while a text input has focus", async () => {
+    renderScreen();
+    await screen.findByText("VTI");
+
+    const tickerInput = screen.getByLabelText("Ticker");
+    tickerInput.focus();
+    fireEvent.keyDown(tickerInput, { key: "p" });
+
+    expect(screen.queryByLabelText("Price for VTI")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Price for BND")).not.toBeInTheDocument();
+  });
+
+  it("shift-clicking a row's checkbox selects the range from the anchor row", async () => {
+    renderScreen();
+    await screen.findByText("VTI");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select VTI" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select BND" }), { shiftKey: true });
+
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+  });
+
+  it("bulk-deletes every selected holding after confirmation", async () => {
+    renderScreen();
+    await screen.findByText("VTI");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select VTI" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select BND" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete Holdings" }));
+
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_holding", { id: 1 }));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("delete_holding", { id: 2 }));
+  });
+});
