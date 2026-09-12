@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Account } from "../accounts/types";
 import { Category, CategoryGroup } from "../categories/types";
@@ -9,9 +9,31 @@ import { TransactionsGrid } from "./TransactionsGrid";
 import { TransactionForm } from "./TransactionForm";
 import { ContextBar } from "./chrome/ContextBar";
 import { FunctionBar } from "./chrome/FunctionBar";
+import { FiltersPopover } from "./chrome/FiltersPopover";
 import { QuoteStrip } from "./chrome/QuoteStrip";
 import { StatusBar } from "./chrome/StatusBar";
-import { COLUMN_LABELS, COLUMN_SET } from "./grid-nav";
+import { COLUMN_LABELS, COLUMN_SET, ColumnKey } from "./grid-nav";
+import {
+  ChecklistColumn,
+  CHECKLIST_COLUMNS,
+  DATE_PRESETS,
+  DATE_PRESET_LABELS,
+  FilterState,
+  FilterableColumn,
+  FilterableRow,
+  applyFilters,
+  clearColumnFilter,
+  distinctValueCounts,
+  emptyFilterState,
+  filterSummary,
+  hasActiveFilters,
+  activeFilterCount,
+  isFilterableColumn,
+  setDatePreset,
+  setShowHidden,
+  toggleColumnValue,
+  toggleTypeFacet,
+} from "./filters";
 import {
   ColumnVisibility,
   DEFAULT_COLUMN_VISIBILITY,
@@ -88,7 +110,21 @@ export function AllTransactionsScreen({
   // exclusion, not a Transactions-view one). So this screen filters
   // client-side over the already-fetched, already-`hidden`-carrying rows,
   // same as its existing Account-filter logic below.
-  const [showHidden, setShowHidden] = useState(false);
+  // Filter model (#91, ADR-0021): Show Hidden moves into `FilterState` so
+  // it's a single source of truth shared by the Function Bar's standalone
+  // Show Hidden chip (unchanged since #90) and the Filters popover's own
+  // Show Hidden checkbox -- both read/write the same `filters.showHidden`.
+  const [filters, setFilters] = useState<FilterState>(emptyFilterState());
+  const [filtersMenuPos, setFiltersMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const filtersButtonRef = useRef<HTMLButtonElement>(null);
+  // Per-column right-click filter menu (#91): which column's menu is open,
+  // and at what position. Built from `filterableRows` below via
+  // `columnFilterMenuItems`.
+  const [columnFilterMenu, setColumnFilterMenu] = useState<{
+    x: number;
+    y: number;
+    column: FilterableColumn;
+  } | null>(null);
   const { confirm } = useConfirmation();
   // Export chip (#90): the deleted per-Account TransactionsScreen's CSV
   // export moves here unchanged -- `useCsvExport` was already a
@@ -211,16 +247,23 @@ export function AllTransactionsScreen({
       .catch((err) => setError(String(err)));
   }, [accountFilter, transactions]);
 
-  // CANC (#90): clears search + all filters in one action (ADR-0021).
-  // Search and the per-column filter model land in #91/#92 -- until then
-  // this resets the only filter already wired here (Show Hidden), which
-  // keeps it a real action rather than a dead no-op.
+  // CANC (#90/#91): clears search + all filters in one action (ADR-0021).
+  // Search lands in #92 -- until then this resets every filter facet
+  // (column filters, Date preset, Type, Show Hidden) back to the empty
+  // state.
   function handleCancel() {
-    setShowHidden(false);
+    setFilters(emptyFilterState());
   }
 
-  // Filters chip (#90): a stub -- the popover/filter model lands in #91.
-  function handleFilters() {}
+  // Filters chip (#91): toggles the Filters popover (Type, Show Hidden,
+  // Clear All), anchored under the chip via `filtersButtonRef`.
+  function openFiltersMenu() {
+    setFiltersMenuPos((prev) => {
+      if (prev) return null;
+      const rect = filtersButtonRef.current?.getBoundingClientRect();
+      return { x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + 4 };
+    });
+  }
 
   function openImportPicker() {
     if (accounts.length === 0) return;
@@ -483,20 +526,45 @@ export function AllTransactionsScreen({
     transferByTransactionId.set(transfer.to_transaction_id, transfer);
   }
 
-  const filteredTransactions: Transaction[] = transactions
-    .filter((t) => accountFilter == null || t.account_id === accountFilter)
-    .filter((t) => showHidden || !t.hidden);
+  // Filter model (#91): every Transaction enriched with the display fields
+  // the filter module facets/matches against -- the same values the grid
+  // itself renders (Account name, Payee, Category name, Tag names,
+  // Transfer-linked) -- so a right-click filter menu's distinct values and
+  // the AND/OR composition below both operate on exactly what's on screen.
+  const categoryNameById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories],
+  );
+  const filterableRows: FilterableRow[] = useMemo(
+    () =>
+      transactions.map((t) => ({
+        transaction: t,
+        accountName: t.account_name ?? "",
+        payeeName: t.merchant_name || t.description,
+        categoryName: t.category_id != null ? categoryNameById.get(t.category_id) ?? "Uncategorized" : "Uncategorized",
+        tagNames: (tagsByTransactionId[t.id] ?? []).map((tag) => tag.name),
+        isTransfer: linkedTransactionIds.has(t.id),
+      })),
+    [transactions, categoryNameById, tagsByTransactionId, linkedTransactionIds],
+  );
+
+  // Account filter (pre-existing, #51) narrows first; the filter model's
+  // own facets (column filters, Date preset, Type, Show Hidden) then apply
+  // on top, all AND'd together (ADR-0021).
+  const accountFilteredRows = filterableRows.filter(
+    (row) => accountFilter == null || row.transaction.account_id === accountFilter,
+  );
+  const visibleRows = applyFilters(accountFilteredRows, filters);
+  const filteredTransactions: Transaction[] = visibleRows.map((row) => row.transaction);
 
   // TransactionsGrid now owns Account-column suppression itself (#68):
   // it force-hides the Account column whenever the transactions it's given
   // resolve to a single distinct Account, generalizing what this screen
   // used to compute locally as `showAccountBadge`.
 
-  // Quote Strip totals (#90): derived from the same filtered array the grid
-  // renders, so they always match what's on screen. Full "recomputes on
-  // every filter/search change" (per ADR-0021) lands once filtering/search
-  // exist (#91/#92) -- today `filteredTransactions` only reflects the
-  // Account filter and Show Hidden, so that's what these recompute on.
+  // Quote Strip totals (#90/#91): derived from the same filtered array the
+  // grid renders, so they always match what's on screen -- recomputes on
+  // every filter change per ADR-0021.
   const incomeCents = filteredTransactions
     .filter((t) => t.amount_cents > 0)
     .reduce((sum, t) => sum + t.amount_cents, 0);
@@ -505,6 +573,56 @@ export function AllTransactionsScreen({
     .reduce((sum, t) => sum + -t.amount_cents, 0);
   const netCents = incomeCents - expenseCents;
   const selectedAccountName = accountFilter != null ? accounts.find((a) => a.id === accountFilter)?.name ?? null : null;
+
+  // Per-column right-click filter menu items (#91). For the Date column,
+  // it's a single-select preset list; for every other filterable column,
+  // it's a distinct-values checklist whose counts reflect every *other*
+  // active facet (all columns except this one, plus Type/Show Hidden/
+  // Account) -- Excel/Bloomberg-style faceting, so picking a value tells
+  // you how many rows you'd be left with.
+  function columnFilterMenuItems(column: FilterableColumn): ContextMenuItem[] {
+    if (column === "date") {
+      // Presets are single-select (exclusive), not a multi-select
+      // checklist -- plain menu items, marked in the label when active,
+      // rather than ContextMenuItem's checkbox rendering (which implies
+      // OR-combinable multi-select, like the other columns below).
+      return DATE_PRESETS.map((preset) => ({
+        label: filters.datePreset === preset ? `${DATE_PRESET_LABELS[preset]} ✓` : DATE_PRESET_LABELS[preset],
+        onClick: () => setFilters((prev) => setDatePreset(prev, preset)),
+      }));
+    }
+    const checklistColumn = column as ChecklistColumn;
+    const otherFilters: FilterState = {
+      ...filters,
+      columns: { ...filters.columns, [checklistColumn]: undefined },
+    };
+    const candidateRows = applyFilters(accountFilteredRows, otherFilters);
+    const counts = distinctValueCounts(candidateRows, checklistColumn);
+    const selected = filters.columns[checklistColumn] ?? new Set<string>();
+    const items: ContextMenuItem[] = counts.map(({ value, count }) => ({
+      label: `${value} (${count})`,
+      checked: selected.has(value),
+      closeOnClick: false,
+      onClick: () => setFilters((prev) => toggleColumnValue(prev, checklistColumn, value)),
+    }));
+    if (selected.size > 0) {
+      items.unshift({
+        label: "Clear filter",
+        onClick: () => setFilters((prev) => clearColumnFilter(prev, checklistColumn)),
+      });
+    }
+    return items;
+  }
+
+  const activeFilterColumns = useMemo(() => {
+    const active = new Set<ColumnKey>();
+    if (filters.datePreset !== "all") active.add("date");
+    for (const column of CHECKLIST_COLUMNS) {
+      const selected = filters.columns[column];
+      if (selected && selected.size > 0) active.add(column);
+    }
+    return active;
+  }, [filters]);
 
   return (
     <section>
@@ -526,9 +644,12 @@ export function AllTransactionsScreen({
         exportDisabled={exportingCsv}
         onColumns={openColumnsMenu}
         columnsButtonRef={columnsButtonRef}
-        onFilters={handleFilters}
-        showHidden={showHidden}
-        onToggleShowHidden={() => setShowHidden((prev) => !prev)}
+        onFilters={openFiltersMenu}
+        filtersButtonRef={filtersButtonRef}
+        filtersActive={hasActiveFilters(filters)}
+        filtersActiveCount={activeFilterCount(filters)}
+        showHidden={filters.showHidden}
+        onToggleShowHidden={() => setFilters((prev) => setShowHidden(prev, !prev.showHidden))}
       />
 
       <ContextBar accounts={accounts} accountFilter={accountFilter} onAccountFilterChange={setAccountFilter} />
@@ -548,6 +669,31 @@ export function AllTransactionsScreen({
           y={columnsMenuPos.y}
           items={columnMenuItems()}
           onClose={() => setColumnsMenuPos(null)}
+        />
+      )}
+
+      {filtersMenuPos && (
+        <FiltersPopover
+          x={filtersMenuPos.x}
+          y={filtersMenuPos.y}
+          types={filters.types}
+          showHidden={filters.showHidden}
+          onToggleType={(type) => setFilters((prev) => toggleTypeFacet(prev, type))}
+          onToggleShowHidden={() => setFilters((prev) => setShowHidden(prev, !prev.showHidden))}
+          onClearAll={() => {
+            setFilters(emptyFilterState());
+            setFiltersMenuPos(null);
+          }}
+          onClose={() => setFiltersMenuPos(null)}
+        />
+      )}
+
+      {columnFilterMenu && (
+        <ContextMenu
+          x={columnFilterMenu.x}
+          y={columnFilterMenu.y}
+          items={columnFilterMenuItems(columnFilterMenu.column)}
+          onClose={() => setColumnFilterMenu(null)}
         />
       )}
 
@@ -627,10 +773,20 @@ export function AllTransactionsScreen({
           onCreateMerchant={handleCreateMerchant}
           categoryGroups={categoryGroups}
           onCreateCategory={handleCreateCategory}
+          onColumnFilterRequest={(column, x, y) => {
+            if (isFilterableColumn(column)) {
+              setColumnFilterMenu({ column, x, y });
+            }
+          }}
+          activeFilterColumns={activeFilterColumns}
         />
       </div>
 
-      <StatusBar visibleCount={filteredTransactions.length} totalCount={transactions.length} />
+      <StatusBar
+        visibleCount={filteredTransactions.length}
+        totalCount={transactions.length}
+        summary={filterSummary(filters) ?? undefined}
+      />
     </section>
   );
 }

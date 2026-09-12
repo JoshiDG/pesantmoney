@@ -970,3 +970,176 @@ describe("AllTransactionsScreen Bloomberg chrome (#90)", () => {
     );
   });
 });
+
+// Column filtering (#91): right-click a filterable column header for a
+// distinct-values checklist (Date gets presets instead), combined with the
+// Filters chip's popover (Type, Show Hidden, Clear All) and CANC. See
+// src/transactions/filters.test.ts for the underlying pure-module coverage
+// (predicate composition, counts, date presets) -- these tests cover the
+// menu interaction and the resulting grid/Quote Strip/Status Bar state.
+describe("AllTransactionsScreen column filtering", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockInvokeDefaults();
+  });
+
+  function headerSpan(label: string) {
+    return screen.getByText(label, { selector: ".ledger-head span" });
+  }
+
+  it("right-clicking the Account header opens a distinct-values checklist with counts", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.contextMenu(headerSpan("Account"));
+
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getByRole("menuitemcheckbox", { name: "Checking (1)" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitemcheckbox", { name: "Savings (1)" })).toBeInTheDocument();
+  });
+
+  it("selecting a value narrows the grid and updates the Quote Strip", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.contextMenu(headerSpan("Account"));
+    const menu = screen.getByRole("menu");
+    await userEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Checking (1)" }));
+
+    await waitFor(() => expect(screen.queryByText("Interest")).not.toBeInTheDocument());
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
+
+    const quoteStrip = screen.getByRole("status", { name: "Transactions summary" });
+    expect(within(quoteStrip).getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("1 of 2")).toBeInTheDocument();
+  });
+
+  it("OR's multiple selected values within the same column", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.contextMenu(headerSpan("Account"));
+    let menu = screen.getByRole("menu");
+    await userEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Checking (1)" }));
+    // Menu stays open (closeOnClick: false) for multi-select.
+    menu = screen.getByRole("menu");
+    await userEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Savings (1)" }));
+
+    await waitFor(() => expect(memoCell("Interest")).toBeInTheDocument());
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
+  });
+
+  it("right-clicking the Date header shows preset ranges instead of a value list", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.contextMenu(headerSpan("Date"));
+
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getByRole("menuitem", { name: "This month" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Last month" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "This year" })).toBeInTheDocument();
+    // "All dates" is the default preset, so it renders with the active
+    // checkmark suffix.
+    expect(within(menu).getByRole("menuitem", { name: "All dates ✓" })).toBeInTheDocument();
+    expect(within(menu).queryByText(/\(\d+\)/)).not.toBeInTheDocument();
+  });
+
+  it("Amount, Memo, and Running Balance headers have no filter menu on right-click", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    for (const label of ["Amount", "Memo", "Running Balance"]) {
+      fireEvent.contextMenu(headerSpan(label));
+      // Falls through to the pre-existing Column Management checklist
+      // (right-click anywhere else in the header row), not a value filter.
+      const menu = screen.getByRole("menu");
+      expect(within(menu).getByRole("menuitemcheckbox", { name: "Date" })).toBeInTheDocument();
+      expect(within(menu).queryByText(/\(\d+\)/)).not.toBeInTheDocument();
+      await userEvent.keyboard("{Escape}");
+    }
+  });
+
+  it("the Filters chip opens a popover with Type, Show Hidden, and Clear All", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+
+    const popover = screen.getByRole("dialog", { name: "Filters" });
+    expect(within(popover).getByLabelText("Income")).toBeInTheDocument();
+    expect(within(popover).getByLabelText("Expense")).toBeInTheDocument();
+    expect(within(popover).getByLabelText("Transfer")).toBeInTheDocument();
+    expect(within(popover).getByLabelText("Show Hidden")).toBeInTheDocument();
+    expect(within(popover).getByRole("button", { name: "Clear All" })).toBeInTheDocument();
+  });
+
+  it("the Type facet in the Filters popover narrows the grid", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const popover = screen.getByRole("dialog", { name: "Filters" });
+    await userEvent.click(within(popover).getByLabelText("Income"));
+
+    await waitFor(() => expect(screen.queryByText("Coffee shop")).not.toBeInTheDocument());
+    expect(memoCell("Interest")).toBeInTheDocument();
+  });
+
+  it("shows an active badge on the Filters chip once a filter is set", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    expect(screen.queryByLabelText(/active filters/)).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(headerSpan("Account"));
+    const menu = screen.getByRole("menu");
+    await userEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Checking (1)" }));
+
+    expect(await screen.findByLabelText("1 active filters")).toBeInTheDocument();
+  });
+
+  it("Clear All in the Filters popover resets every filter", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.contextMenu(headerSpan("Account"));
+    let menu = screen.getByRole("menu");
+    await userEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Checking (1)" }));
+    await waitFor(() => expect(screen.queryByText("Interest")).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    const popover = screen.getByRole("dialog", { name: "Filters" });
+    await userEvent.click(within(popover).getByRole("button", { name: "Clear All" }));
+
+    await waitFor(() => expect(memoCell("Interest")).toBeInTheDocument());
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
+  });
+
+  it("CANC clears active column and Type filters", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.contextMenu(headerSpan("Account"));
+    const menu = screen.getByRole("menu");
+    await userEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Checking (1)" }));
+    await waitFor(() => expect(screen.queryByText("Interest")).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("CANC"));
+
+    await waitFor(() => expect(memoCell("Interest")).toBeInTheDocument());
+    expect(memoCell("Coffee shop")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/active filters/)).not.toBeInTheDocument();
+  });
+
+  it("shows a Status Bar summary while a filter is active", async () => {
+    renderScreen();
+    await findMemoCell("Coffee shop");
+
+    fireEvent.contextMenu(headerSpan("Account"));
+    const menu = screen.getByRole("menu");
+    await userEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Checking (1)" }));
+
+    await waitFor(() => expect(screen.getByText(/Account: 1/)).toBeInTheDocument());
+  });
+});

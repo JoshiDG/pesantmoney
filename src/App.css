@@ -1050,6 +1050,73 @@ body {
   color: var(--palette-bg-canvas);
 }
 
+/* Filters chip badge (#91): the active-facet count shown on the Filters
+   chip while any filter (column, Type, Date preset, Show Hidden) is set. */
+.function-bar-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1em;
+  height: 1.1em;
+  margin-left: 0.4em;
+  padding: 0 0.3em;
+  border-radius: 999px;
+  background: var(--palette-bg-canvas);
+  color: var(--palette-role-secondary);
+  font-size: 0.85em;
+}
+
+/* Filters popover (#91): Type/Show Hidden/Clear All, anchored under the
+   Filters chip the same way ContextMenu anchors under a click point. */
+.filters-popover {
+  position: fixed;
+  z-index: 1000;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  padding: 0.75rem;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.filters-popover-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.filters-popover-heading {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.filters-popover-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--paper-text);
+}
+
+.filters-popover-clear {
+  align-self: flex-start;
+}
+
+/* Per-column filter indicator (#91): a small dot next to a filterable
+   column's label once it has an active filter, so applied filters stay
+   visible with the menu closed. */
+.header-filter-dot {
+  font-size: 0.5em;
+  margin-left: 0.35rem;
+  color: var(--palette-role-secondary);
+  vertical-align: middle;
+}
+
 .context-bar {
   display: flex;
   align-items: center;

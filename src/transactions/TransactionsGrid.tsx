@@ -19,6 +19,7 @@ import { Transfer } from "../transfers/types";
 import { CellPos, nextCellForKey } from "../ui/grid-nav";
 import { selectRowRange, toggleRowSelection } from "../ui/selection";
 import { COLUMN_LABELS, COLUMN_SET, ColumnKey, EDITABLE_COLUMNS } from "./grid-nav";
+import { isFilterableColumn } from "./filters";
 import { SuggestionCombobox } from "../ui/SuggestionCombobox";
 import {
   ColumnVisibility,
@@ -129,6 +130,18 @@ interface TransactionsGridProps {
   // itself, same as onSetPayee/onAddTag/onSetHidden.
   categoryGroups?: CategoryGroup[];
   onCreateCategory?: (transactionId: number, name: string, groupId: number) => void;
+  // Column filtering (#91): right-clicking a *filterable* column's header
+  // cell (Date, Account, Payee, Category, Tags -- see
+  // `isFilterableColumn`) reports the column and click position up to the
+  // caller instead of opening this grid's own Column Management menu,
+  // which stays reachable via a right-click anywhere else in the header
+  // row (see `handleHeaderContextMenu`, unchanged). AllTransactionsScreen
+  // owns the actual filter menu/state, same separation as onUpdate/
+  // onSetHidden -- this grid only routes the interaction.
+  onColumnFilterRequest?: (column: ColumnKey, x: number, y: number) => void;
+  // Columns with an active filter get a visual marker on their header cell
+  // so an applied filter stays visible even when its menu is closed.
+  activeFilterColumns?: Set<ColumnKey>;
 }
 
 // Only these four columns are backed by EDITABLE_COLUMNS (see grid-nav.ts);
@@ -177,6 +190,8 @@ export function TransactionsGrid({
   onCreateMerchant,
   categoryGroups = [],
   onCreateCategory,
+  onColumnFilterRequest,
+  activeFilterColumns,
 }: TransactionsGridProps) {
   const knownTagNames = useMemo(() => tags.map((tag) => tag.name), [tags]);
   const knownMerchantNames = useMemo(
@@ -984,29 +999,51 @@ export function TransactionsGrid({
               onChange={toggleSelectAll}
             />
           </span>
-          {visibleColumns.map((column) => (
-            <span
-              key={column}
-              className={
-                sortState?.column === column ? `sort-${sortState.direction}` : undefined
-              }
-              tabIndex={0}
-              onClick={() => handleHeaderClick(column)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleHeaderClick(column);
+          {visibleColumns.map((column) => {
+            const filterable = isFilterableColumn(column);
+            const isFilterActive = activeFilterColumns?.has(column) ?? false;
+            const classNames = [
+              sortState?.column === column ? `sort-${sortState.direction}` : "",
+              isFilterActive ? "header-filter-active" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            return (
+              <span
+                key={column}
+                className={classNames || undefined}
+                tabIndex={0}
+                onClick={() => handleHeaderClick(column)}
+                onContextMenu={
+                  filterable && onColumnFilterRequest
+                    ? (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onColumnFilterRequest(column, e.clientX, e.clientY);
+                      }
+                    : undefined
                 }
-              }}
-            >
-              {COLUMN_LABELS[column]}
-              {sortState?.column === column && (
-                <span className="sort-arrow" aria-hidden="true">
-                  {sortState.direction === "asc" ? "▲" : "▼"}
-                </span>
-              )}
-            </span>
-          ))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleHeaderClick(column);
+                  }
+                }}
+              >
+                {COLUMN_LABELS[column]}
+                {sortState?.column === column && (
+                  <span className="sort-arrow" aria-hidden="true">
+                    {sortState.direction === "asc" ? "▲" : "▼"}
+                  </span>
+                )}
+                {isFilterActive && (
+                  <span className="header-filter-dot" aria-hidden="true">
+                    ●
+                  </span>
+                )}
+              </span>
+            );
+          })}
           <span></span>
         </div>
       )}

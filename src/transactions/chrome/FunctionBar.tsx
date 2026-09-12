@@ -26,11 +26,17 @@ export interface FunctionBarProps {
   exportDisabled?: boolean;
   onColumns: () => void;
   columnsButtonRef?: Ref<HTMLButtonElement>;
-  // Filters (#90): a stub. The popover/filter model (Type, Show Hidden,
-  // Clear All, badge-when-active) lands in #91 -- this chip exists and is
-  // clickable now so the Function Bar's full chip set is visible from
-  // phase 1, per #89/#90.
+  // Filters (#91): opens the Filters popover (Type, Show Hidden, Clear
+  // All -- see FiltersPopover). `filtersButtonRef` anchors the popover the
+  // same way `columnsButtonRef` anchors the Columns checklist above.
+  // `filtersActive` shows a badge (active facet count) while any filter --
+  // a column filter, Type, Show Hidden, or a non-"all" Date preset -- is
+  // set, so the chip stays informative even while its own popover is
+  // closed.
   onFilters: () => void;
+  filtersButtonRef?: Ref<HTMLButtonElement>;
+  filtersActive?: boolean;
+  filtersActiveCount?: number;
   showHidden: boolean;
   onToggleShowHidden: () => void;
 }
@@ -47,6 +53,9 @@ export function FunctionBar({
   onColumns,
   columnsButtonRef,
   onFilters,
+  filtersButtonRef,
+  filtersActive,
+  filtersActiveCount,
   showHidden,
   onToggleShowHidden,
 }: FunctionBarProps) {
@@ -94,10 +103,17 @@ export function FunctionBar({
       </button>
       <button
         type="button"
-        className="function-bar-chip function-bar-chip--secondary"
+        ref={filtersButtonRef}
+        className={`function-bar-chip function-bar-chip--secondary ${filtersActive ? "function-bar-chip--active" : ""}`}
         onClick={onFilters}
+        aria-pressed={filtersActive}
       >
         Filters
+        {filtersActive && (
+          <span className="function-bar-chip-badge" aria-label={`${filtersActiveCount} active filters`}>
+            {filtersActiveCount}
+          </span>
+        )}
       </button>
       <button
         type="button"
